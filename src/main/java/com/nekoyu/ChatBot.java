@@ -1,7 +1,6 @@
 package com.nekoyu;
 
 import com.google.gson.Gson;
-import org.java_websocket.WebSocket;
 import org.java_websocket.client.WebSocketClient;
 import org.java_websocket.handshake.ServerHandshake;
 
