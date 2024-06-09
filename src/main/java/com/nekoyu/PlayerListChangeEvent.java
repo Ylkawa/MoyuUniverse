@@ -1,15 +1,15 @@
 package com.nekoyu;
 
-import java.util.Collection;
+import java.util.ArrayList;
 
 public class PlayerListChangeEvent {
     String ChangeMethod;
     String PlayerName;
-    Collection collection;
+    ArrayList<String> PlayerList;
 
-    public PlayerListChangeEvent(String ChangeMethod, String PlayerName, Collection collection){
+    public PlayerListChangeEvent(String ChangeMethod, String PlayerName, ArrayList<String> PlayerList){
         this.ChangeMethod = ChangeMethod;
         this.PlayerName = PlayerName;
-        this.collection = collection;
+        this.PlayerList = PlayerList;
     }
 }

@@ -65,8 +65,6 @@ public class ChatBot {
     }
 
     public void sendMessage(String msg) {
-        System.out.println(sessionKey);
-
         Map<String, Object> message = new HashMap<>();
         message.put("syncId", System.currentTimeMillis());
         Map<String, Object> data = new HashMap<>();

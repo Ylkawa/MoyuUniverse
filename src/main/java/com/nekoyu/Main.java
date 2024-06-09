@@ -6,7 +6,7 @@ import org.java_websocket.handshake.ClientHandshake;
 import org.java_websocket.server.WebSocketServer;
 
 import java.net.InetSocketAddress;
-import java.util.ArrayList;
+import java.util.Collection;
 
 public class Main {
     public static void main(String[] args) {
@@ -28,18 +28,26 @@ public class Main {
             @Override
             public void onMessage(WebSocket webSocket, String s) {
                 System.out.println("Receive message. " + webSocket.getRemoteSocketAddress() + ": " + s);
-                ArrayList<String> message = new Gson().fromJson(s, ArrayList.class);
-                switch (message.get(0)) {
-                    case "PlayerLoginEvent":
-                        System.out.println("Receive message. " + webSocket.getRemoteSocketAddress() + ": " + s);
-                        chatBot.sendMessage(message.get(1) + " 加入了游戏.");
+                String[] strings = s.split(": ", 2);
+                switch (strings[0]) {
+                    case "PlayerListChange":
+                        PlayerListChangeEvent playerListChangeEvent = new Gson().fromJson(strings[1], PlayerListChangeEvent.class);
+                        String message = "";
+                        System.out.println(playerListChangeEvent.ChangeMethod);
+                        switch (playerListChangeEvent.ChangeMethod) {
+                            case "Join":
+                                message = playerListChangeEvent.PlayerName + " 加入了游戏.";
+                                break;
+                            case "Quit":
+                                message = playerListChangeEvent.PlayerName + " 离开了游戏.";
+                                break;
+                        }
+                        chatBot.sendMessage(message);
                 }
             }
 
             @Override
-            public void onError(WebSocket webSocket, Exception e) {
-                e.getCause().printStackTrace();
-            }
+            public void onError(WebSocket webSocket, Exception e) {}
 
             @Override
             public void onStart() {
@@ -51,6 +59,10 @@ public class Main {
         //程序退出动作
         Runtime.getRuntime().addShutdownHook(new Thread(new Runnable() {
             public void run() {
+                Collection<WebSocket> collection= wss.getConnections();
+                for (WebSocket conn : collection) {
+                    conn.close();
+                }
                 System.out.println("Exiting...");
             }
         }));
