@@ -1,4 +1,4 @@
 name: MoyuUniverse.planet
 version: '${project.version}'
-main: com.nekoyu.MoyuUniverse.planet
+main: com.nekoyu.planet
 api-version: '1.20'
