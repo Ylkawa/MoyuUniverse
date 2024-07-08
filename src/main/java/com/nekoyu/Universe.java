@@ -8,7 +8,7 @@ import org.java_websocket.server.WebSocketServer;
 import java.net.InetSocketAddress;
 import java.util.Collection;
 
-public class Main {
+public class Universe {
     public static void main(String[] args) {
 
         ChatBot chatBot = new ChatBot("139.196.112.23",39393, "INITKEY6LWqTW2V", "1697775835", "455284589");
@@ -27,7 +27,6 @@ public class Main {
 
             @Override
             public void onMessage(WebSocket webSocket, String s) {
-                System.out.println("Receive message. " + webSocket.getRemoteSocketAddress() + ": " + s);
                 String[] strings = s.split(": ", 2);
                 switch (strings[0]) {
                     case "PlayerListChange":
@@ -42,6 +41,7 @@ public class Main {
                                 message = playerListChangeEvent.PlayerName + " 离开了游戏.";
                                 break;
                         }
+                        System.out.println(message);
                         chatBot.sendMessage(message);
                 }
             }

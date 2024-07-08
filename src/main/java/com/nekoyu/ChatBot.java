@@ -67,22 +67,23 @@ public class ChatBot {
     public void sendMessage(String msg) {
         Map<String, Object> message = new HashMap<>();
         message.put("syncId", System.currentTimeMillis());
+
         Map<String, Object> data = new HashMap<>();
         data.put("target", TARGET_GROUP_ID);
-        data.put("messageChain", new Object[]{
-                new HashMap<String, String>() {{
-                    put("type", "Plain");
-                    put("text", msg);
-                }}
-        });
+
+        // Create the messageChain map outside the anonymous class
+        Map<String, String> plainText = new HashMap<>();
+        plainText.put("type", "Plain");
+        plainText.put("text", msg);
+
+        // Wrap it in an array as you were doing before
+        data.put("messageChain", new Object[]{plainText});
+
         message.put("command", "sendGroupMessage");
         message.put("content", data);
 
         String jsonMessage = new Gson().toJson(message);
-
         System.out.println(jsonMessage);
-
         webSocketClient.send(jsonMessage);
-        //WebSocketClient.send()的意思就是向server发送纯文本
     }
 }
