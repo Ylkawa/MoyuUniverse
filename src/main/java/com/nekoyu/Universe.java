@@ -7,6 +7,8 @@ import org.java_websocket.server.WebSocketServer;
 
 import java.net.InetSocketAddress;
 import java.util.Collection;
+import java.util.HashMap;
+import java.util.Map;
 
 public class Universe {
     public static void main(String[] args) {
@@ -27,22 +29,16 @@ public class Universe {
 
             @Override
             public void onMessage(WebSocket webSocket, String s) {
-                String[] strings = s.split(": ", 2);
-                switch (strings[0]) {
-                    case "PlayerListChange":
-                        PlayerListChangeEvent playerListChangeEvent = new Gson().fromJson(strings[1], PlayerListChangeEvent.class);
-                        String message = "";
-                        System.out.println(playerListChangeEvent.ChangeMethod);
-                        switch (playerListChangeEvent.ChangeMethod) {
-                            case "Join":
-                                message = playerListChangeEvent.PlayerName + " 加入了游戏.";
-                                break;
-                            case "Quit":
-                                message = playerListChangeEvent.PlayerName + " 离开了游戏.";
-                                break;
-                        }
-                        System.out.println(message);
-                        chatBot.sendMessage(message);
+                System.out.println(s);
+                Map message = new Gson().fromJson(s, HashMap.class);
+                String event = message.get("event").toString();
+                switch (event) {
+                    case "PlayerJoinEvent":
+                        chatBot.sendMessage(message.get("PlayerName").toString() + " 加入了游戏.");
+                        break;
+                    case "PlayerQuitEvent":
+                        chatBot.sendMessage(message.get("PlayerName").toString() + " 退出了游戏.");
+                        break;
                 }
             }
 

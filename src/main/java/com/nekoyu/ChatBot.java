@@ -40,9 +40,8 @@ public class ChatBot {
 
                 @Override
                 public void onMessage(String s) {
-                    System.out.println("Received message: " + s);
+                    System.out.println("ChatBot Received message: " + s);
                     if (s.contains("\"code\":0") && s.contains("\"session\"")) {
-                        System.out.println(s);
                         sessionKey = s.split("\"session\":\"")[1].split("\"")[0];
                         webSocketClient.send("{\"syncId\": 2, \"command\": \"verify\", \"content\": {\"sessionKey\": \"" + sessionKey + "\", \"qq\": " + QQ_ID + "}}");
                     }

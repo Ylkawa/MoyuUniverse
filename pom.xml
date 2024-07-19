@@ -10,8 +10,6 @@
     <packaging>pom</packaging>
     <modules>
         <module>MoyuUniverse.Planet</module>
-        <module>MoyuUniverse.Planet</module>
-        <module>MoyuUniverse.Planet</module>
     </modules>
 
     <properties>
@@ -32,23 +30,7 @@
             <artifactId>Java-WebSocket</artifactId>
             <version>1.5.6</version>
         </dependency>
-        <dependency>
-            <groupId>io.papermc.paper</groupId>
-            <artifactId>paper-api</artifactId>
-            <version>1.20.1-R0.1-SNAPSHOT</version>
-            <scope>provided</scope>
-        </dependency>
     </dependencies>
 
-    <repositories>
-        <repository>
-            <id>papermc-repo</id>
-            <url>https://repo.papermc.io/repository/maven-public/</url>
-        </repository>
-        <repository>
-            <id>sonatype</id>
-            <url>https://oss.sonatype.org/content/groups/public/</url>
-        </repository>
-    </repositories>
 
 </project>

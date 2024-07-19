@@ -17,11 +17,13 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashMap;
+import java.util.Map;
 
 import static java.util.Spliterators.iterator;
 import static org.bukkit.Bukkit.getOnlinePlayers;
 
-public final class planet extends JavaPlugin implements Listener {
+public final class Planet extends JavaPlugin implements Listener {
 
     WebSocketClient wsc;
 
@@ -58,26 +60,35 @@ public final class planet extends JavaPlugin implements Listener {
 
     @EventHandler
     public void onPlayerLogin(PlayerLoginEvent event){
-        ArrayList<String> playerList = new ArrayList<String>();
+        ArrayList<String> playerList = new ArrayList<>();
         Collection<? extends Player> collection = getOnlinePlayers();
+        Map<String, Object> request = new HashMap<>();
         for (Player player : collection) {
             playerList.add(player.getName());
         }
-        PlayerListChangeEvent playerListChangeEvent = new PlayerListChangeEvent("Join", event.getPlayer().getName(), playerList);
-        String json = new Gson().toJson(playerListChangeEvent);
-        wsc.send("PlayerListChange: " + json);
+        request.put("event", "PlayerJoinEvent");
+        request.put("PlayerName", event.getPlayer().getName());
+        request.put("PlayerList", playerList);
+
+        String json = new Gson().toJson(request);
+        getLogger().info(json);
+        wsc.send(json);
     }
 
     @EventHandler
     public void onPlayerQuit(PlayerQuitEvent event){
-        ArrayList<String> playerList = new ArrayList<String>();
-        Collection<? extends Player> collection = getOnlinePlayers();
-        for (Player player : collection) {
+        ArrayList<String> playerList = new ArrayList<>();
+        Map<String, Object> request = new HashMap<>();
+        for (Player player : getOnlinePlayers()) {
             playerList.add(player.getName());
         }
-        PlayerListChangeEvent playerListChangeEvent = new PlayerListChangeEvent("Quit", event.getPlayer().getName(), playerList);
-        String json = new Gson().toJson(playerListChangeEvent);
-        wsc.send("PlayerListChange: " + json);
+        request.put("event", "PlayerQuitEvent");
+        request.put("PlayerName", event.getPlayer().getName());
+        request.put("PlayerList", playerList);
+
+        String json = new Gson().toJson(request);
+        getLogger().info(json);
+        wsc.send(json);
     }
 
     public void wsConn(){
@@ -90,6 +101,7 @@ public final class planet extends JavaPlugin implements Listener {
 
                 @Override
                 public void onMessage(String s) {
+                    //Map map = new Gson().fromJson(s, HashMap.class);
 
                 }
 
