@@ -4,14 +4,24 @@ import com.google.gson.Gson;
 import org.java_websocket.WebSocket;
 import org.java_websocket.handshake.ClientHandshake;
 import org.java_websocket.server.WebSocketServer;
+import org.yaml.snakeyaml.Yaml;
 
+import java.io.FileNotFoundException;
+import java.io.FileReader;
 import java.net.InetSocketAddress;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Properties;
 
 public class Universe {
     public static void main(String[] args) {
+        Properties properties = new Properties();
+        if(loadProperties(properties, "properties.properties")){
+            System.out.println("Config loaded");
+        } else {
+            System.out.println("Failed to load config");
+        }
 
         ChatBot chatBot = new ChatBot("139.196.112.23",39393, "INITKEY6LWqTW2V", "1697775835", "455284589");
         chatBot.Connect();
@@ -62,5 +72,15 @@ public class Universe {
                 System.out.println("Exiting...");
             }
         }));
+    }
+
+    public static boolean loadProperties(Properties properties, String path) {
+        Yaml yaml = new Yaml();
+        try {
+            properties = yaml.loadAs(new FileReader(path), Properties.class);
+            return true;
+        } catch (FileNotFoundException e) {
+            return false;
+        }
     }
 }
