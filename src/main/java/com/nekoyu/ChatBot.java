@@ -20,13 +20,14 @@ public class ChatBot {
     private String sessionKey;
     private WebSocketClient webSocketClient;
 
-    public ChatBot(String HOST, int PORT, String AUTH_KEY, String QQ_ID, String TARGET_GROUP_ID){
+    public ChatBot(Map chatBotProperties){
 //        this.BASE_URL = BASE_URL;
-        this.HOST = HOST;
-        this.PORT = PORT;
-        this.AUTH_KEY = AUTH_KEY;
-        this.QQ_ID = QQ_ID;
-        this.TARGET_GROUP_ID = TARGET_GROUP_ID;
+        String[] address = chatBotProperties.get("Address").toString().split(":", 2);
+        this.HOST = address[0];
+        this.PORT = Integer.parseInt(address[1]);
+        this.AUTH_KEY = chatBotProperties.get("AuthKey").toString();
+        this.QQ_ID = chatBotProperties.get("QQID").toString();
+        this.TARGET_GROUP_ID = chatBotProperties.get("TargetGroup").toString();
     }
 
     public void Connect() {
@@ -54,7 +55,7 @@ public class ChatBot {
 
                 @Override
                 public void onError(Exception e) {
-
+                    System.out.println(e.getMessage());
                 }
             };
             webSocketClient.connect();
