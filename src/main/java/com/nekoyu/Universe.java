@@ -7,21 +7,39 @@ import org.java_websocket.server.WebSocketServer;
 import org.yaml.snakeyaml.DumperOptions;
 import org.yaml.snakeyaml.Yaml;
 
-import java.io.FileNotFoundException;
-import java.io.FileReader;
-import java.io.FileWriter;
-import java.io.IOException;
+import java.io.*;
 import java.net.InetSocketAddress;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Scanner;
+import java.util.*;
 
 public class Universe {
     static Map<String, Object> properties = null;
 
     public static void main(String[] args) {
-        loadProperties("config.yml");
+        if (args.length !=0) {
+            try (FileReader fr = new FileReader(args[0])) { //尝试加载用户指定的配置文件
+                loadProperties(fr);
+            } catch (FileNotFoundException e) { //用户指定的配置文件不存在，直接退出
+                System.out.println("Config file not found.");
+                System.exit(1);
+            } catch (IOException e) { //我不到啊
+                throw new RuntimeException(e);
+            }
+        } else {
+            try { //尝试加载默认配置文件
+                loadProperties();
+            } catch (FileNotFoundException e) {
+                try {
+                    if ((new File("config.yml").createNewFile())) { //尝试创建配置文件
+                        loadProperties(new FileReader("config.yml"));
+                    } else {
+                        System.out.println("Failed to create config file!");
+                        System.exit(1);
+                    }
+                } catch (IOException ex) {
+                    throw new RuntimeException(ex);
+                }
+            }
+        }
 
         ChatBot chatBot = new ChatBot((Map) properties.get("ChatBot"));
         chatBot.Connect();
@@ -74,57 +92,60 @@ public class Universe {
         }));
     }
 
-    public static boolean loadProperties(String path) {
-        try {
-            properties = new Yaml().loadAs(new FileReader(path), HashMap.class);
-            Map<String, Object> chatBot = (HashMap) properties.get("ChatBot");
-            if (chatBot != null) {
-                if ((boolean) chatBot.get("enable")) {
-                    if (chatBot.get("Address") == null) {
-                        Scanner sc = new Scanner(System.in);
-                        System.out.println("请输入ChatBot的地址");
-                        chatBot.put("Address", sc.next());
-                    }
-                    if (chatBot.get("AuthKey") == null) {
-                        Scanner sc = new Scanner(System.in);
-                        System.out.println("请输入ChatBot的AuthKey");
-                        chatBot.put("AuthKey", sc.next());
-                    }
-                    if (chatBot.get("QQID") == null) {
-                        Scanner sc = new Scanner(System.in);
-                        System.out.println("请输入ChatBot的QQ号");
-                        chatBot.put("QQID", sc.next());
-                    }
-                    if (chatBot.get("TargetGroup") == null) {
-                        Scanner sc = new Scanner(System.in);
-                        System.out.println("请输入ChatBot监听的群聊");
-                        chatBot.put("TargetGroup", sc.next());
-                    }
-                    saveProperties();
+    public static void loadProperties() throws FileNotFoundException {
+        loadProperties(new FileReader("config.yml"));
+    }
+
+    public static void loadProperties(FileReader fr) {
+        properties = new Yaml().loadAs(fr, HashMap.class);
+        if (properties == null) {
+            properties = new HashMap<>();
+        }
+        Map<String, Object> chatBot = (HashMap) properties.get("ChatBot");
+        if (chatBot != null) {
+            if ((boolean) chatBot.get("enable")) {
+                if (chatBot.get("Address") == null) {
+                    Scanner sc = new Scanner(System.in);
+                    System.out.println("请输入ChatBot的地址");
+                    chatBot.put("Address", sc.next());
                 }
-            } else {
-                chatBot = new HashMap<>();
-                chatBot.put("enable", "True");
-                properties.put("ChatBot", chatBot);
-                saveProperties();
+                if (chatBot.get("AuthKey") == null) {
+                    Scanner sc = new Scanner(System.in);
+                    System.out.println("请输入ChatBot的AuthKey");
+                    chatBot.put("AuthKey", sc.next());
+                }
+                if (chatBot.get("QQID") == null) {
+                    Scanner sc = new Scanner(System.in);
+                    System.out.println("请输入ChatBot的QQ号");
+                    chatBot.put("QQID", sc.next());
+                }
+                if (chatBot.get("TargetGroup") == null) {
+                    Scanner sc = new Scanner(System.in);
+                    System.out.println("请输入ChatBot监听的群聊");
+                    chatBot.put("TargetGroup", sc.next());
+                }
+                try (FileWriter fw = new FileWriter("config.yml")) {
+                    saveProperties(fw);
+                } catch (IOException e) {
+                    throw new RuntimeException(e);
+                }
             }
-            return true;
-        } catch (FileNotFoundException e) {
-            System.out.println("配置文件加载失败: FileNotFound");
-            return false;
+        } else {
+            chatBot = new HashMap<>();
+            chatBot.put("enable", "True");
+            properties.put("ChatBot", chatBot);
+            try (FileWriter fw = new FileWriter("config.yml")) {
+                saveProperties(fw);
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
         }
     }
 
-    public static boolean saveProperties(){
+    public static void saveProperties(FileWriter fw){
         DumperOptions options = new DumperOptions();
         options.setDefaultFlowStyle(DumperOptions.FlowStyle.BLOCK);
         Yaml yaml = new Yaml(options);
-        try (FileWriter writer = new FileWriter("config.yml")) {
-            yaml.dump(properties, writer);
-            return true;
-        } catch (IOException e) {
-            e.printStackTrace();
-            return false;
-        }
+        yaml.dump(properties, fw);
     }
 }
