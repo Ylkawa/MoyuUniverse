@@ -4,44 +4,34 @@ import com.google.gson.Gson;
 import org.java_websocket.WebSocket;
 import org.java_websocket.handshake.ClientHandshake;
 import org.java_websocket.server.WebSocketServer;
-import org.yaml.snakeyaml.DumperOptions;
-import org.yaml.snakeyaml.Yaml;
 
 import java.io.*;
 import java.net.InetSocketAddress;
 import java.util.*;
 
 public class Universe {
-    static Map<String, Object> properties = null;
 
     public static void main(String[] args) {
+        ConfigureProcessor config = null;
         if (args.length !=0) {
-            try (FileReader fr = new FileReader(args[0])) { //尝试加载用户指定的配置文件
-                loadProperties(fr);
-            } catch (FileNotFoundException e) { //用户指定的配置文件不存在，直接退出
-                System.out.println("Config file not found.");
-                System.exit(1);
-            } catch (IOException e) { //我不到啊
-                throw new RuntimeException(e);
-            }
-        } else {
-            try { //尝试加载默认配置文件
-                loadProperties();
-            } catch (FileNotFoundException e) {
-                try {
-                    if ((new File("config.yml").createNewFile())) { //尝试创建配置文件
-                        loadProperties(new FileReader("config.yml"));
-                    } else {
-                        System.out.println("Failed to create config file!");
-                        System.exit(1);
-                    }
-                } catch (IOException ex) {
-                    throw new RuntimeException(ex);
+            for (int i = 0; i < args.length; i++){
+                switch (args[i].split("-", 2)[1]){
+                    case "config":
+                        i++;
+                        if (i < args.length) {
+                            System.out.println("指令语法有误");
+                            System.exit(1);
+                        }
+                        config = new ConfigureProcessor(new File(args[i]));
                 }
             }
+        } else {
+            config = new ConfigureProcessor(new File("config.yml"));
         }
 
-        ChatBot chatBot = new ChatBot((Map) properties.get("ChatBot"));
+        assert config != null; //我说不是null就不是
+        if (!config.readAsYaml()) System.exit(2); //加载配置文件并处理异常 错误码2: 配置文件读不到
+        ChatBot chatBot = new ChatBot((Map) config.getNode("ChatBot"));
         chatBot.Connect();
         System.out.println("Hello world!");
         WebSocketServer wss = new WebSocketServer(new InetSocketAddress(24430)) {
@@ -92,60 +82,119 @@ public class Universe {
         }));
     }
 
-    public static void loadProperties() throws FileNotFoundException {
-        loadProperties(new FileReader("config.yml"));
-    }
+//    public static void loadProperties() throws FileNotFoundException {
+//        loadProperties(new FileReader("config.yml"));
+//    }
+//
+//    public static void loadProperties(FileReader fr) {
+//        properties = new Yaml().loadAs(fr, HashMap.class);
+//        Map<String, Object> chatBot = (HashMap) properties.get("ChatBot");
+//        if (chatBot != null) {
+//            if ((boolean) chatBot.get("enable")) {
+//                if (chatBot.get("Address") == null) {
+//                    Scanner sc = new Scanner(System.in);
+//                    System.out.println("请输入ChatBot的地址");
+//                    chatBot.put("Address", sc.next());
+//                }
+//                if (chatBot.get("AuthKey") == null) {
+//                    Scanner sc = new Scanner(System.in);
+//                    System.out.println("请输入ChatBot的AuthKey");
+//                    chatBot.put("AuthKey", sc.next());
+//                }
+//                if (chatBot.get("QQID") == null) {
+//                    Scanner sc = new Scanner(System.in);
+//                    System.out.println("请输入ChatBot的QQ号");
+//                    chatBot.put("QQID", sc.next());
+//                }
+//                if (chatBot.get("TargetGroup") == null) {
+//                    Scanner sc = new Scanner(System.in);
+//                    System.out.println("请输入ChatBot监听的群聊");
+//                    chatBot.put("TargetGroup", sc.next());
+//                }
+//                try (FileWriter fw = new FileWriter("config.yml")) {
+//                    saveProperties(fw);
+//                } catch (IOException e) {
+//                    throw new RuntimeException(e);
+//                }
+//            }
+//        } else {
+//            chatBot = new HashMap<>();
+//            chatBot.put("enable", "True");
+//            properties.put("ChatBot", chatBot);
+//            try (FileWriter fw = new FileWriter("config.yml")) {
+//                saveProperties(fw);
+//            } catch (IOException e) {
+//                throw new RuntimeException(e);
+//            }
+//        }
+//    }
+//
+//    public static void saveProperties(FileWriter fw){
+//        DumperOptions options = new DumperOptions();
+//        options.setDefaultFlowStyle(DumperOptions.FlowStyle.BLOCK);
+//        Yaml yaml = new Yaml(options);
+//        yaml.dump(properties, fw);
+//    }
+//
+//    public static void qwer(){
+//        String yaml = "name: John\n" +
+//                "age: \"30\"\n" +
+//                "address: \n" +
+//                "  street: 123 Main St\n" +
+//                "  city: New York\n" +
+//                "  postalCode: \"10001\"\n" +
+//                "  contact:\n" +
+//                "    phone: 555-1234\n" +
+//                "    email: john@example.com\n" +
+//                "occupation: Software Engineer\n" +
+//                "hobbies: \n" +
+//                "  indoor: \n" +
+//                "    - reading\n" +
+//                "    - coding\n" +
+//                "  outdoor: \n" +
+//                "    - hiking\n" +
+//                "    - cycling\n";
+//        Map<String, Object> map = new Yaml().loadAs(yaml, HashMap.class);
+//
+//        // 遍历Map
+//        for (Map.Entry<String, Object> entry : map.entrySet()) {
+//            String key = entry.getKey();
+//            Object value = entry.getValue();
+//
+//            if (value instanceof Map) {
+//                // 处理子Map
+//                Map<String, Object> subMapValue = (Map<String, Object>) value;
+//                System.out.println("Key: " + key + " contains a subMap: " + subMapValue);
+//                // 你可以递归处理子Map
+//                traverseSubMap(subMapValue);
+//            } else if (value instanceof String) {
+//                // 处理String
+//                String stringValue = (String) value;
+//                System.out.println("Key: " + key + " contains a String: " + stringValue);
+//            } else {
+//                // 处理其他类型（如果有）
+//                System.out.println("Key: " + key + " contains an unknown type: " + value.getClass().getName());
+//            }
+//        }
+//        System.exit(1234);
+//    }
+//
+//    public static void traverseSubMap(Map<String, Object> subMap) {
+//        for (Map.Entry<String, Object> entry : subMap.entrySet()) {
+//            String key = entry.getKey();
+//            Object value = entry.getValue();
+//
+//            if (value instanceof Map) {
+//                Map<String, Object> subSubMap = (Map<String, Object>) value;
+//                System.out.println("SubKey: " + key + " contains a subMap: " + subSubMap);
+//                traverseSubMap(subSubMap);
+//            } else if (value instanceof String) {
+//                String stringValue = (String) value;
+//                System.out.println("SubKey: " + key + " contains a String: " + stringValue);
+//            } else {
+//                System.out.println("SubKey: " + key + " contains an unknown type: " + value.getClass().getName());
+//            }
+//        }
+//    }
 
-    public static void loadProperties(FileReader fr) {
-        properties = new Yaml().loadAs(fr, HashMap.class);
-        if (properties == null) {
-            properties = new HashMap<>();
-        }
-        Map<String, Object> chatBot = (HashMap) properties.get("ChatBot");
-        if (chatBot != null) {
-            if ((boolean) chatBot.get("enable")) {
-                if (chatBot.get("Address") == null) {
-                    Scanner sc = new Scanner(System.in);
-                    System.out.println("请输入ChatBot的地址");
-                    chatBot.put("Address", sc.next());
-                }
-                if (chatBot.get("AuthKey") == null) {
-                    Scanner sc = new Scanner(System.in);
-                    System.out.println("请输入ChatBot的AuthKey");
-                    chatBot.put("AuthKey", sc.next());
-                }
-                if (chatBot.get("QQID") == null) {
-                    Scanner sc = new Scanner(System.in);
-                    System.out.println("请输入ChatBot的QQ号");
-                    chatBot.put("QQID", sc.next());
-                }
-                if (chatBot.get("TargetGroup") == null) {
-                    Scanner sc = new Scanner(System.in);
-                    System.out.println("请输入ChatBot监听的群聊");
-                    chatBot.put("TargetGroup", sc.next());
-                }
-                try (FileWriter fw = new FileWriter("config.yml")) {
-                    saveProperties(fw);
-                } catch (IOException e) {
-                    throw new RuntimeException(e);
-                }
-            }
-        } else {
-            chatBot = new HashMap<>();
-            chatBot.put("enable", "True");
-            properties.put("ChatBot", chatBot);
-            try (FileWriter fw = new FileWriter("config.yml")) {
-                saveProperties(fw);
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
-        }
-    }
-
-    public static void saveProperties(FileWriter fw){
-        DumperOptions options = new DumperOptions();
-        options.setDefaultFlowStyle(DumperOptions.FlowStyle.BLOCK);
-        Yaml yaml = new Yaml(options);
-        yaml.dump(properties, fw);
-    }
 }
