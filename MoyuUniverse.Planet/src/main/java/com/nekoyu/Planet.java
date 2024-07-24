@@ -66,7 +66,7 @@ public final class Planet extends JavaPlugin implements Listener {
         for (Player player : collection) {
             playerList.add(player.getName());
         }
-        request.put("event", "PlayerJoinEvent");
+        request.put("msg", "PlayerJoinEvent");
         request.put("PlayerName", event.getPlayer().getName());
         request.put("PlayerList", playerList);
 
@@ -82,7 +82,7 @@ public final class Planet extends JavaPlugin implements Listener {
         for (Player player : getOnlinePlayers()) {
             playerList.add(player.getName());
         }
-        request.put("event", "PlayerQuitEvent");
+        request.put("msg", "PlayerQuitEvent");
         request.put("PlayerName", event.getPlayer().getName());
         request.put("PlayerList", playerList);
 

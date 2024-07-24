@@ -9,9 +9,9 @@ import java.io.*;
 import java.net.InetSocketAddress;
 import java.util.*;
 
-public class Universe {
+public class Universe implements MessageHandler {
 
-    public static void main(String[] args) {
+    public static void main(String[] args)  {
         ConfigureProcessor config = null;
         if (args.length !=0) {
             for (int i = 0; i < args.length; i++){
@@ -49,7 +49,7 @@ public class Universe {
             public void onMessage(WebSocket webSocket, String s) {
                 System.out.println(s);
                 Map<String, Object> message = new Gson().fromJson(s, HashMap.class);
-                String event = message.get("event").toString();
+                String event = message.get("msg").toString();
                 switch (event) {
                     case "PlayerJoinEvent":
                         chatBot.sendMessage(message.get("PlayerName").toString() + " 加入了游戏.");
@@ -80,6 +80,11 @@ public class Universe {
                 System.out.println("Exiting...");
             }
         }));
+    }
+
+    @Override
+    public void onMessageReceived(String message) {
+
     }
 
 //    public static void loadProperties() throws FileNotFoundException {

@@ -6,6 +6,7 @@ import org.java_websocket.handshake.ServerHandshake;
 
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.util.Date;
 import java.util.Map;
 import java.util.HashMap;
 
@@ -17,8 +18,8 @@ public class ChatBot {
     private final String QQ_ID;
     private final String TARGET_GROUP_ID;
 
-    private String sessionKey;
     private WebSocketClient webSocketClient;
+    private int GroupNameChangeCooldownTime = 10;
 
     public ChatBot(Map chatBotProperties){
 //        this.BASE_URL = BASE_URL;
@@ -28,6 +29,8 @@ public class ChatBot {
         this.AUTH_KEY = chatBotProperties.get("AuthKey").toString();
         this.QQ_ID = chatBotProperties.get("QQID").toString();
         this.TARGET_GROUP_ID = chatBotProperties.get("TargetGroup").toString();
+        String GroupNameChangeCooldown = (String) chatBotProperties.get("GroupNameChangeCooldown");
+        if (GroupNameChangeCooldown != null) this.GroupNameChangeCooldownTime = Integer.parseInt(GroupNameChangeCooldown);
     }
 
     public void Connect() {
@@ -42,9 +45,10 @@ public class ChatBot {
                 @Override
                 public void onMessage(String s) {
                     System.out.println("ChatBot Received message: " + s);
-                    if (s.contains("\"code\":0") && s.contains("\"session\"")) {
-                        sessionKey = s.split("\"session\":\"")[1].split("\"")[0];
-                        webSocketClient.send("{\"syncId\": 2, \"command\": \"verify\", \"content\": {\"sessionKey\": \"" + sessionKey + "\", \"qq\": " + QQ_ID + "}}");
+                    Map data = (Map) new Gson().fromJson(s, HashMap.class).get("data");
+                    switch ((String) data.get("type")){
+                        case "FriendMessage":
+                            
                     }
                 }
 
@@ -83,7 +87,17 @@ public class ChatBot {
         message.put("content", data);
 
         String jsonMessage = new Gson().toJson(message);
-        System.out.println(jsonMessage);
         webSocketClient.send(jsonMessage);
+    }
+
+    public void changeGroupName(String name) {
+        Map<String, Object> request = new HashMap<>();
+        request.put("target", TARGET_GROUP_ID);
+
+        Map<String, Object> config = new HashMap<>();
+        config.put("name", name);
+        request.put("config", config);
+
+        webSocketClient.send(new Gson().toJson(request));
     }
 }
