@@ -9,7 +9,15 @@ import java.io.*;
 import java.net.InetSocketAddress;
 import java.util.*;
 
-public class Universe implements MessageHandler {
+public class Universe {
+    static WebSocketServer wss = null;
+
+    private static MessageHandler messageHandler = new MessageHandler() {
+        @Override
+        public void onGroupMessageReceived(Long QQID, String QQName, String message) {
+            System.out.println(QQID+QQName+message);
+        }
+    };
 
     public static void main(String[] args)  {
         ConfigureProcessor config = null;
@@ -31,10 +39,11 @@ public class Universe implements MessageHandler {
 
         assert config != null; //我说不是null就不是
         if (!config.readAsYaml()) System.exit(2); //加载配置文件并处理异常 错误码2: 配置文件读不到
-        ChatBot chatBot = new ChatBot((Map) config.getNode("ChatBot"));
-        chatBot.Connect();
+
+        ChatBot chatBot = new ChatBot((Map) config.getNode("ChatBot"), messageHandler);
+        chatBot.getGroupName();
         System.out.println("Hello world!");
-        WebSocketServer wss = new WebSocketServer(new InetSocketAddress(24430)) {
+        wss = new WebSocketServer(new InetSocketAddress(24430)) {
             @Override
             public void onOpen(WebSocket webSocket, ClientHandshake clientHandshake) {
                 System.out.println("Connection open: " + webSocket.getRemoteSocketAddress());
@@ -57,6 +66,10 @@ public class Universe implements MessageHandler {
                     case "PlayerQuitEvent":
                         chatBot.sendMessage(message.get("PlayerName").toString() + " 退出了游戏.");
                         break;
+                    case "UploadStatus":
+                        Map<String, Object> status = (HashMap) message.get("Status");
+                        String template = "末屿ZZZ | &NOP& 人在线";
+                        chatBot.changeGroupNameIfNotMatch(template.replaceAll("&NOP&", (String) status.get("NumberOfPlayers")));
                 }
             }
 
@@ -82,10 +95,6 @@ public class Universe implements MessageHandler {
         }));
     }
 
-    @Override
-    public void onMessageReceived(String message) {
-
-    }
 
 //    public static void loadProperties() throws FileNotFoundException {
 //        loadProperties(new FileReader("config.yml"));
