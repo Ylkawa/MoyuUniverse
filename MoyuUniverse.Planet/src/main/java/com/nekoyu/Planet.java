@@ -47,13 +47,21 @@ public final class Planet extends JavaPlugin implements Listener {
         new BukkitRunnable() {
             @Override
             public void run() {
-                int numberOfPlayers = getOnlinePlayers().size();
-                double[] tps = getTPS();
-                Map<String, Object> status = new HashMap<>();
-                status.put("NumberOfPlayers", numberOfPlayers);
-                status.put("TPS", tps);
+                if (wsc != null && !wsc.isClosed()){
+                    int numberOfPlayers = getOnlinePlayers().size();
+                    double[] tps = getTPS();
+                    Map<String, Object> status = new HashMap<>();
+
+                    status.put("NumberOfPlayers", numberOfPlayers);
+//                    status.put("TPS", tps);
+
+                    Map<String, Object> message = new HashMap<>();
+                    message.put("msg", "UploadStatus");
+                    message.put("Status", status);
+                    wsc.send(new Gson().toJson(message));
+                }
             }
-        }.runTaskTimer(this,0,1*20L);
+        }.runTaskTimer(this,10L,600L);
 
         Bukkit.getScheduler().runTaskTimer(this, new Runnable() {
             @Override

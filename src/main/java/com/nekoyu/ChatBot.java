@@ -67,6 +67,7 @@ public class ChatBot {
                 @Override
                 public void onOpen(ServerHandshake serverHandshake) {
                     System.out.println("WebSocket opened");
+                    getGroupName();
                 }
 
                 @Override
@@ -115,25 +116,7 @@ public class ChatBot {
                     }
                 }
 
-                private Map<String, Object> processMap(Map<String, Object> map) {
-                    for (Map.Entry<String, Object> entry : map.entrySet()) {
-                        if (entry.getValue() instanceof Double) {
-                            Double doubleValue = (Double) entry.getValue();
-                            if (doubleValue % 1 == 0) {
-                                entry.setValue(doubleValue.longValue());
-                            }
-                        } else if (entry.getValue() instanceof Map) {
-                            entry.setValue(processMap((Map<String, Object>) entry.getValue()));
-                        } else if (entry.getValue() instanceof Iterable) {
-                            for (Object element : (Iterable<?>) entry.getValue()) {
-                                if (element instanceof Map) {
-                                    processMap((Map<String, Object>) element);
-                                }
-                            }
-                        }
-                    }
-                    return map;
-                }
+
 
                 @Override
                 public void onClose(int i, String s, boolean b) {
@@ -175,12 +158,13 @@ public class ChatBot {
 
     public void changeGroupNameIfNotMatch(String name) {
         if (!GroupName.equals(name)) {
-            GroupName = name;
-            changeGroupName(GroupName);
+            changeGroupName(name);
         }
     }
 
     public void changeGroupName(String name) {
+        GroupName = name;
+
         Map<String, Object> request = new HashMap<>();
         request.put("syncId", System.currentTimeMillis());
         request.put("command", "groupConfig");
@@ -193,6 +177,8 @@ public class ChatBot {
         Map<String, Object> config = new HashMap<>();
         config.put("name", name);
         content.put("config", config);
+
+        System.out.println(new Gson().toJson(request));
 
         webSocketClient.send(new Gson().toJson(request));
     }
@@ -210,5 +196,27 @@ public class ChatBot {
         request.put("content", content);
 
         syncIndex.add(syncId, "GetGroupConfig");
+
+        webSocketClient.send(new Gson().toJson(request));
+    }
+
+    private Map<String, Object> processMap(Map<String, Object> map) {
+        for (Map.Entry<String, Object> entry : map.entrySet()) {
+            if (entry.getValue() instanceof Double) {
+                Double doubleValue = (Double) entry.getValue();
+                if (doubleValue % 1 == 0) {
+                    entry.setValue(doubleValue.longValue());
+                }
+            } else if (entry.getValue() instanceof Map) {
+                entry.setValue(processMap((Map<String, Object>) entry.getValue()));
+            } else if (entry.getValue() instanceof Iterable) {
+                for (Object element : (Iterable<?>) entry.getValue()) {
+                    if (element instanceof Map) {
+                        processMap((Map<String, Object>) element);
+                    }
+                }
+            }
+        }
+        return map;
     }
 }

@@ -1,11 +1,12 @@
 package com.nekoyu;
 
-import com.google.gson.Gson;
+import com.google.gson.*;
 import org.java_websocket.WebSocket;
 import org.java_websocket.handshake.ClientHandshake;
 import org.java_websocket.server.WebSocketServer;
 
 import java.io.*;
+import java.lang.reflect.Type;
 import java.net.InetSocketAddress;
 import java.util.*;
 
@@ -41,7 +42,6 @@ public class Universe {
         if (!config.readAsYaml()) System.exit(2); //加载配置文件并处理异常 错误码2: 配置文件读不到
 
         ChatBot chatBot = new ChatBot((Map) config.getNode("ChatBot"), messageHandler);
-        chatBot.getGroupName();
         System.out.println("Hello world!");
         wss = new WebSocketServer(new InetSocketAddress(24430)) {
             @Override
@@ -57,7 +57,7 @@ public class Universe {
             @Override
             public void onMessage(WebSocket webSocket, String s) {
                 System.out.println(s);
-                Map<String, Object> message = new Gson().fromJson(s, HashMap.class);
+                Map<String, Object> message = processMap(BuildGson().fromJson(s, HashMap.class));
                 String event = message.get("msg").toString();
                 switch (event) {
                     case "PlayerJoinEvent":
@@ -67,9 +67,10 @@ public class Universe {
                         chatBot.sendMessage(message.get("PlayerName").toString() + " 退出了游戏.");
                         break;
                     case "UploadStatus":
-                        Map<String, Object> status = (HashMap) message.get("Status");
+                        Map<String, Object> status = (Map) message.get("Status");
                         String template = "末屿ZZZ | &NOP& 人在线";
-                        chatBot.changeGroupNameIfNotMatch(template.replaceAll("&NOP&", (String) status.get("NumberOfPlayers")));
+                        String result = template.replaceAll("&NOP&", String.valueOf(status.get("NumberOfPlayers")));
+                        chatBot.changeGroupNameIfNotMatch(result);
                 }
             }
 
@@ -93,6 +94,24 @@ public class Universe {
                 System.out.println("Exiting...");
             }
         }));
+    }
+
+    private static Gson BuildGson() {
+        GsonBuilder gsonBuilder = new GsonBuilder();
+        gsonBuilder.registerTypeAdapter(Object.class, new JsonDeserializer<Object>() {
+            @Override
+            public Object deserialize(JsonElement json, Type typeOfT, JsonDeserializationContext context) throws JsonParseException {
+                if (json.isJsonPrimitive()) {
+                    JsonPrimitive primitive = json.getAsJsonPrimitive();
+                    if (primitive.isNumber()) {
+                        return primitive.getAsString();
+                    }
+                }
+                return json;
+            }
+        });
+
+        return gsonBuilder.create();
     }
 
 
@@ -211,4 +230,23 @@ public class Universe {
 //        }
 //    }
 
+    private static Map<String, Object> processMap(Map<String, Object> map) {
+        for (Map.Entry<String, Object> entry : map.entrySet()) {
+            if (entry.getValue() instanceof Double) {
+                Double doubleValue = (Double) entry.getValue();
+                if (doubleValue % 1 == 0) {
+                    entry.setValue(doubleValue.longValue());
+                }
+            } else if (entry.getValue() instanceof Map) {
+                entry.setValue(processMap((Map<String, Object>) entry.getValue()));
+            } else if (entry.getValue() instanceof Iterable) {
+                for (Object element : (Iterable<?>) entry.getValue()) {
+                    if (element instanceof Map) {
+                        processMap((Map<String, Object>) element);
+                    }
+                }
+            }
+        }
+        return map;
+    }
 }
