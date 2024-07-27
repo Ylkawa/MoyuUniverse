@@ -1,6 +1,7 @@
 package com.nekoyu;
 
 import com.google.gson.*;
+import com.nekoyu.MiraiAdapter.Mirai;
 import org.java_websocket.WebSocket;
 import org.java_websocket.handshake.ClientHandshake;
 import org.java_websocket.server.WebSocketServer;
@@ -12,6 +13,7 @@ import java.util.*;
 
 public class Universe {
     static WebSocketServer wss = null;
+    static ConfigureProcessor config = null;
 
     private static MessageHandler messageHandler = new MessageHandler() {
         @Override
@@ -21,7 +23,6 @@ public class Universe {
     };
 
     public static void main(String[] args)  {
-        ConfigureProcessor config = null;
         if (args.length !=0) {
             for (int i = 0; i < args.length; i++){
                 switch (args[i].split("-", 2)[1]){
@@ -41,7 +42,7 @@ public class Universe {
         assert config != null; //我说不是null就不是
         if (!config.readAsYaml()) System.exit(2); //加载配置文件并处理异常 错误码2: 配置文件读不到
 
-        ChatBot chatBot = new ChatBot((Map) config.getNode("ChatBot"), messageHandler);
+        Mirai mirai = new Mirai((Map) config.getNode("ChatBot"), messageHandler);
         System.out.println("Hello world!");
         wss = new WebSocketServer(new InetSocketAddress(24430)) {
             @Override
@@ -56,21 +57,20 @@ public class Universe {
 
             @Override
             public void onMessage(WebSocket webSocket, String s) {
-                System.out.println(s);
                 Map<String, Object> message = processMap(BuildGson().fromJson(s, HashMap.class));
                 String event = message.get("msg").toString();
                 switch (event) {
                     case "PlayerJoinEvent":
-                        chatBot.sendMessage(message.get("PlayerName").toString() + " 加入了游戏.");
+                        mirai.sendMessage(message.get("PlayerName").toString() + " 加入了游戏.");
                         break;
                     case "PlayerQuitEvent":
-                        chatBot.sendMessage(message.get("PlayerName").toString() + " 退出了游戏.");
+                        mirai.sendMessage(message.get("PlayerName").toString() + " 退出了游戏.");
                         break;
                     case "UploadStatus":
                         Map<String, Object> status = (Map) message.get("Status");
                         String template = "末屿ZZZ | &NOP& 人在线";
                         String result = template.replaceAll("&NOP&", String.valueOf(status.get("NumberOfPlayers")));
-                        chatBot.changeGroupNameIfNotMatch(result);
+                        mirai.changeGroupNameIfNotMatch(result);
                 }
             }
 
@@ -88,6 +88,7 @@ public class Universe {
         Runtime.getRuntime().addShutdownHook(new Thread(new Runnable() {
             public void run() {
                 Collection<WebSocket> collection= wss.getConnections();
+                mirai.close();
                 for (WebSocket conn : collection) {
                     conn.close();
                 }
