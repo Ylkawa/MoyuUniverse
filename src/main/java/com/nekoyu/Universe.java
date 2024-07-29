@@ -11,6 +11,8 @@ import java.lang.reflect.Type;
 import java.net.InetSocketAddress;
 import java.util.*;
 
+import com.nekoyu.Event;
+
 public class Universe {
     static WebSocketServer wss = null;
     static ConfigureProcessor config = null;
@@ -57,20 +59,23 @@ public class Universe {
 
             @Override
             public void onMessage(WebSocket webSocket, String s) {
-                Map<String, Object> message = processMap(BuildGson().fromJson(s, HashMap.class));
-                String event = message.get("msg").toString();
-                switch (event) {
-                    case "PlayerJoinEvent":
-                        mirai.sendMessage(message.get("PlayerName").toString() + " 加入了游戏.");
-                        break;
-                    case "PlayerQuitEvent":
-                        mirai.sendMessage(message.get("PlayerName").toString() + " 退出了游戏.");
-                        break;
-                    case "UploadStatus":
-                        Map<String, Object> status = (Map) message.get("Status");
-                        String template = "末屿ZZZ | &NOP& 人在线";
-                        String result = template.replaceAll("&NOP&", String.valueOf(status.get("NumberOfPlayers")));
-                        mirai.changeGroupNameIfNotMatch(result);
+                System.out.println(s);
+                Event event = new Gson().fromJson(s, Event.class);
+                switch (event.getType()) {
+                    case "PlayerJoinEvent" -> {
+                        JsonElement element = event.getBody();
+                        System.out.println(element);
+                        PlayerJoinEvent playerJoinEvent = new Gson().fromJson(event.getBody(), PlayerJoinEvent.class);
+                        String result = playerJoinEvent.getPlayerName() + " 进入了服务器.";
+                        mirai.sendMessage(result);
+                    }
+                    case "PlayerLeaveEvent" -> {
+                        JsonElement element = event.getBody();
+                        System.out.println(element);
+                        PlayerJoinEvent playerJoinEvent = new Gson().fromJson(event.getBody(), PlayerJoinEvent.class);
+                        String result = playerJoinEvent.getPlayerName() + " 退出了服务器.";
+                        mirai.sendMessage(result);
+                    }
                 }
             }
 

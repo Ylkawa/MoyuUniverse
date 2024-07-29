@@ -169,7 +169,7 @@ public class Mirai extends ChatBot {
         MiraiPush push = new Gson().fromJson(s, MiraiPush.class);
         JsonObject data = push.getData();
         String syncId = push.getSyncId();
-        if (syncId == "-1") {
+        if (syncId.equals("-1")) {
             switch (data.get("type").getAsString()) {
                 case "GroupMessage" -> {
                     GroupMessage gm = new Gson().fromJson(data, GroupMessage.class);
