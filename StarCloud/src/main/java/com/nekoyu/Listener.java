@@ -29,29 +29,33 @@ public class Listener {
 
     @Subscribe
     public void onServerPostConnect(ServerPostConnectEvent event) {
-        Gson gson = new Gson();
-        PlayerJoinEvent playerJoinEvent = new PlayerJoinEvent();
-        playerJoinEvent.setPlayerName(event.getPlayer().getUsername());
-        playerJoinEvent.setUuid(event.getPlayer().getUniqueId().toString());
+        if (webSocketClient.isOpen()) {
+            Gson gson = new Gson();
+            PlayerJoinEvent playerJoinEvent = new PlayerJoinEvent();
+            playerJoinEvent.setPlayerName(event.getPlayer().getUsername());
+            playerJoinEvent.setUuid(event.getPlayer().getUniqueId().toString());
 
-        Event push = new Event();
-        push.setType("PlayerJoinEvent");
-        push.setBody(gson.toJsonTree(playerJoinEvent));
+            Event push = new Event();
+            push.setType("PlayerJoinEvent");
+            push.setBody(gson.toJsonTree(playerJoinEvent));
 
-        webSocketClient.send(gson.toJson(push));
+            webSocketClient.send(gson.toJson(push));
+        }
     }
 
     @Subscribe
     public void onDisconnect(DisconnectEvent event) {
-        Gson gson = new Gson();
-        PlayerLeaveEvent playerLeaveEvent = new PlayerLeaveEvent();
-        playerLeaveEvent.setPlayerName(event.getPlayer().getUsername());
-        playerLeaveEvent.setUuid(event.getPlayer().getUniqueId().toString());
+        if (webSocketClient.isOpen()) {
+            Gson gson = new Gson();
+            PlayerLeaveEvent playerLeaveEvent = new PlayerLeaveEvent();
+            playerLeaveEvent.setPlayerName(event.getPlayer().getUsername());
+            playerLeaveEvent.setUuid(event.getPlayer().getUniqueId().toString());
 
-        Event push = new Event();
-        push.setType("PlayerLeaveEvent");
-        push.setBody(gson.toJsonTree(playerLeaveEvent));
+            Event push = new Event();
+            push.setType("PlayerLeaveEvent");
+            push.setBody(gson.toJsonTree(playerLeaveEvent));
 
-        webSocketClient.send(gson.toJson(push));
+            webSocketClient.send(gson.toJson(push));
+        }
     }
 }

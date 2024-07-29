@@ -12,6 +12,7 @@ import java.net.URISyntaxException;
 import java.util.*;
 
 public class Mirai extends ChatBot {
+    private boolean enable = true;
 //    private static String BASE_URL;
     private final String HOST;
     private final int PORT;
@@ -23,30 +24,10 @@ public class Mirai extends ChatBot {
     private int GroupNameChangeCooldownTime = 60;
     private long lastExecution = 0;
     private String GroupName;
-    private List<String> syncIndex = new ArrayList<>();
+    private Map<Integer, String> syncIndex = new HashMap<>();
     private int syncNum = 1;
 
-    private MessageHandler messageHandler;
-
-    private Gson Gson = BuildGson();
-
-    private Gson BuildGson() {
-        GsonBuilder gsonBuilder = new GsonBuilder();
-        gsonBuilder.registerTypeAdapter(Object.class, new JsonDeserializer<Object>() {
-            @Override
-            public Object deserialize(JsonElement json, Type typeOfT, JsonDeserializationContext context) throws JsonParseException {
-                if (json.isJsonPrimitive()) {
-                    JsonPrimitive primitive = json.getAsJsonPrimitive();
-                    if (primitive.isNumber()) {
-                        return primitive.getAsString();
-                    }
-                }
-                return json;
-            }
-        });
-
-        return gsonBuilder.create();
-    }
+    private final MessageHandler messageHandler;
 
     public Mirai(Map chatBotProperties, MessageHandler messageHandler){
         this.messageHandler = messageHandler;
@@ -59,10 +40,10 @@ public class Mirai extends ChatBot {
         this.TARGET_GROUP_ID = chatBotProperties.get("TargetGroup").toString();
         String GroupNameChangeCooldown = (String) chatBotProperties.get("GroupNameChangeCooldown");
         if (GroupNameChangeCooldown != null) this.GroupNameChangeCooldownTime = Integer.parseInt(GroupNameChangeCooldown);
-        Connect(); // 立即连接
+        newWebSocketClient();
     }
 
-    public void Connect() {
+    private void newWebSocketClient() {
         try {
             URI uri = new URI("ws", null, HOST, PORT, "/all", "verifyKey="+AUTH_KEY+"&qq="+QQ_ID, null);
             webSocketClient = new WebSocketClient(uri) {
@@ -90,31 +71,37 @@ public class Mirai extends ChatBot {
             };
             webSocketClient.connect();
         } catch (URISyntaxException e) {
-            e.getCause().printStackTrace();
+            System.out.println(e.getMessage());
+            enable = false;
         }
     }
 
     @Override
     public void sendMessage(String msg) {
-        Map<String, Object> request = new HashMap<>();
-        request.put("syncId", System.currentTimeMillis());
+        if (enable && webSocketClient.isOpen()) {
+            Map<String, Object> request = new HashMap<>();
+            request.put("syncId", System.currentTimeMillis());
 
-        Map<String, Object> data = new HashMap<>();
-        data.put("target", TARGET_GROUP_ID);
+            Map<String, Object> data = new HashMap<>();
+            data.put("target", TARGET_GROUP_ID);
 
-        // Create the messageChain map outside the anonymous class
-        Map<String, String> plainText = new HashMap<>();
-        plainText.put("type", "Plain");
-        plainText.put("text", msg);
+            // Create the messageChain map outside the anonymous class
+            Map<String, String> plainText = new HashMap<>();
+            plainText.put("type", "Plain");
+            plainText.put("text", msg);
 
-        // Wrap it in an array as you were doing before
-        data.put("messageChain", new Object[]{plainText});
+            // Wrap it in an array as you were doing before
+            data.put("messageChain", new Object[]{plainText});
 
-        request.put("command", "sendGroupMessage");
-        request.put("content", data);
+            request.put("command", "sendGroupMessage");
+            request.put("content", data);
 
-        String jsonMessage = new Gson().toJson(request);
-        webSocketClient.send(jsonMessage);
+            String jsonMessage = new Gson().toJson(request);
+            webSocketClient.send(jsonMessage);
+        } else if (enable && webSocketClient.isClosed()) {
+            newWebSocketClient();
+            sendMessage(msg);
+        }
     }
 
     public void changeGroupNameIfNotMatch(String name) {
@@ -160,7 +147,7 @@ public class Mirai extends ChatBot {
         content.put("target", TARGET_GROUP_ID);
         request.put("content", content);
 
-        syncIndex.add(syncId, "GetGroupConfig");
+        syncIndex.put(syncId, "GetGroupConfig");
 
         webSocketClient.send(new Gson().toJson(request));
     }
@@ -169,28 +156,36 @@ public class Mirai extends ChatBot {
         MiraiPush push = new Gson().fromJson(s, MiraiPush.class);
         JsonObject data = push.getData();
         String syncId = push.getSyncId();
-        if (syncId.equals("-1")) {
-            switch (data.get("type").getAsString()) {
-                case "GroupMessage" -> {
-                    GroupMessage gm = new Gson().fromJson(data, GroupMessage.class);
-                    String Message = gm.getTextMessage();
-                    if (Message != null)
-                        System.out.println(gm.getGroupName() + "(" + gm.getGroupID() + ")" + gm.getSenderName() + "(" + gm.getSenderID() + ") : " + Message);
+        switch (syncId) {
+            case "-1" -> {
+                switch (data.get("type").getAsString()) {
+                    case "GroupMessage" -> {
+                        GroupMessage gm = new Gson().fromJson(data, GroupMessage.class);
+                        String Message = gm.getTextMessage();
+                        if (Message != null)
+                            messageHandler.onGroupMessageReceived(gm.getGroupName(), gm.getGroupID(), gm.getSenderID(), gm.getSenderName(), gm.getTextMessage());
+                    }
                 }
             }
-        } else if(Objects.equals(syncId, "")) {
-            //byd什么时候会为空白啊
-        } else {
-            switch (syncIndex.get(Integer.parseInt(syncId))) {
-                case "GetGroupConfig" -> {
-                    GroupConfig groupConfig = new Gson().fromJson(data, GroupConfig.class);
-                    GroupName = groupConfig.getName();
+            case "" -> {
+                //byd什么时候会为空白啊
+            }
+            case "0" -> {
+                //syncId为0
+            }
+            default -> {
+                switch (syncIndex.get(Integer.parseInt(syncId))) {
+                    case "GetGroupConfig" -> {
+                        GroupConfig groupConfig = new Gson().fromJson(data, GroupConfig.class);
+                        GroupName = groupConfig.getName();
+                    }
                 }
             }
         }
     }
 
     public void close() {
+        enable = false;
         webSocketClient.close();
     }
 }

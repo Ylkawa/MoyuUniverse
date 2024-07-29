@@ -1,7 +1,6 @@
 package com.nekoyu;
 
 import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
 
 public class Event {
     int version;

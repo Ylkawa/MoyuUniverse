@@ -16,6 +16,7 @@ import java.net.URISyntaxException;
 import java.nio.file.Path;
 import java.util.Collection;
 import java.util.HashSet;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.TimeUnit;
 import java.util.logging.Logger;
@@ -31,7 +32,7 @@ public class StarCloud {
     @Inject
     private final ProxyServer proxy;
     private Logger logger;
-    WebSocketClient webSocketClient;
+    WebSocketClient webSocketClient = newWebSocketClient();
 
     @Inject
     public StarCloud(ProxyServer server, Logger logger, @DataDirectory Path dataDirectory){
@@ -41,13 +42,39 @@ public class StarCloud {
         logger.info("末屿宇宙：星云");
     }
 
+    private void uploadStatus() {
+        if (webSocketClient.isOpen()){
+            Gson gson = new Gson();
+            StarCloudStatus starCloudStatus = new StarCloudStatus();
+            starCloudStatus.setNumOfPlayer(proxy.getPlayerCount());
+
+            Event event = new Event();
+            event.setVersion(1);
+            event.setType("StarCloudStatusUpload");
+            event.setBody(gson.toJsonTree(starCloudStatus));
+            webSocketClient.send(gson.toJson(event));
+        }
+    }
+
     @Subscribe
     public void onProxyInitialization(ProxyInitializeEvent event) {
         // Do some operation demanding access to the Velocity API here.
         // For instance, we could register an event:
-        webSocketClient = newWebSocketClient();
-        webSocketClient.connect();
+        if (webSocketClient != null) {
+            webSocketClient.connect();
+        }
         proxy.getEventManager().register(this, new Listener(webSocketClient));
+
+        proxy.getScheduler().buildTask(this, () -> {
+                    // 这里是你要循环执行的代码
+                    if (webSocketClient.isClosed()){
+                        webSocketClient = newWebSocketClient();
+                    }
+                    uploadStatus();
+                })
+                .delay(10, TimeUnit.SECONDS) // 延迟1秒后第一次执行
+                .repeat(5, TimeUnit.SECONDS) // 每5秒执行一次
+                .schedule();
     }
 
     private WebSocketClient newWebSocketClient() {

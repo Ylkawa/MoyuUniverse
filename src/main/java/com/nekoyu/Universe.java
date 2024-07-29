@@ -7,11 +7,8 @@ import org.java_websocket.handshake.ClientHandshake;
 import org.java_websocket.server.WebSocketServer;
 
 import java.io.*;
-import java.lang.reflect.Type;
 import java.net.InetSocketAddress;
 import java.util.*;
-
-import com.nekoyu.Event;
 
 public class Universe {
     static WebSocketServer wss = null;
@@ -19,7 +16,7 @@ public class Universe {
 
     private static MessageHandler messageHandler = new MessageHandler() {
         @Override
-        public void onGroupMessageReceived(Long QQID, String QQName, String message) {
+        public void onGroupMessageReceived(String GroupName, long GroupID, long QQID, String QQName, String message) {
             System.out.println(QQID+QQName+message);
         }
     };
@@ -63,18 +60,20 @@ public class Universe {
                 Event event = new Gson().fromJson(s, Event.class);
                 switch (event.getType()) {
                     case "PlayerJoinEvent" -> {
-                        JsonElement element = event.getBody();
-                        System.out.println(element);
                         PlayerJoinEvent playerJoinEvent = new Gson().fromJson(event.getBody(), PlayerJoinEvent.class);
                         String result = playerJoinEvent.getPlayerName() + " 进入了服务器.";
                         mirai.sendMessage(result);
                     }
                     case "PlayerLeaveEvent" -> {
-                        JsonElement element = event.getBody();
-                        System.out.println(element);
                         PlayerJoinEvent playerJoinEvent = new Gson().fromJson(event.getBody(), PlayerJoinEvent.class);
                         String result = playerJoinEvent.getPlayerName() + " 退出了服务器.";
                         mirai.sendMessage(result);
+                    }
+                    case "StarCloudStatusUpload" -> {
+                        StarCloudStatus starCloudStatus = new Gson().fromJson(event.getBody(), StarCloudStatus.class);
+                        String template = "末屿ZZZ | %NOP% 人在线";
+                        String result = template.replaceAll("%NOP%", String.valueOf(starCloudStatus.numOfPlayer));
+                        mirai.changeGroupNameIfNotMatch(result);
                     }
                 }
             }
@@ -100,24 +99,6 @@ public class Universe {
                 System.out.println("Exiting...");
             }
         }));
-    }
-
-    private static Gson BuildGson() {
-        GsonBuilder gsonBuilder = new GsonBuilder();
-        gsonBuilder.registerTypeAdapter(Object.class, new JsonDeserializer<Object>() {
-            @Override
-            public Object deserialize(JsonElement json, Type typeOfT, JsonDeserializationContext context) throws JsonParseException {
-                if (json.isJsonPrimitive()) {
-                    JsonPrimitive primitive = json.getAsJsonPrimitive();
-                    if (primitive.isNumber()) {
-                        return primitive.getAsString();
-                    }
-                }
-                return json;
-            }
-        });
-
-        return gsonBuilder.create();
     }
 
 
@@ -236,23 +217,4 @@ public class Universe {
 //        }
 //    }
 
-    private static Map<String, Object> processMap(Map<String, Object> map) {
-        for (Map.Entry<String, Object> entry : map.entrySet()) {
-            if (entry.getValue() instanceof Double) {
-                Double doubleValue = (Double) entry.getValue();
-                if (doubleValue % 1 == 0) {
-                    entry.setValue(doubleValue.longValue());
-                }
-            } else if (entry.getValue() instanceof Map) {
-                entry.setValue(processMap((Map<String, Object>) entry.getValue()));
-            } else if (entry.getValue() instanceof Iterable) {
-                for (Object element : (Iterable<?>) entry.getValue()) {
-                    if (element instanceof Map) {
-                        processMap((Map<String, Object>) element);
-                    }
-                }
-            }
-        }
-        return map;
-    }
 }
