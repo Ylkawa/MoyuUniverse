@@ -8,10 +8,11 @@ public class GroupMessage {
     Sender sender;
 
     public String getTextMessage(){
+        StringBuilder stringBuilder = new StringBuilder();
         for (JsonObject jsonObject : messageChain){
-            if (jsonObject.get("type").getAsString().equals("Plain")) return jsonObject.get("text").toString();
+            if (jsonObject.get("type").getAsString().equals("Plain")) stringBuilder.append(jsonObject.get("text").toString());
         }
-        return null;
+        return stringBuilder.toString();
     }
 
     public String getSenderName() {
@@ -28,5 +29,12 @@ public class GroupMessage {
 
     public long getSenderID() {
         return sender.id;
+    }
+
+    public boolean isBeAted(String id){
+        for (JsonObject jsonObject : messageChain) {
+            if (jsonObject.get("type").getAsString().equals("At") && jsonObject.get("target").getAsString().equals(id)) return true;
+        }
+        return false;
     }
 }

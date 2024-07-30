@@ -67,9 +67,7 @@ public class StarCloud {
 
         proxy.getScheduler().buildTask(this, () -> {
                     // 这里是你要循环执行的代码
-                    if (webSocketClient.isClosed()){
-                        webSocketClient = newWebSocketClient();
-                    }
+                    if (webSocketClient.isClosed()) webSocketClient = newWebSocketClient();
                     uploadStatus();
                 })
                 .delay(10, TimeUnit.SECONDS) // 延迟1秒后第一次执行

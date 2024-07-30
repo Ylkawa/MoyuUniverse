@@ -2,23 +2,15 @@ package com.nekoyu;
 
 import com.google.gson.Gson;
 import org.bukkit.Bukkit;
-import org.bukkit.Server;
-import org.bukkit.entity.Player;
-import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
-import org.bukkit.event.player.PlayerLoginEvent;
-import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.java_websocket.client.WebSocketClient;
 import org.java_websocket.handshake.ServerHandshake;
 import org.bukkit.scheduler.BukkitRunnable;
-import org.jetbrains.annotations.NotNull;
 
 
 import java.net.URI;
 import java.net.URISyntaxException;
-import java.util.ArrayList;
-import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -44,25 +36,6 @@ public final class Planet extends JavaPlugin implements Listener {
             }
         }.runTaskAsynchronously(this);
 
-        new BukkitRunnable() {
-            @Override
-            public void run() {
-                if (wsc != null && !wsc.isClosed()){
-                    int numberOfPlayers = getOnlinePlayers().size();
-                    double[] tps = getTPS();
-                    Map<String, Object> status = new HashMap<>();
-
-                    status.put("NumberOfPlayers", numberOfPlayers);
-//                    status.put("TPS", tps);
-
-                    Map<String, Object> message = new HashMap<>();
-                    message.put("msg", "UploadStatus");
-                    message.put("Status", status);
-                    wsc.send(new Gson().toJson(message));
-                }
-            }
-        }.runTaskTimer(this,10L,600L);
-
         Bukkit.getScheduler().runTaskTimer(this, new Runnable() {
             @Override
             public void run() {
@@ -71,7 +44,7 @@ public final class Planet extends JavaPlugin implements Listener {
                     wsc.connect();
                 }
             }
-        }, 0L, 200L); // 第一个参数是延迟时间（tick），第二个参数是周期时间（tick）
+        }, 5L, 200L); // 第一个参数是延迟时间（tick），第二个参数是周期时间（tick）
     }
 
     @Override
@@ -80,45 +53,12 @@ public final class Planet extends JavaPlugin implements Listener {
         wsc.close();
     }
 
-    @EventHandler
-    public void onPlayerLogin(PlayerLoginEvent event){
-        ArrayList<String> playerList = new ArrayList<>();
-        Collection<? extends Player> collection = getOnlinePlayers();
-        Map<String, Object> request = new HashMap<>();
-        for (Player player : collection) {
-            playerList.add(player.getName());
-        }
-        request.put("msg", "PlayerJoinEvent");
-        request.put("PlayerName", event.getPlayer().getName());
-        request.put("PlayerList", playerList);
-
-        String json = new Gson().toJson(request);
-        getLogger().info(json);
-        wsc.send(json);
-    }
-
-    @EventHandler
-    public void onPlayerQuit(PlayerQuitEvent event){
-        ArrayList<String> playerList = new ArrayList<>();
-        Map<String, Object> request = new HashMap<>();
-        for (Player player : getOnlinePlayers()) {
-            playerList.add(player.getName());
-        }
-        request.put("msg", "PlayerQuitEvent");
-        request.put("PlayerName", event.getPlayer().getName());
-        request.put("PlayerList", playerList);
-
-        String json = new Gson().toJson(request);
-        getLogger().info(json);
-        wsc.send(json);
-    }
-
     public void wsConn(){
         try {
             wsc = new WebSocketClient(new URI("ws://localhost:24430")) {
                 @Override
                 public void onOpen(ServerHandshake serverHandshake) {
-                    send("Connect: planet");
+                    
                 }
 
                 @Override
@@ -138,15 +78,8 @@ public final class Planet extends JavaPlugin implements Listener {
                 }
             };
         } catch (URISyntaxException e) {
-            e.getCause().printStackTrace();
+            System.out.println(e.getMessage());
         }
     }
 
-    public void uploadStatus(Map status){
-        Map<String, Object> request = new HashMap<>();
-        request.put("msg", "UploadStatus");
-        request.put("Status", status);
-
-        wsc.send(new Gson().toJson(status));
-    }
 }

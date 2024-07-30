@@ -1,0 +1,13 @@
+<component name="ArtifactManager">
+  <artifact type="jar" name="StarCloud:jar">
+    <output-path>$PROJECT_DIR$/out/artifacts/StarCloud_jar</output-path>
+    <root id="archive" name="StarCloud.jar">
+      <element id="module-output" name="StarCloud" />
+      <element id="file-copy" path="$PROJECT_DIR$/StarCloud/src/main/resources/velocity-plugin.json" />
+      <element id="extracted-dir" path="$MAVEN_REPOSITORY$/org/yaml/snakeyaml/2.2/snakeyaml-2.2.jar" path-in-jar="/" />
+      <element id="module-output" name="Lib" />
+      <element id="extracted-dir" path="$MAVEN_REPOSITORY$/org/java-websocket/Java-WebSocket/1.5.6/Java-WebSocket-1.5.6.jar" path-in-jar="/" />
+      <element id="extracted-dir" path="$MAVEN_REPOSITORY$/com/google/code/gson/gson/2.8.9/gson-2.8.9.jar" path-in-jar="/" />
+    </root>
+  </artifact>
+</component>

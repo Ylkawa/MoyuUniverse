@@ -11,6 +11,9 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.*;
 
+/**
+ * Mirai适配器
+ */
 public class Mirai extends ChatBot {
     private boolean enable = true;
 //    private static String BASE_URL;
@@ -77,30 +80,35 @@ public class Mirai extends ChatBot {
     }
 
     @Override
-    public void sendMessage(String msg) {
+    public void sendMessage(String msg) { //发给默认群聊
+        sendMessage(msg, TARGET_GROUP_ID);
+    }
+
+    @Override
+    public void sendMessage(String msg, String GroupID) { //发给指定QQ群
         if (enable && webSocketClient.isOpen()) {
-            Map<String, Object> request = new HashMap<>();
-            request.put("syncId", System.currentTimeMillis());
+            Map<String, Object> request = new LinkedHashMap<>();
+            request.put("syncId", "0");
+            request.put("command", "sendGroupMessage");
 
-            Map<String, Object> data = new HashMap<>();
-            data.put("target", TARGET_GROUP_ID);
+            Map<String, Object> content = new LinkedHashMap<>();
+            content.put("target", GroupID);
 
-            // Create the messageChain map outside the anonymous class
-            Map<String, String> plainText = new HashMap<>();
+            List<Map<String, Object>> messageChain = new ArrayList<>();
+            Map<String, Object> plainText = new LinkedHashMap<>();
             plainText.put("type", "Plain");
             plainText.put("text", msg);
+            messageChain.add(plainText);
 
-            // Wrap it in an array as you were doing before
-            data.put("messageChain", new Object[]{plainText});
-
-            request.put("command", "sendGroupMessage");
-            request.put("content", data);
+            content.put("messageChain", messageChain);
+            request.put("content", content);
 
             String jsonMessage = new Gson().toJson(request);
+            System.out.println(jsonMessage); // 输出生成的JSON以进行调试
             webSocketClient.send(jsonMessage);
         } else if (enable && webSocketClient.isClosed()) {
             newWebSocketClient();
-            sendMessage(msg);
+            sendMessage(msg, GroupID); // 修复方法调用中的缺失参数
         }
     }
 
@@ -162,7 +170,7 @@ public class Mirai extends ChatBot {
                     case "GroupMessage" -> {
                         GroupMessage gm = new Gson().fromJson(data, GroupMessage.class);
                         String Message = gm.getTextMessage();
-                        if (Message != null)
+                        if (Message != null && gm.isBeAted("1697775835"))
                             messageHandler.onGroupMessageReceived(gm.getGroupName(), gm.getGroupID(), gm.getSenderID(), gm.getSenderName(), gm.getTextMessage());
                     }
                 }

@@ -13,11 +13,25 @@ import java.util.*;
 public class Universe {
     static WebSocketServer wss = null;
     static ConfigureProcessor config = null;
+    static List<WebSocket> comets = new ArrayList<>();
 
     private static MessageHandler messageHandler = new MessageHandler() {
         @Override
         public void onGroupMessageReceived(String GroupName, long GroupID, long QQID, String QQName, String message) {
-            System.out.println(QQID+QQName+message);
+            for (WebSocket ws : comets) {
+                ReceiveGroupMessageEvent receiveGroupMessageEvent = new ReceiveGroupMessageEvent();
+                receiveGroupMessageEvent.setGroupName(GroupName);
+                receiveGroupMessageEvent.setGroupID(GroupID);
+                receiveGroupMessageEvent.setQQID(QQID);
+                receiveGroupMessageEvent.setQQName(QQName);
+                receiveGroupMessageEvent.setMessage(message);
+
+                Gson gson = new Gson();
+                Event event = new Event();
+                event.setType("GroupMessageReceived");
+                event.setBody(gson.toJsonTree(receiveGroupMessageEvent));
+                ws.send(gson.toJson(event));
+            }
         }
     };
 
@@ -51,6 +65,7 @@ public class Universe {
 
             @Override
             public void onClose(WebSocket webSocket, int i, String s, boolean b) {
+                if (comets.remove(webSocket)) System.out.println("Comet offline: " + webSocket.getRemoteSocketAddress());
                 System.out.println("Connection close: " + webSocket.getRemoteSocketAddress());
             }
 
@@ -72,8 +87,16 @@ public class Universe {
                     case "StarCloudStatusUpload" -> {
                         StarCloudStatus starCloudStatus = new Gson().fromJson(event.getBody(), StarCloudStatus.class);
                         String template = "末屿ZZZ | %NOP% 人在线";
-                        String result = template.replaceAll("%NOP%", String.valueOf(starCloudStatus.numOfPlayer));
+                        String result = template.replaceAll("%NOP%", String.valueOf(starCloudStatus.getNumOfPlayer()));
                         mirai.changeGroupNameIfNotMatch(result);
+                    }
+                    case "RegisterComet" -> {
+                        comets.add(webSocket);
+                        webSocket.send("{\"event\": \"Register Complete\"}");
+                    }
+                    case "SendGroupMessage" -> {
+                        SendGroupMessage sendGroupMessage = new Gson().fromJson(event.getBody(), SendGroupMessage.class);
+                        mirai.sendMessage(sendGroupMessage.getMessage(), sendGroupMessage.getTarget());
                     }
                 }
             }

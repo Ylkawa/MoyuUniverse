@@ -4,6 +4,7 @@ import com.google.gson.Gson;
 import com.velocitypowered.api.event.PostOrder;
 import com.velocitypowered.api.event.Subscribe;
 import com.velocitypowered.api.event.connection.DisconnectEvent;
+import com.velocitypowered.api.event.connection.LoginEvent;
 import com.velocitypowered.api.event.player.KickedFromServerEvent;
 import com.velocitypowered.api.event.player.PlayerChatEvent;
 import com.velocitypowered.api.event.player.ServerPostConnectEvent;
@@ -28,7 +29,7 @@ public class Listener {
     }
 
     @Subscribe
-    public void onServerPostConnect(ServerPostConnectEvent event) {
+    public void onPlayerLogin(LoginEvent event) {
         if (webSocketClient.isOpen()) {
             Gson gson = new Gson();
             PlayerJoinEvent playerJoinEvent = new PlayerJoinEvent();
