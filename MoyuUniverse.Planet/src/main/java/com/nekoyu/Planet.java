@@ -1,6 +1,7 @@
 package com.nekoyu;
 
 import com.google.gson.Gson;
+import net.kyori.adventure.text.Component;
 import org.bukkit.Bukkit;
 import org.bukkit.event.Listener;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -58,13 +59,26 @@ public final class Planet extends JavaPlugin implements Listener {
             wsc = new WebSocketClient(new URI("ws://localhost:24430")) {
                 @Override
                 public void onOpen(ServerHandshake serverHandshake) {
-                    
+                    Event event = new Event();
+                    event.setVersion(1);
+                    event.setType("RegisterPlanet");
+
+                    send(new Gson().toJson(event));
                 }
 
                 @Override
                 public void onMessage(String s) {
+                    Gson gson = new Gson();
                     //Map map = new Gson().fromJson(s, HashMap.class);
-
+                    Event event = gson.fromJson(s, Event.class);
+                    if (event.getType() != null) {
+                        switch (event.getType()) {
+                            case "GroupMessageReceived" -> {
+                                ReceiveGroupMessageEvent receiveGroupMessageEvent = gson.fromJson(event.getBody(), ReceiveGroupMessageEvent.class);
+                                Bukkit.broadcastMessage(receiveGroupMessageEvent.getQQName() + "(" + receiveGroupMessageEvent.QQID + ")" + ": " + receiveGroupMessageEvent.getMessage());
+                            }
+                        }
+                    }
                 }
 
                 @Override

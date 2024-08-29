@@ -7,6 +7,7 @@
       <element id="extracted-dir" path="$MAVEN_REPOSITORY$/org/slf4j/slf4j-api/1.8.0-beta4/slf4j-api-1.8.0-beta4.jar" path-in-jar="/" />
       <element id="extracted-dir" path="$MAVEN_REPOSITORY$/org/java-websocket/Java-WebSocket/1.5.6/Java-WebSocket-1.5.6.jar" path-in-jar="/" />
       <element id="file-copy" path="$PROJECT_DIR$/MoyuUniverse.Planet/src/main/resources/plugin.yml" />
+      <element id="module-output" name="Lib" />
     </root>
   </artifact>
 </component>

@@ -1,6 +1,8 @@
 package com.nekoyu;
 
 import com.google.gson.*;
+import com.nekoyu.MiraiAdapter.Group;
+import com.nekoyu.MiraiAdapter.GroupMessage;
 import com.nekoyu.MiraiAdapter.Mirai;
 import org.java_websocket.WebSocket;
 import org.java_websocket.handshake.ClientHandshake;
@@ -14,23 +16,29 @@ public class Universe {
     static WebSocketServer wss = null;
     static ConfigureProcessor config = null;
     static List<WebSocket> comets = new ArrayList<>();
+    static List<WebSocket> planets = new ArrayList<>();
 
-    private static MessageHandler messageHandler = new MessageHandler() {
-        @Override
-        public void onGroupMessageReceived(String GroupName, long GroupID, long QQID, String QQName, String message) {
-            for (WebSocket ws : comets) {
-                ReceiveGroupMessageEvent receiveGroupMessageEvent = new ReceiveGroupMessageEvent();
-                receiveGroupMessageEvent.setGroupName(GroupName);
-                receiveGroupMessageEvent.setGroupID(GroupID);
-                receiveGroupMessageEvent.setQQID(QQID);
-                receiveGroupMessageEvent.setQQName(QQName);
-                receiveGroupMessageEvent.setMessage(message);
+    private static MessageHandler messageHandler = json -> {
+        GroupMessage groupMessage = new Gson().fromJson(json, GroupMessage.class);
+        ReceiveGroupMessageEvent receiveGroupMessageEvent = new ReceiveGroupMessageEvent();
+        receiveGroupMessageEvent.setGroupName(groupMessage.getGroupName());
+        receiveGroupMessageEvent.setGroupID(groupMessage.getGroupID());
+        receiveGroupMessageEvent.setQQID(groupMessage.getSenderID());
+        receiveGroupMessageEvent.setQQName(groupMessage.getSenderName());
+        receiveGroupMessageEvent.setMessage(groupMessage.getTextMessage());
+        receiveGroupMessageEvent.setBeAted(groupMessage.isBeAted("1697775835"));
 
-                Gson gson = new Gson();
-                Event event = new Event();
-                event.setType("GroupMessageReceived");
-                event.setBody(gson.toJsonTree(receiveGroupMessageEvent));
-                ws.send(gson.toJson(event));
+        Gson gson = new Gson();
+        Event event = new Event();
+        event.setType("GroupMessageReceived");
+        event.setBody(gson.toJsonTree(receiveGroupMessageEvent));
+        String result = gson.toJson(event);
+        for (WebSocket ws : comets) {
+            ws.send(json.toString());
+        }
+        if (groupMessage.getGroupID() == 455284589) {
+            for (WebSocket ws : planets) {
+                ws.send(result);
             }
         }
     };
@@ -56,6 +64,18 @@ public class Universe {
         if (!config.readAsYaml()) System.exit(2); //加载配置文件并处理异常 错误码2: 配置文件读不到
 
         Mirai mirai = new Mirai((Map) config.getNode("ChatBot"), messageHandler);
+
+        new Thread(() -> { //这个线程用于保证BOT适配器的ws连接在线
+            try {
+                Thread.sleep(10);
+                if (mirai.isDisconnected()) {
+                    mirai.reconnect();
+                }
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            }
+        }).start();
+
         System.out.println("Hello world!");
         wss = new WebSocketServer(new InetSocketAddress(24430)) {
             @Override
@@ -92,6 +112,10 @@ public class Universe {
                     }
                     case "RegisterComet" -> {
                         comets.add(webSocket);
+                        webSocket.send("{\"event\": \"Register Complete\"}");
+                    }
+                    case "RegisterPlanet" -> {
+                        planets.add(webSocket);
                         webSocket.send("{\"event\": \"Register Complete\"}");
                     }
                     case "SendGroupMessage" -> {

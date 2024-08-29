@@ -6,6 +6,7 @@ public class ReceiveGroupMessageEvent {
     long QQID;
     String QQName;
     String message;
+    boolean isBeAted;
 
     public String getGroupName() {
         return GroupName;
@@ -45,5 +46,13 @@ public class ReceiveGroupMessageEvent {
 
     public void setMessage(String message) {
         this.message = message;
+    }
+
+    public boolean isBeAted() {
+        return isBeAted;
+    }
+
+    public void setBeAted(boolean beAted) {
+        isBeAted = beAted;
     }
 }

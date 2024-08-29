@@ -168,10 +168,7 @@ public class Mirai extends ChatBot {
             case "-1" -> {
                 switch (data.get("type").getAsString()) {
                     case "GroupMessage" -> {
-                        GroupMessage gm = new Gson().fromJson(data, GroupMessage.class);
-                        String Message = gm.getTextMessage();
-                        if (Message != null && gm.isBeAted("1697775835"))
-                            messageHandler.onGroupMessageReceived(gm.getGroupName(), gm.getGroupID(), gm.getSenderID(), gm.getSenderName(), gm.getTextMessage());
+                        messageHandler.onGroupMessageReceived(data);
                     }
                 }
             }
@@ -195,5 +192,13 @@ public class Mirai extends ChatBot {
     public void close() {
         enable = false;
         webSocketClient.close();
+    }
+
+    public boolean isDisconnected() {
+        return webSocketClient.isClosed();
+    }
+
+    public void reconnect() {
+        newWebSocketClient();
     }
 }
