@@ -53,35 +53,30 @@ public class Mirai extends ChatBot {
     }
 
     private void newWebSocketClient() {
-        try {
-            webSocketClient = new WebSocketClient(uri) {
-                @Override
-                public void onOpen(ServerHandshake serverHandshake) {
-                    System.out.println("WebSocket opened");
-                    getGroupName();
-                }
+        webSocketClient = new WebSocketClient(uri) {
+            @Override
+            public void onOpen(ServerHandshake serverHandshake) {
+                System.out.println("WebSocket opened");
+                getGroupName();
+            }
 
-                @Override
-                public void onMessage(String s) {
-                    System.out.println(s);
-                    onMessageReceived(s);
-                }
+            @Override
+            public void onMessage(String s) {
+                System.out.println(s);
+                onMessageReceived(s);
+            }
 
-                @Override
-                public void onClose(int i, String s, boolean b) {
+            @Override
+            public void onClose(int i, String s, boolean b) {
 
-                }
+            }
 
-                @Override
-                public void onError(Exception e) {
-                    System.out.println(e.getMessage());
-                }
-            };
-            webSocketClient.connect();
-        } catch (URISyntaxException e) {
-            System.out.println(e.getMessage());
-            enable = false;
-        }
+            @Override
+            public void onError(Exception e) {
+                System.out.println(e.getMessage());
+            }
+        };
+        webSocketClient.connect();
     }
 
     @Override
