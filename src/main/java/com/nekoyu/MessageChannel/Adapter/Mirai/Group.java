@@ -1,7 +1,7 @@
-package com.nekoyu.MiraiAdapter;
+package com.nekoyu.MessageChannel.Adapter.Mirai;
 
 public class Group {
-    long id;
+    String id;
     String name;
     String permission;
 }

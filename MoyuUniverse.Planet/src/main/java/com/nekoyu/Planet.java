@@ -37,13 +37,10 @@ public final class Planet extends JavaPlugin implements Listener {
             }
         }.runTaskAsynchronously(this);
 
-        Bukkit.getScheduler().runTaskTimer(this, new Runnable() {
-            @Override
-            public void run() {
-                if (Boolean.TRUE.equals(wsc.isClosed())) {
-                    wsConn();
-                    wsc.connect();
-                }
+        Bukkit.getScheduler().runTaskTimer(this, () -> {
+            if (Boolean.TRUE.equals(wsc.isClosed())) {
+                wsConn();
+                wsc.connect();
             }
         }, 5L, 200L); // 第一个参数是延迟时间（tick），第二个参数是周期时间（tick）
     }

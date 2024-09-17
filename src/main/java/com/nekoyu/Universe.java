@@ -1,9 +1,8 @@
 package com.nekoyu;
 
 import com.google.gson.*;
-import com.nekoyu.MiraiAdapter.Group;
-import com.nekoyu.MiraiAdapter.GroupMessage;
-import com.nekoyu.MiraiAdapter.Mirai;
+import com.nekoyu.MessageChannel.Adapter.Mirai.GroupMessage;
+import com.nekoyu.MessageChannel.Adapter.Mirai.Mirai;
 import org.java_websocket.WebSocket;
 import org.java_websocket.handshake.ClientHandshake;
 import org.java_websocket.server.WebSocketServer;
@@ -18,7 +17,7 @@ public class Universe {
     static List<WebSocket> comets = new ArrayList<>();
     static List<WebSocket> planets = new ArrayList<>();
 
-    private static MessageHandler messageHandler = json -> {
+    private static final MessageHandler messageHandler = json -> {
         GroupMessage groupMessage = new Gson().fromJson(json, GroupMessage.class);
         ReceiveGroupMessageEvent receiveGroupMessageEvent = new ReceiveGroupMessageEvent();
         receiveGroupMessageEvent.setGroupName(groupMessage.getGroupName());
@@ -36,7 +35,7 @@ public class Universe {
         for (WebSocket ws : comets) {
             ws.send(json.toString());
         }
-        if (groupMessage.getGroupID() == 455284589) {
+        if (Objects.equals(groupMessage.getGroupID(), "455284589")) {
             for (WebSocket ws : planets) {
                 ws.send(result);
             }

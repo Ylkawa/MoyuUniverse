@@ -1,7 +1,7 @@
-package com.nekoyu.MiraiAdapter;
+package com.nekoyu.MessageChannel.Adapter.Mirai;
 
 public class Sender {
-    public long id;
+    public String id;
     public String memberName;
     public String specialTitle;
     public String permission;

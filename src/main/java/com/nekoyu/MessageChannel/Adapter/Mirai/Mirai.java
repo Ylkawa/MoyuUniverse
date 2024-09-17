@@ -1,4 +1,4 @@
-package com.nekoyu.MiraiAdapter;
+package com.nekoyu.MessageChannel.Adapter.Mirai;
 
 import com.google.gson.*;
 import com.nekoyu.ChatBot;
@@ -6,7 +6,6 @@ import com.nekoyu.MessageHandler;
 import org.java_websocket.client.WebSocketClient;
 import org.java_websocket.handshake.ServerHandshake;
 
-import java.lang.reflect.Type;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.util.*;
@@ -29,6 +28,7 @@ public class Mirai extends ChatBot {
     private String GroupName;
     private Map<Integer, String> syncIndex = new HashMap<>();
     private int syncNum = 1;
+    private URI uri;
 
     private final MessageHandler messageHandler;
 
@@ -41,6 +41,12 @@ public class Mirai extends ChatBot {
         this.AUTH_KEY = chatBotProperties.get("AuthKey").toString();
         this.QQ_ID = chatBotProperties.get("QQID").toString();
         this.TARGET_GROUP_ID = chatBotProperties.get("TargetGroup").toString();
+        try {
+            URI uri = new URI("ws", null, HOST, PORT, "/all", "verifyKey="+AUTH_KEY+"&qq="+QQ_ID, null);
+            this.uri = uri;
+        } catch (URISyntaxException e) {
+            throw new RuntimeException(e);
+        }
         String GroupNameChangeCooldown = (String) chatBotProperties.get("GroupNameChangeCooldown");
         if (GroupNameChangeCooldown != null) this.GroupNameChangeCooldownTime = Integer.parseInt(GroupNameChangeCooldown);
         newWebSocketClient();
@@ -48,7 +54,6 @@ public class Mirai extends ChatBot {
 
     private void newWebSocketClient() {
         try {
-            URI uri = new URI("ws", null, HOST, PORT, "/all", "verifyKey="+AUTH_KEY+"&qq="+QQ_ID, null);
             webSocketClient = new WebSocketClient(uri) {
                 @Override
                 public void onOpen(ServerHandshake serverHandshake) {

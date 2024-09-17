@@ -1,4 +1,4 @@
-package com.nekoyu.MiraiAdapter;
+package com.nekoyu.MessageChannel.Adapter.Mirai;
 
 import com.google.gson.JsonObject;
 

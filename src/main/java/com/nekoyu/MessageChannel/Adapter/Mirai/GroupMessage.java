@@ -1,4 +1,4 @@
-package com.nekoyu.MiraiAdapter;
+package com.nekoyu.MessageChannel.Adapter.Mirai;
 
 import com.google.gson.JsonObject;
 
@@ -19,7 +19,7 @@ public class GroupMessage {
         return sender.memberName;
     }
 
-    public long getGroupID() {
+    public String getGroupID() {
         return sender.group.id;
     }
 
@@ -27,7 +27,7 @@ public class GroupMessage {
         return sender.group.name;
     }
 
-    public long getSenderID() {
+    public String getSenderID() {
         return sender.id;
     }
 

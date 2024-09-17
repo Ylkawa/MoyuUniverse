@@ -2,8 +2,8 @@ package com.nekoyu;
 
 public class ReceiveGroupMessageEvent {
     String GroupName;
-    long GroupID;
-    long QQID;
+    String GroupID;
+    String QQID;
     String QQName;
     String message;
     boolean isBeAted;
@@ -16,19 +16,19 @@ public class ReceiveGroupMessageEvent {
         GroupName = groupName;
     }
 
-    public long getGroupID() {
+    public String getGroupID() {
         return GroupID;
     }
 
-    public void setGroupID(long groupID) {
+    public void setGroupID(String groupID) {
         GroupID = groupID;
     }
 
-    public long getQQID() {
+    public String getQQID() {
         return QQID;
     }
 
-    public void setQQID(long QQID) {
+    public void setQQID(String QQID) {
         this.QQID = QQID;
     }
 

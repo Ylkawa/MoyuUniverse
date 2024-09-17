@@ -28,6 +28,8 @@ import org.java_websocket.handshake.ServerHandshake;
 @Plugin(
         id = "moyuuniverse", name = "MoyuUniverse", version = "1.0.0-Snapshot", authors = {"Nekoyu", "HatsuneYLK", "Lonely_Melody"}, description = "", url = "https://www.nekoyu.com/"
 )
+// 预先声明一下，这里没有监听器相关内容
+// 请到Listener类里面去捡
 public class StarCloud {
     @Inject
     private final ProxyServer proxy;
@@ -63,7 +65,7 @@ public class StarCloud {
         if (webSocketClient != null) {
             webSocketClient.connect();
         }
-        proxy.getEventManager().register(this, new Listener(webSocketClient));
+        proxy.getEventManager().register(this, new Listener(webSocketClient)); //注册 监听器 类
 
         proxy.getScheduler().buildTask(this, () -> {
                     // 这里是你要循环执行的代码

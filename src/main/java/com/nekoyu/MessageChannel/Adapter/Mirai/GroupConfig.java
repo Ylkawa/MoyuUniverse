@@ -1,4 +1,4 @@
-package com.nekoyu.MiraiAdapter;
+package com.nekoyu.MessageChannel.Adapter.Mirai;
 
 public class GroupConfig {
     String name;
