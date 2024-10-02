@@ -1,5 +1,6 @@
 package com.nekoyu.MessageChannel.Adapter.Onebot11;
 
+import com.nekoyu.MessageChannel.ChatBot;
 import com.nekoyu.MessageHandler;
 import org.java_websocket.client.WebSocketClient;
 import org.java_websocket.handshake.ServerHandshake;
@@ -9,7 +10,7 @@ import java.net.URISyntaxException;
 import java.util.HashMap;
 import java.util.Map;
 
-public class Onebot11 {
+public class Onebot11 extends ChatBot {
     private boolean enable = true;
     //    private static String BASE_URL;
     private final String AUTH_KEY;
@@ -77,5 +78,15 @@ public class Onebot11 {
     public void disable() {
         enable = false;
         webSocketClient.close();
+    }
+
+    @Override
+    public void sendMessage(String msg) {
+
+    }
+
+    @Override
+    public void sendMessage(String msg, String GroupID) {
+
     }
 }

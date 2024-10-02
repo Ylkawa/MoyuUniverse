@@ -26,23 +26,25 @@ public class ConfigureProcessor {
     }
 
     public Object getNode(String node){
-        String[] args = node.split("\\.");
-        if (args.length == 0){
-            return null;
-        } else if (args.length == 1) {
-            return Configure.get(args[0]);
-        } else {
-            Object object = Configure;
-            for(int i = 0; i < args.length - 1; i++){
-                if (object == null){
-                    return null;
-                } else if (object instanceof Map){
-                    object = ((Map<?, ?>) object).get(i);
-                } else {
-                    return null;
-                }
+        String[] keys = node.split("\\.");
+        Map<String, Object> currentMap = Configure;
+        Object value = null;
+
+        for (int i = 0; i < keys.length; i++) {
+            value = currentMap.get(keys[i]);
+
+            if (i == keys.length - 1) {
+                return value; // 到达路径末尾，返回值
             }
-            return object;
+
+            // 如果值是另一个 Map，继续深入
+            if (value instanceof Map) {
+                currentMap = (Map<String, Object>) value;
+            } else {
+                return null; // 路径无效
+            }
         }
+
+        return null;
     }
 }

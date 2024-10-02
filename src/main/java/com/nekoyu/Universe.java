@@ -79,7 +79,10 @@ public class Universe {
         wss = new WebSocketServer(new InetSocketAddress(24430)) {
             @Override
             public void onOpen(WebSocket webSocket, ClientHandshake clientHandshake) {
-                System.out.println("Connection open: " + webSocket.getRemoteSocketAddress());
+                String Token = clientHandshake.getFieldValue("Token");
+                String Role = clientHandshake.getFieldValue("Role");
+                String ID = clientHandshake.getFieldValue("ID");
+                System.out.println("Connection open: " + webSocket.getRemoteSocketAddress() + " (" + Role + ") " + ID);
             }
 
             @Override

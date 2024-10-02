@@ -1,7 +1,7 @@
 package com.nekoyu.MessageChannel.Adapter.Mirai;
 
 import com.google.gson.*;
-import com.nekoyu.ChatBot;
+import com.nekoyu.MessageChannel.ChatBot;
 import com.nekoyu.MessageHandler;
 import org.java_websocket.client.WebSocketClient;
 import org.java_websocket.handshake.ServerHandshake;
@@ -68,7 +68,7 @@ public class Mirai extends ChatBot {
 
             @Override
             public void onClose(int i, String s, boolean b) {
-
+                System.out.println("MiraiAdapter断开连接：" + i + s + b);
             }
 
             @Override
