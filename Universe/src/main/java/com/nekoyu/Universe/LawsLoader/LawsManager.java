@@ -1,6 +1,6 @@
-package com.nekoyu.LawsLoader;
+package com.nekoyu.Universe.LawsLoader;
 
-import com.nekoyu.Universe;
+import com.nekoyu.Universe.Universe;
 
 import java.io.File;
 import java.net.URL;
@@ -58,18 +58,19 @@ public class LawsManager {
 
                 // 确保调用无参构造函数
                 Law law = (Law) clazz.getDeclaredConstructor().newInstance();
+                law.ID = lawName;
                 law.prepare();
 
                 laws.put(lawName, law);
 
-                Universe.logger.info("成功加载宇宙法则: " + lawName);
+                Universe.logger.info("成功加载宇宙法则: {}", lawName);
 
             } catch (InstantiationException e) {
-                Universe.logger.warn("无法实例化类，确保它有无参构造函数: " + e.getMessage());
+                Universe.logger.warn("无法实例化类，确保它有无参构造函数: {}", e.getMessage());
             } catch (ClassNotFoundException e) {
-                Universe.logger.warn("无法找到主类 " + e.getMessage());
+                Universe.logger.warn("无法找到主类 {}", e.getMessage());
             } catch (Exception e) {
-                Universe.logger.warn("加载宇宙法则失败: " + jarFile.getName());
+                Universe.logger.warn("加载宇宙法则失败: {}", jarFile.getName());
                 e.printStackTrace();
             }
         }

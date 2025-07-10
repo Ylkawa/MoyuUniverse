@@ -1,11 +1,11 @@
 package com.nekoyu.MoyuUniverse.Nya.OnebotAdapter;
 
 import com.google.gson.Gson;
-import com.nekoyu.API.MessageChannel;
-import com.nekoyu.API.MessageSession;
+import com.nekoyu.Universe.API.MessageChannel;
+import com.nekoyu.Universe.API.MessageSession;
 import com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.Request.SendGroupMessage;
 import com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.Request.SendPrivateMessage;
-import com.nekoyu.Universe;
+import com.nekoyu.Universe.Universe;
 import org.java_websocket.client.WebSocketClient;
 import org.java_websocket.handshake.ServerHandshake;
 import org.slf4j.Logger;

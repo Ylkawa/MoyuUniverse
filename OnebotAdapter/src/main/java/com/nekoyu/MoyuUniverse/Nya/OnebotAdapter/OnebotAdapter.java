@@ -1,7 +1,8 @@
 package com.nekoyu.MoyuUniverse.Nya.OnebotAdapter;
 
-import com.nekoyu.ConfigureProcessor;
-import com.nekoyu.LawsLoader.Law;
+import com.nekoyu.Universe.ConfigureProcessor.CFGFileSyntaxException;
+import com.nekoyu.Universe.ConfigureProcessor.ConfigureProcessor;
+import com.nekoyu.Universe.LawsLoader.Law;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -55,23 +56,38 @@ public class OnebotAdapter extends Law {
         // 对配置文件模板的存在状况检查完成
         // 开始按照各个配置文件依次加载MessageChannel
         File cfgDic = new File("./config/Onebot/");
-        if (cfgDic.isDirectory()) for (File file : cfgDic.listFiles()) {
-            // 筛选出 后缀名为 yml 的文件
-            if (file.getName().endsWith(".yml")) {
-                ConfigureProcessor cp = new ConfigureProcessor(file, logger);
-                OnebotChannel oc = new OnebotChannel();
-                oc.token = cp.getNode("Token").toString();
-                oc.ID = cp.getNode("ID").toString();
-                try {
-                    URI uri = new URI(cp.getNode("URI").toString());
-                    oc.uri = uri;
-                } catch (URISyntaxException e) {
-                    logger.error(e.getMessage());
-                    break;
+        if (cfgDic.isDirectory()) {
+            File[] cfgFiles = cfgDic.listFiles();
+            if (cfgFiles != null) {
+                for (File file : cfgFiles) {
+                    // 筛选出 后缀名为 yml 的文件
+                    if (file.getName().endsWith(".yml")) {
+                        ConfigureProcessor cp = null;
+                        try {
+                            cp = new ConfigureProcessor(file);
+                            cp.read();
+                        } catch (IOException e) {
+                            throw new RuntimeException(e);
+                        } catch (CFGFileSyntaxException e) {
+                            logger.error("配置文件 {} 无效", file.getName());
+                            break;
+                        }
+                        OnebotChannel oc = new OnebotChannel();
+                        oc.token = cp.getNode("Token").toString();
+                        oc.ID = cp.getNode("ID").toString();
+                        try {
+                            oc.uri = new URI(cp.getNode("URI").toString());
+                        } catch (URISyntaxException e) {
+                            logger.error(e.getMessage());
+                            break;
+                        }
+                        ocs.add(oc);
+                        logger.info("已载入 Onebot 配置 {}", oc.ID);
+                    }
                 }
-                ocs.add(oc);
-                logger.info("已载入 Onebot 配置 {}", oc.ID);
             }
+        } else {
+            if (!cfgDic.mkdir()) logger.error("默认配置文件夹加载失败");
         }
     }
 
