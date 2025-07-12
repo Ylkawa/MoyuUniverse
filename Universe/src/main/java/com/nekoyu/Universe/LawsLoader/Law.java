@@ -7,6 +7,8 @@ public abstract class Law {
     protected final Logger logger = LoggerFactory.getLogger(this.getClass());
 
     public String ID;
+    public String[] Dependencies;
+    public boolean isRunning;
 
     public Law() {}
 

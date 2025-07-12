@@ -5,8 +5,7 @@ import com.nekoyu.Universe.Universe;
 import java.io.File;
 import java.net.URL;
 import java.net.URLClassLoader;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.*;
 
 public class LawsManager {
     private final Map<String, Law> laws = new HashMap<>();
@@ -41,6 +40,7 @@ public class LawsManager {
                 properties.load(inputStream);
                 String mainClass = properties.getProperty("main");
                 String lawName = properties.getProperty("name");
+                String dependencies = properties.getProperty("dependencies");
 
                 if (mainClass == null || lawName == null) {
                     System.out.println("law.yml 中缺少必要的 main 或 name 属性: " + jarFile.getName());
@@ -59,6 +59,17 @@ public class LawsManager {
                 // 确保调用无参构造函数
                 Law law = (Law) clazz.getDeclaredConstructor().newInstance();
                 law.ID = lawName;
+                if (dependencies != null) {
+                    List<String> dependenciesArray = new ArrayList<>(List.of(dependencies.split(",")));
+                    for (String dependency : dependenciesArray) {
+                        dependency.strip();
+                    }
+                    dependenciesArray.removeIf(Objects::isNull);
+                    dependenciesArray.removeIf(String::isEmpty);
+                    law.Dependencies = dependenciesArray.toArray(new String[0]);
+                } else {
+                    law.Dependencies = null;
+                }
                 law.prepare();
 
                 laws.put(lawName, law);
@@ -77,7 +88,37 @@ public class LawsManager {
     }
 
     public void enableLaws() {
-        laws.values().forEach(Law::run);
+        for (Law law : laws.values()) {
+            enableLaw(law);
+        }
+
+    }
+    public void enableLaw(Law law) {
+        // 如果法则有 前置 属性，就要先启动前置法则
+        if (law.Dependencies != null) {
+            List<String> missedDependencies = new ArrayList<>();
+            for (String dependency : law.Dependencies) {
+                Law dependencyLaw = laws.get(dependency);
+                if (dependencyLaw == null) {
+                    missedDependencies.add(dependency);
+                }
+            }
+            if (missedDependencies.isEmpty()) {
+                law.run();
+            } else {
+                StringBuilder sb = new StringBuilder();
+                sb.append("由于缺失前置宇宙法则，");
+                for (String buffer : missedDependencies) {
+                    sb.append(buffer);
+                }
+                sb.append("，");
+                sb.append(law.ID);
+                sb.append(" 无法运行");
+                Universe.logger.error(sb.toString());
+            }
+        } else {
+            law.run();
+        }
     }
 
     public void disableLaws() {
