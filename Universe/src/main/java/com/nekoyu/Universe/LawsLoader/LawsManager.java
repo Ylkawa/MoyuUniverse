@@ -70,7 +70,7 @@ public class LawsManager {
                 } else {
                     law.Dependencies = null;
                 }
-                law.prepare();
+                law.ableToRun = law.prepare();
 
                 laws.put(lawName, law);
 
@@ -91,38 +91,48 @@ public class LawsManager {
         for (Law law : laws.values()) {
             enableLaw(law);
         }
-
     }
     public void enableLaw(Law law) {
-        // 如果法则有 前置 属性，就要先启动前置法则
-        if (law.Dependencies != null) {
-            List<String> missedDependencies = new ArrayList<>();
-            for (String dependency : law.Dependencies) {
-                Law dependencyLaw = laws.get(dependency);
-                if (dependencyLaw == null) {
-                    missedDependencies.add(dependency);
+        if (law.ableToRun) {
+            // 如果法则有 前置 属性，就要先启动前置法则
+            if (law.Dependencies != null) {
+                List<String> missedDependencies = new ArrayList<>();
+                for (String dependency : law.Dependencies) {
+                    Law dependencyLaw = laws.get(dependency);
+                    if (dependencyLaw == null) {
+                        missedDependencies.add(dependency);
+                    }
                 }
-            }
-            if (missedDependencies.isEmpty()) {
-                law.run();
+                if (missedDependencies.isEmpty()) {
+                    law.run();
+                } else {
+                    StringBuilder sb = new StringBuilder();
+                    sb.append("由于缺失前置宇宙法则，");
+                    for (String buffer : missedDependencies) {
+                        sb.append(buffer);
+                    }
+                    sb.append("，");
+                    sb.append(law.ID);
+                    sb.append(" 无法运行");
+                    Universe.logger.error(sb.toString());
+                }
             } else {
-                StringBuilder sb = new StringBuilder();
-                sb.append("由于缺失前置宇宙法则，");
-                for (String buffer : missedDependencies) {
-                    sb.append(buffer);
-                }
-                sb.append("，");
-                sb.append(law.ID);
-                sb.append(" 无法运行");
-                Universe.logger.error(sb.toString());
+                law.run();
+                law.isRunning = true;
             }
-        } else {
-            law.run();
         }
     }
 
-    public void disableLaws() {
-        laws.values().forEach(Law::stop);
+    public void stopLaws() {
+        for (Law law : laws.values()) {
+            stopLaw(law);
+        }
     }
 
+    private void stopLaw(Law law) {
+        if (law.isRunning) {
+            law.stop();
+            law.isRunning = false;
+        }
+    }
 }

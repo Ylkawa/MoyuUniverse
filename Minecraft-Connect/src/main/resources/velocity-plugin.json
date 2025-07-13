@@ -1,0 +1,7 @@
+{
+  "id": "minecraftconnectvelocity",
+  "name": "Minecraft-Connect-Velocity",
+  "version": "1.0.0",
+  "main": "com.nekoyu.Universe.MinecraftConnect.MinecraftConnectVelocity",
+  "author": "Huanyue Moyu"
+}

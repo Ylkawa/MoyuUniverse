@@ -3,8 +3,6 @@ package com.nekoyu.MoyuUniverse.Nya.OnebotAdapter;
 import com.google.gson.Gson;
 import com.nekoyu.Universe.API.MessageChannel;
 import com.nekoyu.Universe.API.MessageSession;
-import com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.Request.SendGroupMessage;
-import com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.Request.SendPrivateMessage;
 import com.nekoyu.Universe.Universe;
 import org.java_websocket.client.WebSocketClient;
 import org.java_websocket.handshake.ServerHandshake;
@@ -54,19 +52,19 @@ public class OnebotChannel extends MessageChannel {
     }
 
     private void sendGroupMessage(String id, String message) {
-        SendGroupMessage spm = new SendGroupMessage();
-        spm.user_id = id;
-        spm.message = message;
+        Map<String, String> params = new HashMap<>();
+        params.put("group_id", id);
+        params.put("message", message);
 
-        sendRequest(spm);
+        sendRequest("send_group_msg", params);
     }
 
     private void sendPrivateMessage(String id, String message) {
-        SendPrivateMessage spm = new SendPrivateMessage();
-        spm.user_id = id;
-        spm.message = message;
+        Map<String, String> params = new HashMap<>();
+        params.put("user_id", id);
+        params.put("message", message);
 
-        sendRequest(spm);
+        sendRequest("send_private_msg", params);
     }
 
     @Override
@@ -115,12 +113,22 @@ public class OnebotChannel extends MessageChannel {
     }
 
     @Override
-    public void sendMessage(String message, String sessionId) {
-
+    public void sendMessage(String sessionId, String message) {
+        String[] target = sessionId.split("\\/");
+        switch (target[0]) {
+            case "group":
+                sendGroupMessage(target[1], message);
+            case "private":
+                sendPrivateMessage(target[1], message);
+        }
     }
 
-    private void sendRequest(OBRequest request) {
-        wsConnection.send(new Gson().toJson(request));
+    private void sendRequest(String action, Map params) {
+        OBRequest obr = new OBRequest();
+        obr.action = action;
+        obr.params = params;
+
+        wsConnection.send(new Gson().toJson(obr));
     }
 
     private void reload() {

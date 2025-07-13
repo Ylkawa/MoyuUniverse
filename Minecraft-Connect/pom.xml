@@ -10,7 +10,19 @@
     </parent>
 
     <groupId>com.nekoyu.Universe</groupId>
-    <artifactId>Minecraft-Connect-Universe</artifactId>
+    <artifactId>Minecraft-Connect</artifactId>
+
+    <repositories>
+        <repository>
+            <id>spigot-repo</id>
+            <url>https://hub.spigotmc.org/nexus/content/repositories/snapshots/</url>
+        </repository>
+        <repository>
+            <id>papermc</id>
+            <url>https://repo.papermc.io/repository/maven-public/</url>
+        </repository>
+    </repositories>
+
 
     <properties>
         <maven.compiler.source>17</maven.compiler.source>
@@ -23,6 +35,17 @@
             <groupId>com.nekoyu</groupId>
             <artifactId>Universe</artifactId>
             <version>1.0-SNAPSHOT</version>
+        </dependency>
+        <dependency>
+            <groupId>org.spigotmc</groupId>
+            <artifactId>spigot-api</artifactId>
+            <version>1.18.2-R0.1-20220607.160742-53</version>
+        </dependency>
+        <dependency>
+            <groupId>com.velocitypowered</groupId>
+            <artifactId>velocity-api</artifactId>
+            <version>3.4.0-SNAPSHOT</version>
+            <scope>provided</scope>
         </dependency>
     </dependencies>
 </project>

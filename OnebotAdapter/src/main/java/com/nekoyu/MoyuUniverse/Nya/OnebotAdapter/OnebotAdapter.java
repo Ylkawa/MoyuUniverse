@@ -23,7 +23,7 @@ public class OnebotAdapter extends Law {
     List<OnebotChannel> ocs = new ArrayList<>();
 
     @Override
-    public void prepare() {
+    public boolean prepare() {
         logger.info("正在准备 Onebot 组件");
         // 确保 config/Onebot 文件夹存在
         File configDir = new File("./config/Onebot/");
@@ -38,7 +38,7 @@ public class OnebotAdapter extends Law {
                     logger.error("无法在JAR包中找到默认配置文件 config-template/Onebot.yml");
                     stop();
                     isReady = false;
-                    return;
+                    return false;
                 }
                 // 复制文件
                 Files.copy(in, configFileLoc.toPath(), StandardCopyOption.REPLACE_EXISTING);
@@ -51,7 +51,7 @@ public class OnebotAdapter extends Law {
         } else if (configFileLoc.isDirectory()) { // 这里就不是我们该管的了，抽象
             stop();
             isReady = false;
-            return;
+            return false;
         }
         // 对配置文件模板的存在状况检查完成
         // 开始按照各个配置文件依次加载MessageChannel
@@ -70,7 +70,7 @@ public class OnebotAdapter extends Law {
                             throw new RuntimeException(e);
                         } catch (CFGFileSyntaxException e) {
                             logger.error("配置文件 {} 无效", file.getName());
-                            break;
+                            return false;
                         }
                         OnebotChannel oc = new OnebotChannel();
                         oc.token = cp.getNode("Token").toString();
@@ -88,7 +88,9 @@ public class OnebotAdapter extends Law {
             }
         } else {
             if (!cfgDic.mkdir()) logger.error("默认配置文件夹加载失败");
+            return false;
         }
+        return true;
     }
 
     @Override

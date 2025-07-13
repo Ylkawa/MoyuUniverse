@@ -1,9 +1,10 @@
 package com.nekoyu.Universe.API;
 
+import com.google.common.collect.ArrayListMultimap;
+import com.google.common.collect.Multimap;
 import com.google.gson.Gson;
 import com.google.gson.JsonSyntaxException;
 import com.nekoyu.Universe.LawsLoader.Law;
-import com.nekoyu.Universe.Universe;
 import org.java_websocket.WebSocket;
 import org.java_websocket.handshake.ClientHandshake;
 import org.java_websocket.server.WebSocketServer;
@@ -16,9 +17,11 @@ import java.util.*;
 public class UniverseChannel {
     private WebSocketServer wsServer;
     private int port;
-    private final Map<String, UniverseListener> listeners = new HashMap<>();
+    private final Multimap<String, UniverseListener> listeners = ArrayListMultimap.create();
+    private final Multimap<String, WebSocket> clientGroup = ArrayListMultimap.create();
     private String token = null;
     private final Logger logger = LoggerFactory.getLogger(getClass());
+    private final Map<String, WebSocket> clientList = new HashMap<>();
 
     public void setToken(String token) {
         this.token = token;
@@ -37,22 +40,36 @@ public class UniverseChannel {
             @Override
             public void onOpen(WebSocket webSocket, ClientHandshake clientHandshake) {
                 if (token != null) {
-                    if (!Objects.equals(clientHandshake.getFieldValue("Token"), token)) webSocket.close(400);
-                    return;
+                    if (!Objects.equals(clientHandshake.getFieldValue("Token"), token)) {
+                        webSocket.close(400);
+                        logger.info("拒绝了来自 {} 的连接，因为口令校验不通过", webSocket.getRemoteSocketAddress());
+                        return;
+                    }
+                    clientList.put(clientHandshake.getFieldValue("ID"), webSocket);
+                    clientGroup.put(clientHandshake.getFieldValue("Type"), webSocket);
+                    Map<String, String> attachment = new HashMap<>();
+                    attachment.put("ID", clientHandshake.getFieldValue("ID"));
+                    attachment.put("Type", clientHandshake.getFieldValue("Type"));
+                    webSocket.setAttachment(attachment);
+                    logger.info("{} ({}-{}) 通过口令校验并创建了连接", webSocket.getRemoteSocketAddress(), clientHandshake.getFieldValue("Type"), clientHandshake.getFieldValue("ID"));
                 }
             }
 
             @Override
-            public void onClose(WebSocket webSocket, int i, String s, boolean b) {
-
+            public void onClose(WebSocket conn, int code, String reason, boolean remote) {
+                logger.info("{} 断开了连接 {}: {}", conn.getRemoteSocketAddress(), code, reason);
             }
 
             @Override
             public void onMessage(WebSocket webSocket, String rawContent) {
                 try {
                     UCMessage ucm = new Gson().fromJson(rawContent, UCMessage.class);
-                    if (ucm.target != null && ucm.message != null) {
-                        listeners.get(ucm.target).onMessage(ucm.message);
+                    if (ucm.tag != null && ucm.args != null) {
+                        synchronized (listeners) {
+                            for (UniverseListener listener : listeners.get(ucm.tag)) {
+                                listener.onMessage(( (Map<String, String>) webSocket.getAttachment()).get("ID"), ucm.message, ucm.args);
+                            }
+                        }
                     }
                 } catch (JsonSyntaxException e) {
                     logger.error("{} 发送了一段不符合 JSON 规范的消息", webSocket.getRemoteSocketAddress());
@@ -66,21 +83,21 @@ public class UniverseChannel {
 
             @Override
             public void onStart() {
-                Universe.logger.info("宇宙穿隧加载成功");
+                logger.info("宇宙穿隧加载成功");
             }
         };
+        wsServer.start();
     }
 
-    public void registerListener(Law law) {
-        if (law instanceof UniverseListener) listeners.put(law.ID, (UniverseListener) law);
+    public void registerListener(String tag, Law law) {
+        synchronized (listeners) {
+            if (law instanceof UniverseListener) listeners.put(tag, (UniverseListener) law);
+        }
     }
 
-    public void unRegisterListener(Law law) {
-        if (law instanceof UniverseListener) listeners.remove(law.ID);
-    }
-
-    private class UCMessage {
-        String target;
-        Map message;
+    public void unRegisterListener(String tag, Law law) {
+        synchronized (listeners) {
+            if (law instanceof UniverseListener) listeners.remove(tag, law);
+        }
     }
 }

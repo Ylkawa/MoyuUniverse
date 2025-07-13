@@ -1,0 +1,3 @@
+name: MinecraftConnectSpigot
+main: com.nekoyu.Universe.MinecraftConnect.MinecraftConnectSpigot
+version: 1.0-SNAPSHOT

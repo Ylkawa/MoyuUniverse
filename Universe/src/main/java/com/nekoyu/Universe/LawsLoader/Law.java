@@ -8,11 +8,12 @@ public abstract class Law {
 
     public String ID;
     public String[] Dependencies;
+    public boolean ableToRun;
     public boolean isRunning;
 
     public Law() {}
 
-    public abstract void prepare();
+    public abstract boolean prepare();
 
     public abstract void run();
 
