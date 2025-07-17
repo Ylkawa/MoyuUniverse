@@ -1,7 +1,7 @@
 package com.nekoyu.Universe.MinecraftConnect;
 
 import com.google.gson.Gson;
-import com.nekoyu.Universe.API.UCMessage;
+import com.nekoyu.Universe.API.UniverseChannelMessage;
 import com.velocitypowered.api.event.Subscribe;
 import com.google.inject.Inject;
 import com.velocitypowered.api.event.connection.DisconnectEvent;
@@ -156,7 +156,7 @@ public class MinecraftConnectVelocity {
         Map<String, String> messageBody = new HashMap<>();
         messageBody.put("Joiner", event.getPlayer().getUsername());
 
-        UCMessage ucm = new UCMessage();
+        UniverseChannelMessage ucm = new UniverseChannelMessage();
         ucm.tag = "Minecraft-Connect";
         ucm.args = messageBody;
         ucm.message = "player_join_game";
@@ -169,7 +169,7 @@ public class MinecraftConnectVelocity {
         Map<String, String> messageBody = new HashMap<>();
         messageBody.put("Leaver", event.getPlayer().getUsername());
 
-        UCMessage ucm = new UCMessage();
+        UniverseChannelMessage ucm = new UniverseChannelMessage();
         ucm.tag = "Minecraft-Connect";
         ucm.args = messageBody;
         ucm.message = "player_leave_game";

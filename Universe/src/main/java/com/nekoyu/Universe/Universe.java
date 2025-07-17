@@ -1,6 +1,6 @@
 package com.nekoyu.Universe;
 
-import com.nekoyu.Universe.API.MessageChannel;
+import com.nekoyu.Universe.API.MessageChannel.MessageChannelManager;
 import com.nekoyu.Universe.API.UniverseChannel;
 import com.nekoyu.Universe.ConfigureProcessor.CFGFileSyntaxException;
 import com.nekoyu.Universe.ConfigureProcessor.ConfigureProcessor;
@@ -10,15 +10,13 @@ import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.io.IOException;
-import java.util.HashMap;
-import java.util.Map;
 import java.util.regex.Pattern;
 
 public class Universe {
     static public Logger logger = LoggerFactory.getLogger(Universe.class);
     static public ConfigureProcessor PublicConfig = new ConfigureProcessor("config.yml");
     static public LawsManager LawsManager;
-    static public Map<String, MessageChannel> MessageChannels = new HashMap<>();
+    static public MessageChannelManager MessageChannelManager = new MessageChannelManager();
     static public UniverseChannel UniverseChannel = new UniverseChannel(2576);
 
     public static void main(String[] args) {

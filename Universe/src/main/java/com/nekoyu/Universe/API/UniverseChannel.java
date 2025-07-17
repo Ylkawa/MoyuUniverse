@@ -63,12 +63,10 @@ public class UniverseChannel {
             @Override
             public void onMessage(WebSocket webSocket, String rawContent) {
                 try {
-                    UCMessage ucm = new Gson().fromJson(rawContent, UCMessage.class);
+                    UniverseChannelMessage ucm = new Gson().fromJson(rawContent, UniverseChannelMessage.class);
                     if (ucm.tag != null && ucm.args != null) {
-                        synchronized (listeners) {
-                            for (UniverseListener listener : listeners.get(ucm.tag)) {
-                                listener.onMessage(( (Map<String, String>) webSocket.getAttachment()).get("ID"), ucm.message, ucm.args);
-                            }
+                        for (UniverseListener listener : listeners.get(ucm.tag)) {
+                            listener.onMessage(( (Map<String, String>) webSocket.getAttachment()).get("ID"), ucm.message, ucm.args);
                         }
                     }
                 } catch (JsonSyntaxException e) {

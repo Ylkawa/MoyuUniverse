@@ -7,7 +7,7 @@ public class OBRequest {
 
     protected String action;
     protected Map params = new HashMap<>();
-    String echo;
+    String echo = null;
 
     public OBRequest() {}
 

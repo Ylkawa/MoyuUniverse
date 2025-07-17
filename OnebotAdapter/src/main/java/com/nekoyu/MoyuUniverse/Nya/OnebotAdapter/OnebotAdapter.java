@@ -72,9 +72,8 @@ public class OnebotAdapter extends Law {
                             logger.error("配置文件 {} 无效", file.getName());
                             return false;
                         }
-                        OnebotChannel oc = new OnebotChannel();
+                        OnebotChannel oc = new OnebotChannel(cp.getNode("ID").toString());
                         oc.token = cp.getNode("Token").toString();
-                        oc.ID = cp.getNode("ID").toString();
                         try {
                             oc.uri = new URI(cp.getNode("URI").toString());
                         } catch (URISyntaxException e) {
