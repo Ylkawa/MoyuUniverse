@@ -131,6 +131,11 @@ public class MinecraftConnectVelocity {
         wsClient = new WebSocketClient(universeURI, header) {
             @Override
             public void onOpen(ServerHandshake serverHandshake) {
+                // UniverseChannelMessage ucm = new UniverseChannelMessage();
+                // ucm.tag = "Universe";
+                // ucm.message = "RegisterListener";
+                // ucm.args.put("Tag", "Minecraft-Connect");
+                // wsClient.send(new Gson().toJson(ucm));
                 logger.info("已与宇宙建立连结");
             }
 
@@ -140,8 +145,8 @@ public class MinecraftConnectVelocity {
             }
 
             @Override
-            public void onClose(int i, String s, boolean b) {
-                logger.warn("与宇宙的连接断开");
+            public void onClose(int code, String reason, boolean remote) {
+                if (code != -1) logger.warn("与宇宙的连接断开 {}", code);
             }
 
             @Override

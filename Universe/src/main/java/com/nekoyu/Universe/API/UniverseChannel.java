@@ -4,7 +4,6 @@ import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.Multimap;
 import com.google.gson.Gson;
 import com.google.gson.JsonSyntaxException;
-import com.nekoyu.Universe.LawsLoader.Law;
 import org.java_websocket.WebSocket;
 import org.java_websocket.handshake.ClientHandshake;
 import org.java_websocket.server.WebSocketServer;
@@ -17,7 +16,8 @@ import java.util.*;
 public class UniverseChannel {
     private WebSocketServer wsServer;
     private int port;
-    private final Multimap<String, UniverseListener> listeners = ArrayListMultimap.create();
+    private final Multimap<String, UniverseListener> internalListeners = ArrayListMultimap.create();
+    private final Multimap<String, String> externalListeners = ArrayListMultimap.create();
     private final Multimap<String, WebSocket> clientGroup = ArrayListMultimap.create();
     private String token = null;
     private final Logger logger = LoggerFactory.getLogger(getClass());
@@ -36,12 +36,23 @@ public class UniverseChannel {
     }
 
     public void load() {
+        registerListener("Universe", new UniverseListener() {
+            @Override
+            public void onMessage(String ID, String message, Map args) {
+                switch (message) {
+                    case "RegisterListener":
+                        String tag = (String) args.get("Tag");
+                        if (tag == null) return;
+                        externalListeners.put(tag, ID);
+                }
+            }
+        });
         wsServer = new WebSocketServer(new InetSocketAddress(port)) {
             @Override
             public void onOpen(WebSocket webSocket, ClientHandshake clientHandshake) {
                 if (token != null) {
                     if (!Objects.equals(clientHandshake.getFieldValue("Token"), token)) {
-                        webSocket.close(400);
+                        webSocket.close();
                         logger.info("拒绝了来自 {} 的连接，因为口令校验不通过", webSocket.getRemoteSocketAddress());
                         return;
                     }
@@ -57,6 +68,7 @@ public class UniverseChannel {
 
             @Override
             public void onClose(WebSocket conn, int code, String reason, boolean remote) {
+                externalListeners.values().remove(((HashMap) conn.getAttachment()).get("ID"));
                 logger.info("{} 断开了连接 {}: {}", conn.getRemoteSocketAddress(), code, reason);
             }
 
@@ -65,7 +77,7 @@ public class UniverseChannel {
                 try {
                     UniverseChannelMessage ucm = new Gson().fromJson(rawContent, UniverseChannelMessage.class);
                     if (ucm.tag != null && ucm.args != null) {
-                        for (UniverseListener listener : listeners.get(ucm.tag)) {
+                        for (UniverseListener listener : internalListeners.get(ucm.tag)) {
                             listener.onMessage(( (Map<String, String>) webSocket.getAttachment()).get("ID"), ucm.message, ucm.args);
                         }
                     }
@@ -87,15 +99,19 @@ public class UniverseChannel {
         wsServer.start();
     }
 
-    public void registerListener(String tag, Law law) {
-        synchronized (listeners) {
-            if (law instanceof UniverseListener) listeners.put(tag, (UniverseListener) law);
-        }
+    public void registerListener(String tag, UniverseListener universeListener) {
+        internalListeners.put(tag, universeListener);
     }
 
-    public void unRegisterListener(String tag, Law law) {
-        synchronized (listeners) {
-            if (law instanceof UniverseListener) listeners.remove(tag, law);
+    public void unRegisterListener(String tag, UniverseListener universeListener) {
+        //synchronized (listeners) {
+        internalListeners.remove(tag, universeListener);
+        //}
+    }
+
+    public void broadcast(String tag, UniverseChannelMessage ucm) {
+        for (String id : externalListeners.get(tag)) {
+            clientList.get(id).send(new Gson().toJson(ucm));
         }
     }
 }

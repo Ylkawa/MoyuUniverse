@@ -23,6 +23,10 @@ public class MessageChannelManager {
     }
 
     public void onMessage(MCMessage mcm) {
-
+        if (mcm.sessionId != null && !mcm.sessionId.isEmpty()) {
+            for (MessageChannelListener mcl : sessionListeners.get(mcm.sessionId)) {
+                mcl.onMessage(mcm);
+            }
+        }
     }
 }

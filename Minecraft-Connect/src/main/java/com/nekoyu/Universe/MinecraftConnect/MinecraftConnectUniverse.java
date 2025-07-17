@@ -2,7 +2,10 @@ package com.nekoyu.Universe.MinecraftConnect;
 
 import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.Multimap;
+import com.nekoyu.Universe.API.MessageChannel.MCMessage;
 import com.nekoyu.Universe.API.MessageChannel.MessageChannel;
+import com.nekoyu.Universe.API.MessageChannel.MessageChannelListener;
+import com.nekoyu.Universe.API.UniverseChannelMessage;
 import com.nekoyu.Universe.API.UniverseListener;
 import com.nekoyu.Universe.LawsLoader.Law;
 import com.nekoyu.Universe.Universe;
@@ -45,7 +48,17 @@ public class MinecraftConnectUniverse extends Law implements UniverseListener {
                 } else if (Pattern.matches("[a-zA-Z0-9]+:[a-zA-Z0-9]+->[a-zA-Z0-9/]+", value)) {
                     String[] args = value.split("->");
                     String[] arg1 = args[0].split(":");
-                    forwardingStructureToServer.put(arg1[0].strip() + ":" + arg1[1].strip(), args[1].strip());
+                    Universe.MessageChannelManager.listenToSession(arg1[0].strip() + ":" + arg1[1].strip(), new MessageChannelListener() {
+                        String target = args[1].strip();
+                        @Override
+                        public void onMessage(MCMessage mcm) {
+                            UniverseChannelMessage ucm = new UniverseChannelMessage();
+                            ucm.tag = "ForwardChat";
+                            ucm.message = mcm.message;
+
+                            Universe.UniverseChannel.broadcast("Minecraft-Connect", ucm);
+                        }
+                    });
                 } else {
                     logger.warn("{} 行的定义有误，正确示例：\n" +
                             "[ServerID] -> [MessageChannelID]:[SessionID]\n" +
