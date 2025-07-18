@@ -68,7 +68,7 @@ public class UniverseChannel {
 
             @Override
             public void onClose(WebSocket conn, int code, String reason, boolean remote) {
-                externalListeners.values().remove(((HashMap) conn.getAttachment()).get("ID"));
+                externalListeners.entries().removeIf(entry -> entry.getValue().equals(((HashMap)conn.getAttachment()).get("ID").toString()));
                 logger.info("{} 断开了连接 {}: {}", conn.getRemoteSocketAddress(), code, reason);
             }
 

@@ -45,20 +45,10 @@ public class MinecraftConnectUniverse extends Law implements UniverseListener {
                     String[] args = value.split("->");
                     String[] arg1 = args[1].split(":");
                     forwardingStructureToChannel.put(args[0].strip(), arg1[0].strip() + ":" + arg1[1].strip());
-                } else if (Pattern.matches("[a-zA-Z0-9]+:[a-zA-Z0-9]+->[a-zA-Z0-9/]+", value)) {
+                } else if (Pattern.matches("[a-zA-Z0-9]+:[a-zA-Z0-9/]+->[a-zA-Z0-9]+", value)) {
                     String[] args = value.split("->");
                     String[] arg1 = args[0].split(":");
-                    Universe.MessageChannelManager.listenToSession(arg1[0].strip() + ":" + arg1[1].strip(), new MessageChannelListener() {
-                        String target = args[1].strip();
-                        @Override
-                        public void onMessage(MCMessage mcm) {
-                            UniverseChannelMessage ucm = new UniverseChannelMessage();
-                            ucm.tag = "ForwardChat";
-                            ucm.message = mcm.message;
-
-                            Universe.UniverseChannel.broadcast("Minecraft-Connect", ucm);
-                        }
-                    });
+                    forwardingStructureToServer.put(arg1[0].strip() + ":" + arg1[1].strip(), args[1].strip());
                 } else {
                     logger.warn("{} 行的定义有误，正确示例：\n" +
                             "[ServerID] -> [MessageChannelID]:[SessionID]\n" +
@@ -77,7 +67,18 @@ public class MinecraftConnectUniverse extends Law implements UniverseListener {
     public void run() {
         Universe.UniverseChannel.registerListener("Minecraft-Connect", this);
         for (Map.Entry<String, String> entry : forwardingStructureToServer.entries()) {
+            Universe.MessageChannelManager.listenToSession(entry.getKey(), new MessageChannelListener() {
+                String target = entry.getValue();
+                @Override
+                public void onMessage(MCMessage mcm) {
+                    UniverseChannelMessage ucm = new UniverseChannelMessage();
+                    ucm.message = "ForwardChat";
+                    ucm.args.put("sender", mcm.sender.getNickname());
+                    ucm.args.put("message", mcm.message);
 
+                    Universe.UniverseChannel.broadcast(target, ucm);
+                }
+            });
         }
     }
 

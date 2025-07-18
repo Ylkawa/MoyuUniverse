@@ -1,4 +1,4 @@
 name: Minecraft-Connect-Spigot
 main: com.nekoyu.Universe.MinecraftConnect.MinecraftConnectSpigot
 version: 1.0-SNAPSHOT
-api-version: 1.18.2
+api-version: 1.20

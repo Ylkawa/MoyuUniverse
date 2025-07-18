@@ -18,8 +18,8 @@ public class MessageChannelManager {
         return MessageChannels.get(id);
     }
 
-    public void listenToSession(String id, MessageChannelListener mcl) {
-        sessionListeners.put(id, mcl);
+    public void listenToSession(String sessionId, MessageChannelListener mcl) {
+        sessionListeners.put(sessionId, mcl);
     }
 
     public void onMessage(MCMessage mcm) {

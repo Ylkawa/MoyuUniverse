@@ -93,15 +93,15 @@ public class OnebotChannel extends MessageChannel {
                     if (content.getAsJsonObject().get("post_type") != null) {
                         switch (content.getAsJsonObject().get("post_type").getAsString()) {
                             case "message":
-                                Message message = gson.fromJson(s, com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.event.Message.class);
-                                switch (message.sub_type) {
+                                Message message = gson.fromJson(s, Message.class);
+                                switch (message.message_type) {
                                     case "group":
                                         StringBuilder sessionId = new StringBuilder();
                                         sessionId.append(ID);
                                         sessionId.append(":group/");
                                         sessionId.append(message.group_id);
                                         MCMessage mcm = new MCMessage();
-                                        mcm.message = message.message;
+                                        mcm.message = message.raw_message;
                                         mcm.receiver.setId(String.valueOf(message.self_id));
                                         mcm.receiver.setNickname(nickname);
                                         mcm.receiver.setPlatform("QQ");

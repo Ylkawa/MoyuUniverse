@@ -3,6 +3,7 @@ package com.nekoyu.Universe.MinecraftConnect;
 import com.google.gson.Gson;
 import com.nekoyu.Universe.API.UniverseChannelMessage;
 import org.bukkit.Bukkit;
+import org.bukkit.ChatColor;
 import org.bukkit.plugin.java.JavaPlugin;
 import org.java_websocket.client.WebSocketClient;
 import org.java_websocket.handshake.ServerHandshake;
@@ -88,12 +89,15 @@ public class MinecraftConnectSpigot extends JavaPlugin {
                 webSocketClient.send(gson.toJson(ucm));
                 ucm.args.replace("Tag", "Minecraft-Connect");
                 webSocketClient.send(gson.toJson(ucm));
+                ucm.args.replace("Tag", ID);
+                webSocketClient.send(gson.toJson(ucm));
                 getLogger().info("已与宇宙建立连结");
             }
 
             @Override
             public void onMessage(String s) {
-
+                UniverseChannelMessage ucm = new Gson().fromJson(s, UniverseChannelMessage.class);
+                Bukkit.broadcastMessage(ChatColor.GRAY + "[" + ucm.args.get("sender") + "]: " + ucm.args.get("message"));
             }
 
             @Override
