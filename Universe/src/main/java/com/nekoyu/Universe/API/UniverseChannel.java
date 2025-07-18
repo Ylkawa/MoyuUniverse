@@ -36,15 +36,12 @@ public class UniverseChannel {
     }
 
     public void load() {
-        registerListener("Universe", new UniverseListener() {
-            @Override
-            public void onMessage(String ID, String message, Map args) {
-                switch (message) {
-                    case "RegisterListener":
-                        String tag = (String) args.get("Tag");
-                        if (tag == null) return;
-                        externalListeners.put(tag, ID);
-                }
+        registerListener("Universe", (ID, message, args) -> {
+            switch (message) {
+                case "RegisterListener":
+                    String tag = (String) args.get("Tag");
+                    if (tag == null) return;
+                    externalListeners.put(tag, ID);
             }
         });
         wsServer = new WebSocketServer(new InetSocketAddress(port)) {
