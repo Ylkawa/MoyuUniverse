@@ -12,6 +12,7 @@ import java.io.File;
 import java.io.IOException;
 import java.util.regex.Pattern;
 
+/** >- 末屿宇宙 -< */
 public class Universe {
     static public Logger logger = LoggerFactory.getLogger(Universe.class);
     static public ConfigureProcessor PublicConfig = new ConfigureProcessor("config.yml");
@@ -44,7 +45,7 @@ public class Universe {
         PublicConfig.setAllowAutoCreate(true);
         try {
             PublicConfig.read();
-        } catch (CFGFileSyntaxException e) {
+        } catch (CFGFileSyntaxException e) { // 处理config格式有误的错误
             logger.error(e.getMessage());
             throw new RuntimeException(e);
         } catch (IOException e) {
@@ -58,9 +59,9 @@ public class Universe {
                 {"UniverseChannel.Token", "^.+$", ""},
                 {"UniverseChannel.Enable", "^(true|false)$", "true"}
         }) {
-            if (check.length == 2) {
+            if (check.length == 2) { // length 是 两位长度，则没有携带默认值
                 PublicConfig.requireNode(check[0], Pattern.compile(check[1]));
-            } else {
+            } else { // 否则分配默认值
                 PublicConfig.requireNode(check[0], Pattern.compile(check[1]), check[2]);
             }
         }

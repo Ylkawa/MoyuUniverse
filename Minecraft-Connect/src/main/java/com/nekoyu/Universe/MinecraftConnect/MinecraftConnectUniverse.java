@@ -15,6 +15,7 @@ import java.io.*;
 import java.util.*;
 import java.util.regex.Pattern;
 
+@SuppressWarnings("unused")
 public class MinecraftConnectUniverse extends Law implements UniverseListener {
     Multimap<String, String> forwardingStructureToChannel = ArrayListMultimap.create();
     Multimap<String, String> forwardingStructureToServer = ArrayListMultimap.create();

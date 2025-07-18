@@ -41,6 +41,7 @@ public class ConfigureProcessor {
         this.configureFile = file;
     }
 
+    /** 从文件读出配置 */
     public void read() throws CFGFileSyntaxException, IOException {
         if (configureFile.isFile()) { // 将军说配置文件必须是文件
             String content;
@@ -73,6 +74,7 @@ public class ConfigureProcessor {
 
             }
 
+            // 配置文件既无法被 Gson 读出，也无法被 Yaml 读出
             throw new CFGFileSyntaxException("配置文件格式不正确");
         } else { // 将军问配置文件不是文件怎么办
             if (!configureFile.exists()) {
@@ -83,6 +85,7 @@ public class ConfigureProcessor {
         }
     }
 
+    /** 获取节点的值 */
     public Object getNode(String node){
         String[] keys = node.split("\\.");
         Map<String, Object> currentMap = configure;
@@ -104,6 +107,7 @@ public class ConfigureProcessor {
         return value;
     }
 
+    /** 设置节点的值 */
     public void setNode(String node, Object value) {
         String[] keys = node.split("\\.");
         Map<String, Object> currentMap = configure;
@@ -123,10 +127,12 @@ public class ConfigureProcessor {
         currentMap.put(keys[keys.length - 1], value);
     }
 
+    /** 定义必须的节点 */
     public void requireNode(String node, Pattern pattern) {
         requireNodes.add(new Checker(node, pattern));
     }
 
+    /** 定义必须的节点 同时指定默认值 */
     public void requireNode(String node, Pattern pattern, String defaultValue) {
         requireNodes.add(new Checker(node, pattern, defaultValue));
     }
@@ -162,6 +168,7 @@ public class ConfigureProcessor {
         return errors;
     }
 
+    /** 写入配置文件 */
     private void write() {
         System.out.println(type);
         try {
