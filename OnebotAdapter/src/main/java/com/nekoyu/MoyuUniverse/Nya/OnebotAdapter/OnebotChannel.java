@@ -26,7 +26,6 @@ public class OnebotChannel extends MessageChannel {
     Logger logger = LoggerFactory.getLogger(this.getClass());
     URI uri;
     String token;
-    int falls = 0;
     Map<String, Callback> syncActions = new HashMap<>();
     String nickname = null;
     long qqId;
@@ -69,7 +68,6 @@ public class OnebotChannel extends MessageChannel {
             @Override
             public void onOpen(ServerHandshake serverHandshake) {
                 logger.info("{} 连接成功", ID);
-                falls = 0;
 
                 syncAction(new OBRequest("get_login_info"), response -> {
                     JsonObject responseData = response.data.getAsJsonObject();
@@ -126,15 +124,12 @@ public class OnebotChannel extends MessageChannel {
 
             @Override
             public void onClose(int i, String s, boolean b) {
-                falls ++;
-                if (falls <= 10) {
-                    try {
-                        Thread.sleep(10000);
-                    } catch (InterruptedException ex) {
-                        throw new RuntimeException(ex);
-                    }
-                    reload();
+                try {
+                    Thread.sleep(10000);
+                } catch (InterruptedException ex) {
+                    throw new RuntimeException(ex);
                 }
+                reload();
             }
 
             @Override
