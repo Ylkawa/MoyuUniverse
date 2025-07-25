@@ -39,14 +39,8 @@ public class OnebotChannel extends MessageChannel {
     public MessageSession getSession(String sessionId) {
         String[] sessionParam = sessionId.split("/", 2);
         return switch (sessionParam[0]) {
-            case "private" -> {
-                OnebotSession private_session = message -> sendPrivateMessage(sessionParam[1], message);
-                yield private_session;
-            }
-            case "group" -> {
-                OnebotSession group_session = message -> sendGroupMessage(sessionParam[1], message);
-                yield group_session;
-            }
+            case "private" -> message -> sendPrivateMessage(sessionParam[1], message);
+            case "group" -> message -> sendGroupMessage(sessionParam[1], message);
             default -> null;
         };
     }
@@ -132,12 +126,6 @@ public class OnebotChannel extends MessageChannel {
 
             @Override
             public void onClose(int i, String s, boolean b) {
-                reload();
-            }
-
-            @Override
-            public void onError(Exception e) {
-                logger.error(e.getMessage());
                 falls ++;
                 if (falls <= 10) {
                     try {
@@ -147,6 +135,11 @@ public class OnebotChannel extends MessageChannel {
                     }
                     reload();
                 }
+            }
+
+            @Override
+            public void onError(Exception e) {
+                logger.error(e.getMessage());
             }
         };
         wsConnection.connect();
