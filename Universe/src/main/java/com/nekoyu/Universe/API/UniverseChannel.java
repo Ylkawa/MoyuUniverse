@@ -36,12 +36,13 @@ public class UniverseChannel {
     }
 
     public void load() {
-        registerListener("Universe", (ID, message, args) -> {
+        registerListener("Universe", (planet, message, args) -> {
             switch (message) {
                 case "RegisterListener":
                     String tag = (String) args.get("Tag");
                     if (tag == null) return;
-                    externalListeners.put(tag, ID);
+                    externalListeners.put(tag, planet.getID());
+                    logger.info("{} 注册了远程消息监听", planet.getID());
             }
         });
         wsServer = new WebSocketServer(new InetSocketAddress(port)) {
@@ -72,11 +73,18 @@ public class UniverseChannel {
             @Override
             public void onMessage(WebSocket webSocket, String rawContent) {
                 try {
+                    var sender = new Planet();
+                    sender.ID = (String) ((HashMap) webSocket.getAttachment()).get("ID");
+                    sender.Type = (String) ((HashMap) webSocket.getAttachment()).get("Type");
+                    sender.webSocket = webSocket;
+                    sender.local = false;
                     UniverseChannelMessage ucm = new Gson().fromJson(rawContent, UniverseChannelMessage.class);
                     if (ucm.tag != null && ucm.args != null) {
                         for (UniverseListener listener : internalListeners.get(ucm.tag)) {
-                            listener.onMessage(( (Map<String, String>) webSocket.getAttachment()).get("ID"), ucm.message, ucm.args);
+                            listener.onMessage(sender, ucm.message, ucm.args);
                         }
+                    } else {
+                        logger.warn("{} 发送的消息不规范，不会被处理", sender.ID);
                     }
                 } catch (JsonSyntaxException e) {
                     logger.error("{} 发送了一段不符合 JSON 规范的消息", webSocket.getRemoteSocketAddress());

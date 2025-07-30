@@ -10,6 +10,9 @@ import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.Objects;
 import java.util.regex.Pattern;
 
 /** >- 末屿宇宙 -< */
@@ -19,10 +22,13 @@ public class Universe {
     static public LawsManager LawsManager;
     static public MessageChannelManager MessageChannelManager = new MessageChannelManager();
     static public UniverseChannel UniverseChannel = new UniverseChannel(2576);
+    static public Map<String, Object> Providers = new HashMap<>();
 
     public static void main(String[] args) {
 
-        File[] necessaryDictionaries = {new File("./config/"), new File("./laws/")};
+        File lawsDir = new File("./laws/");
+        File configsDir = new File("./config/");
+        File[] necessaryDictionaries = {lawsDir, configsDir};
         for (File necessaryDictionary : necessaryDictionaries) {
             if (!necessaryDictionary.exists()) {
                 necessaryDictionary.mkdir();
@@ -32,7 +38,6 @@ public class Universe {
             }
         }
 
-        File lawsDir = new File("laws/");
         if (lawsDir.exists()) {
             if (!lawsDir.isDirectory()) {
                 logger.warn("无法加载宇宙法则，因为laws路径被文件占用");

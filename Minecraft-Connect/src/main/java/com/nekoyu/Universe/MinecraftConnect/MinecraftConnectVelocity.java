@@ -116,6 +116,11 @@ public class MinecraftConnectVelocity {
                     if (wsClient.isClosed()){
                         newWebsocketClient();
                         wsClient.connect();
+                    } else {
+                        var statusUpload = new UniverseChannelMessage();
+                        statusUpload.tag = "Minecraft-Connect";
+                        statusUpload.message = "StatusUpload";
+                        statusUpload.args.put("Players", velocity.getAllPlayers().toArray());
                     }
                 })
                 .delay(10, TimeUnit.SECONDS) // 延迟1秒后第一次执行
@@ -131,11 +136,11 @@ public class MinecraftConnectVelocity {
         wsClient = new WebSocketClient(universeURI, header) {
             @Override
             public void onOpen(ServerHandshake serverHandshake) {
-                // UniverseChannelMessage ucm = new UniverseChannelMessage();
-                // ucm.tag = "Universe";
-                // ucm.message = "RegisterListener";
-                // ucm.args.put("Tag", "Minecraft-Connect");
-                // wsClient.send(new Gson().toJson(ucm));
+                UniverseChannelMessage ucm = new UniverseChannelMessage();
+                ucm.tag = "Universe";
+                ucm.message = "RegisterListener";
+                ucm.args.put("Tag", "Minecraft-Connect");
+                wsClient.send(new Gson().toJson(ucm));
                 logger.info("已与宇宙建立连结");
             }
 

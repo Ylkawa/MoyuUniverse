@@ -21,6 +21,11 @@ public class ConfigureProcessor {
     int type = 0;
     private boolean allowAutoCreate = false;
 
+    public ConfigureProcessor(String uri, boolean allowAutoCreate) {
+        setURI(uri);
+        this.allowAutoCreate = allowAutoCreate;
+    }
+
     public boolean isAllowAutoCreate() {
         return allowAutoCreate;
     }

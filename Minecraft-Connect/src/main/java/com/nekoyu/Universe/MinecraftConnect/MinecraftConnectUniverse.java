@@ -5,6 +5,7 @@ import com.google.common.collect.Multimap;
 import com.nekoyu.Universe.API.MessageChannel.MCMessage;
 import com.nekoyu.Universe.API.MessageChannel.MessageChannel;
 import com.nekoyu.Universe.API.MessageChannel.MessageChannelListener;
+import com.nekoyu.Universe.API.Planet;
 import com.nekoyu.Universe.API.UniverseChannelMessage;
 import com.nekoyu.Universe.API.UniverseListener;
 import com.nekoyu.Universe.LawsLoader.Law;
@@ -89,18 +90,22 @@ public class MinecraftConnectUniverse extends Law implements UniverseListener {
     }
 
     @Override
-    public void onMessage(String id, String message, Map args) {
-        Collection<String> defineOfForward = forwardingStructureToChannel.get(id);
+    public void onMessage(Planet planet, String message, Map args) {
+        Collection<String> defineOfForward = forwardingStructureToChannel.get(planet.getID());
         switch (message) {
+            case "StatusUpload":
+                switch (planet.getType()) {
+                    case "":
+                }
             case "player_join_game":
                 if (defineOfForward.isEmpty()) {
-                    logger.warn("没有为 {} 定义有效的转发规则", id);
+                    logger.warn("没有为 {} 定义有效的转发规则", planet.getID());
                 }
                 for (String value : defineOfForward) {
                     String[] target = value.split(":");
                     MessageChannel mc = Universe.MessageChannelManager.getChannel(target[0]);
                     if (mc == null) {
-                        logger.warn("为 {} 定义的消息通道不存在，转发失败", id);
+                        logger.warn("为 {} 定义的消息通道不存在，转发失败", planet.getID());
                         return;
                     }
                     mc.sendMessage(target[1], args.get("Joiner") + " 加入了服务器");
@@ -108,13 +113,13 @@ public class MinecraftConnectUniverse extends Law implements UniverseListener {
                 break;
             case "player_leave_game":
                 if (defineOfForward.isEmpty()) {
-                    logger.warn("没有为 {} 定义有效的转发规则", id);
+                    logger.warn("没有为 {} 定义有效的转发规则", planet.getID());
                 }
                 for (String value : defineOfForward) {
                     String[] target = value.split(":");
                     MessageChannel mc = Universe.MessageChannelManager.getChannel(target[0]);
                     if (mc == null) {
-                        logger.warn("为 {} 定义的消息通道不存在，转发失败", id);
+                        logger.warn("为 {} 定义的消息通道不存在，转发失败", planet.getID());
                         return;
                     }
                     mc.sendMessage(target[1], args.get("Leaver") + " 退出了服务器");

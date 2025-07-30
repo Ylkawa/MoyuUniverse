@@ -171,12 +171,22 @@ public class OnebotChannel extends MessageChannel {
         logger.info("{} 已重载", ID);
     }
 
+    /**
+     * 用于直接发送不需要处理结果的请求
+     * 如果需要处理请求的结果，请改用 syncAction 方法
+     * @param obr OnebotRequest
+     */
     private void action(OBRequest obr) {
         wsConnection.send(new Gson().toJson(obr));
     }
 
+    /**
+     * 此方法用于发送需要处理结果的请求，请求结果交由 Callback 对象中定义的代码处理
+     * @param obr OnebotRequest
+     * @param callback 回调函数
+     */
     private void syncAction(OBRequest obr, Callback callback) {
-        UUID uuid = UUID.randomUUID();
+        UUID uuid = UUID.randomUUID(); // 实现方法非常简单，发过去一个唯一的文本字符串，然后 Onebot实现端 把响应发回来的时候依照它原封不动发回来的字符串匹配回对应的回调函数
         obr.echo = uuid.toString();
         syncActions.put(obr.echo, callback);
         wsConnection.send(new Gson().toJson(obr));
