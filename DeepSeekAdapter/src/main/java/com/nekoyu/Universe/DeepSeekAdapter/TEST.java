@@ -5,7 +5,7 @@ import okhttp3.*;
 import java.io.IOException;
 
 public class TEST {
-    Assistant dsa = new Assistant(new DeepSeekChannel("","",""));
+    Assistant dsa = new Assistant(new DeepSeekChannel("","",""), "deepseek-chat");
     public void d() {
         dsa.addFunction(new DeepSeekFunction("", "", new DeepSeekFunction.CallbackFunction() {
             @Override

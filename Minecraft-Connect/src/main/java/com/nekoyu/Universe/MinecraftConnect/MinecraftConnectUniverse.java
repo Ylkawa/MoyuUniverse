@@ -43,11 +43,11 @@ public class MinecraftConnectUniverse extends Law implements UniverseListener {
             }
             // 建立转发结构映射
             for (String value : forward) {
-                if (Pattern.matches("[a-zA-Z0-9]+->[a-zA-Z0-9]+:[a-zA-Z0-9/]+", value)) {
+                if (Pattern.matches("^[a-zA-Z0-9]+->[a-zA-Z0-9]+:[a-zA-Z0-9/]+$", value)) {
                     String[] args = value.split("->");
                     String[] arg1 = args[1].split(":");
                     forwardingStructureToChannel.put(args[0].strip(), arg1[0].strip() + ":" + arg1[1].strip());
-                } else if (Pattern.matches("[a-zA-Z0-9]+:[a-zA-Z0-9/]+->[a-zA-Z0-9]+", value)) {
+                } else if (Pattern.matches("^[a-zA-Z0-9]+:[a-zA-Z0-9/]+->[a-zA-Z0-9]+$", value)) {
                     String[] args = value.split("->");
                     String[] arg1 = args[0].split(":");
                     forwardingStructureToServer.put(arg1[0].strip() + ":" + arg1[1].strip(), args[1].strip());

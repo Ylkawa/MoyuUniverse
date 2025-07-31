@@ -46,6 +46,11 @@ public class ConfigureProcessor {
         this.configureFile = file;
     }
 
+    public ConfigureProcessor(File file, boolean allowAutoCreate) {
+        this.configureFile = file;
+        this.allowAutoCreate = allowAutoCreate;
+    }
+
     /** 从文件读出配置 */
     public void read() throws CFGFileSyntaxException, IOException {
         if (configureFile.isFile()) { // 将军说配置文件必须是文件
@@ -133,13 +138,13 @@ public class ConfigureProcessor {
     }
 
     /** 定义必须的节点 */
-    public void requireNode(String node, Pattern pattern) {
-        requireNodes.add(new Checker(node, pattern));
+    public void requireNode(String node, String pattern) {
+        requireNodes.add(new Checker(node, Pattern.compile(pattern)));
     }
 
     /** 定义必须的节点 同时指定默认值 */
-    public void requireNode(String node, Pattern pattern, String defaultValue) {
-        requireNodes.add(new Checker(node, pattern, defaultValue));
+    public void requireNode(String node, String pattern, String defaultValue) {
+        requireNodes.add(new Checker(node, Pattern.compile(pattern), defaultValue));
     }
 
     /** 返回错误的数量 */

@@ -65,9 +65,9 @@ public class Universe {
                 {"UniverseChannel.Enable", "^(true|false)$", "true"}
         }) {
             if (check.length == 2) { // length 是 两位长度，则没有携带默认值
-                PublicConfig.requireNode(check[0], Pattern.compile(check[1]));
+                PublicConfig.requireNode(check[0], check[1]);
             } else { // 否则分配默认值
-                PublicConfig.requireNode(check[0], Pattern.compile(check[1]), check[2]);
+                PublicConfig.requireNode(check[0], check[1], check[2]);
             }
         }
         int errorsOfConfig = PublicConfig.checkFor();

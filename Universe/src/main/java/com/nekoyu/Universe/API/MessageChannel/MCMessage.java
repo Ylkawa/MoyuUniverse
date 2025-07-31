@@ -5,6 +5,7 @@ public class MCMessage {
     public Account sender;
     public String message;
     public String sessionId;
+    public QuickAction action;
 
     public MCMessage() {
         sender = new Account();

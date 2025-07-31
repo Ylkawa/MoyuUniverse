@@ -8,6 +8,7 @@ import com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.event.Message;
 import com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.event.Meta_Event;
 import com.nekoyu.Universe.API.MessageChannel.MCMessage;
 import com.nekoyu.Universe.API.MessageChannel.MessageChannel;
+import com.nekoyu.Universe.API.MessageChannel.QuickAction;
 import com.nekoyu.Universe.API.MessageSession;
 import com.nekoyu.Universe.Universe;
 import org.java_websocket.client.WebSocketClient;
@@ -89,18 +90,46 @@ public class OnebotChannel extends MessageChannel {
                                 switch (message.message_type) {
                                     case "group":
                                         StringBuilder sessionId = new StringBuilder();
-                                        sessionId.append(ID);
-                                        sessionId.append(":group/");
-                                        sessionId.append(message.group_id);
-                                        MCMessage mcm = new MCMessage();
-                                        mcm.message = message.raw_message;
-                                        mcm.receiver.setId(String.valueOf(message.self_id));
-                                        mcm.receiver.setNickname(nickname);
-                                        mcm.receiver.setPlatform("QQ");
-                                        mcm.sender.setId(String.valueOf(message.sender.user_id));
-                                        mcm.sender.setNickname(message.sender.nickname);
-                                        mcm.sender.setPlatform("QQ");
-                                        broadcastMessage("group/" + message.group_id, mcm);
+                                        sessionId.append("group/");
+                                        Long groupId = message.group_id;
+                                        sessionId.append(groupId);
+                                        MCMessage mcmG = new MCMessage();
+                                        mcmG.message = message.raw_message;
+                                        mcmG.receiver.setId(String.valueOf(message.self_id));
+                                        mcmG.receiver.setNickname(nickname);
+                                        mcmG.receiver.setPlatform("QQ");
+                                        mcmG.sender.setId(String.valueOf(message.sender.user_id));
+                                        mcmG.sender.setNickname(message.sender.nickname);
+                                        mcmG.sender.setPlatform("QQ");
+                                        mcmG.action = new QuickAction() {
+                                            @Override
+                                            public void reply(String message) {
+                                                sendGroupMessage(String.valueOf(groupId), message);
+                                            }
+                                        };
+
+                                        broadcastMessage(sessionId.toString(), mcmG);
+                                    case "private":
+                                        StringBuilder sessionIdP = new StringBuilder();
+                                        sessionIdP.append("group/");
+                                        Long userId = message.user_id;
+                                        sessionIdP.append(userId);
+                                        MCMessage mcmP = new MCMessage();
+                                        mcmP.message = message.raw_message;
+                                        mcmP.receiver.setId(String.valueOf(message.self_id));
+                                        mcmP.receiver.setNickname(nickname);
+                                        mcmP.receiver.setPlatform("QQ");
+                                        mcmP.sender.setId(String.valueOf(message.sender.user_id));
+                                        mcmP.sender.setNickname(message.sender.nickname);
+                                        mcmP.sender.setPlatform("QQ");
+                                        mcmP.action = new QuickAction() {
+                                            @Override
+                                            public void reply(String message) {
+                                                sendGroupMessage(String.valueOf(userId), message);
+                                            }
+                                        };
+
+                                        broadcastMessage(sessionIdP.toString(), mcmP);
                                 }
                                 break;
                             case "meta_event":

@@ -11,7 +11,13 @@ public class DeepSeekChannel {
         this.api_key = api_key;
     }
 
-    public Assistant getAssistant() {
-        return new Assistant(this);
+    public Assistant getAssistant(String model) {
+        return new Assistant(this, model);
+    }
+
+    public AssistantResponse request(MessageList messageList) {
+        var ar = new AssistantRequest();
+        ar.messages = messageList.getMessageList().toArray(new Message[0]);
+        return null;
     }
 }
