@@ -111,7 +111,7 @@ public class OnebotChannel extends MessageChannel {
                                         broadcastMessage(sessionId.toString(), mcmG);
                                     case "private":
                                         StringBuilder sessionIdP = new StringBuilder();
-                                        sessionIdP.append("group/");
+                                        sessionIdP.append("user/");
                                         Long userId = message.user_id;
                                         sessionIdP.append(userId);
                                         MCMessage mcmP = new MCMessage();
