@@ -1,5 +1,7 @@
 package com.nekoyu.Universe.LawsLoader;
 
+import java.io.File;
+import java.net.URL;
 import java.util.List;
 
 public class LawCFG {
@@ -7,6 +9,9 @@ public class LawCFG {
     String version;
     String main;
     List<String> dependencies;
+    URL url;
+    boolean loaded = false;
+    boolean loadAble = true;
 
     public String getName() {
         return name;

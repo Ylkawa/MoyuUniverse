@@ -6,73 +6,157 @@ import org.slf4j.LoggerFactory;
 import org.yaml.snakeyaml.Yaml;
 
 import java.io.File;
-import java.lang.reflect.InvocationTargetException;
+import java.io.IOException;
+import java.io.InputStream;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.URLClassLoader;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
+import java.util.jar.JarFile;
+import java.util.zip.ZipEntry;
 
 public class LawsManager {
     Yaml yaml = new Yaml();
     Logger logger = LoggerFactory.getLogger(getClass());
     Map<String, Law> laws = new HashMap<>();
-    Map<String, URLClassLoader> classLoaders = new HashMap<>();
+    Map<String, LawCFG> lawCFGs = new HashMap<>();
 
     public void loadLaws() {
         File[] jarFiles = new File("./laws/").listFiles(file -> file.getName().endsWith(".jar"));
+        Map<URL, LawCFG> urlToLawCFG = new HashMap<>();
+
+        // 第一阶段：只读 law.yml，不加载类
         for (File file : jarFiles) {
-            try {
-                URL[] url = {file.toURI().toURL()};
-                URLClassLoader urlClassLoader = new URLClassLoader(url, getClass().getClassLoader());
-
-                var inputStream = urlClassLoader.getResourceAsStream("law.yml");
-                if (inputStream == null) {
-                    logger.warn("{} 中没有 law.yml", file.getName());
-                    logger.warn("{} 将不会被加载", file.getName());
+            try (JarFile jarFile = new JarFile(file)) {
+                ZipEntry entry = jarFile.getEntry("law.yml");
+                if (entry == null) {
+                    logger.warn("{} 中没有 law.yml，将不会被加载", file.getName());
                     continue;
                 }
-
-                var lawCFG = yaml.loadAs(inputStream, LawCFG.class);
-                if (lawCFG.main == null && lawCFG.name == null) {
-                    logger.warn("{} 的 law.yml 没有定义 主类 或 唯一限定名", file.getName());
-                    logger.warn("{} 将不会被加载", file.getName());
-                    continue;
+                try (InputStream inputStream = jarFile.getInputStream(entry)) {
+                    LawCFG lawCFG = yaml.loadAs(inputStream, LawCFG.class);
+                    if (lawCFG.main == null && lawCFG.name == null) {
+                        logger.warn("{} 的 law.yml 没有定义 主类 或 唯一限定名，将不会被加载", file.getName());
+                        continue;
+                    }
+                    URL jarUrl = file.toURI().toURL();
+                    lawCFG.url = jarUrl;
+                    lawCFGs.put(lawCFG.name, lawCFG);
+                    urlToLawCFG.put(jarUrl, lawCFG);
                 }
+            } catch (Exception e) {
+                logger.error("加载 {} 失败", file.getName(), e);
+            }
+        }
 
-                Class<?> clazz = Class.forName(lawCFG.main, true, urlClassLoader);
-                if (!Law.class.isAssignableFrom(clazz)) {
-                    logger.warn("{}({}) 的主类不是 Law 的子类", file.getName(), lawCFG.name);
-                    logger.warn("{} 将不会被加载", file.getName());
-                    continue;
+        // 第二阶段：检查依赖可用性
+        for (LawCFG lawCFG : lawCFGs.values()) {
+            lawCFG.loadAble = true;
+            if (lawCFG.dependencies != null) {
+                for (String dep : lawCFG.dependencies) {
+                    if (!lawCFGs.containsKey(dep)) {
+                        lawCFG.loadAble = false;
+                        logger.warn("法则 {} 缺失前置法则 {}，无法加载", lawCFG.name, dep);
+                    }
                 }
+            }
+        }
 
-                Law law = (Law) clazz.getDeclaredConstructor().newInstance();
-                law.ID = lawCFG.name;
-                if (lawCFG.dependencies != null) {
-                    law.Dependencies = lawCFG.dependencies.toArray(new String[0]);
-                } else {
-                    law.Dependencies = null;
+        // 第三阶段：分组
+        Map<String, List<URL>> registeredMap = new HashMap<>();
+        List<List<URL>> dependencyGroups = new ArrayList<>();
+        for (LawCFG cfg : lawCFGs.values()) {
+            if (!cfg.loaded && cfg.loadAble) {
+                List<URL> newGroup = new ArrayList<>();
+                groupByDependencies(cfg, newGroup, registeredMap, dependencyGroups);
+            }
+        }
+
+        // 第四阶段：加载（修改后）
+        for (List<URL> group : dependencyGroups) {
+            logger.info("准备加载分组: {}", group);
+
+            // 创建类加载器但不自动关闭
+            URLClassLoader classLoader = new URLClassLoader(
+                    group.toArray(new URL[0]),
+                    getClass().getClassLoader()
+            );
+
+            for (URL url : group) {
+                LawCFG cfg = urlToLawCFG.get(url);
+                if (cfg != null) {
+                    try {
+                        // 设置上下文类加载器
+                        ClassLoader originalLoader = Thread.currentThread().getContextClassLoader();
+                        Thread.currentThread().setContextClassLoader(classLoader);
+
+                        Class<?> clazz = Class.forName(cfg.main, true, classLoader);
+                        Law law = (Law) clazz.getDeclaredConstructor().newInstance();
+                        law.ID = cfg.name;
+                        laws.put(cfg.name, law);
+
+                        logger.info("成功加载法则: {}", cfg.name);
+                        Thread.currentThread().setContextClassLoader(originalLoader);
+                    } catch (Exception e) {
+                        logger.error("加载法则 {} 失败", cfg.name, e);
+                    }
                 }
+            }
+        }
+    }
 
+    private void groupByDependencies(LawCFG lawCFG, List<URL> currentList, Map<String, List<URL>> registeredLists, List<List<URL>> resultGroups) {
 
-                laws.put(law.ID, law);
-                classLoaders.put(law.ID, urlClassLoader);
+        // 1. 使用包装器解决 lambda 限制
+        class ListWrapper {
+            List<URL> list;
+            ListWrapper(List<URL> list) {
+                this.list = list;
+            }
+        }
+        ListWrapper wrapper = new ListWrapper(currentList);
 
-            } catch (MalformedURLException e) {
-                throw new RuntimeException(e);
-            } catch (ClassNotFoundException e) {
-                throw new RuntimeException(e);
-            } catch (InvocationTargetException e) {
-                throw new RuntimeException(e);
-            } catch (InstantiationException e) {
-                throw new RuntimeException(e);
-            } catch (IllegalAccessException e) {
-                throw new RuntimeException(e);
-            } catch (NoSuchMethodException e) {
-                throw new RuntimeException(e);
+        // 2. 检查是否已处理
+        if (lawCFG.loaded) return;
+
+        // 3. 确保当前列表已注册
+        if (!resultGroups.contains(wrapper.list)) {
+            resultGroups.add(wrapper.list);
+        }
+
+        // 4. 添加当前法则URL
+        if (!wrapper.list.contains(lawCFG.url)) {
+            wrapper.list.add(lawCFG.url);
+        }
+        lawCFG.loaded = true;
+
+        // 5. 在注册表中记录当前法则
+        registeredLists.put(lawCFG.name, wrapper.list);
+
+        // 6. 处理依赖项
+        if (lawCFG.dependencies != null) for (String depName : lawCFG.dependencies) {
+            LawCFG depCFG = lawCFGs.get(depName);
+            if (depCFG == null) continue;
+
+            // 递归处理未加载的依赖
+            if (!depCFG.loaded) {
+                groupByDependencies(depCFG, wrapper.list, registeredLists, resultGroups);
+            }
+
+            // 检查依赖是否在其它组
+            List<URL> depList = registeredLists.get(depName);
+            if (depList != null && depList != wrapper.list) {
+                // 合并列表
+                depList.addAll(wrapper.list);
+                resultGroups.remove(wrapper.list);
+
+                // 更新所有指向当前列表的注册项（使用包装器解决 lambda 问题）
+                registeredLists.replaceAll((k, v) ->
+                        v == wrapper.list ? depList : v
+                );
+
+                // 更新包装器指向新列表
+                wrapper.list = depList;
             }
         }
     }
