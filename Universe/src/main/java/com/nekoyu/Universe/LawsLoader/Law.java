@@ -10,6 +10,7 @@ public abstract class Law {
     public String[] Dependencies;
     public boolean ableToRun;
     public boolean isRunning;
+    public boolean isPrepared;
 
     public Law() {}
 

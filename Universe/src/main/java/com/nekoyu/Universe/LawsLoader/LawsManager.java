@@ -1,90 +1,114 @@
 package com.nekoyu.Universe.LawsLoader;
 
 import com.nekoyu.Universe.Universe;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.yaml.snakeyaml.Yaml;
 
 import java.io.File;
+import java.lang.reflect.InvocationTargetException;
+import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.URLClassLoader;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 public class LawsManager {
-    private final Map<String, Law> laws = new HashMap<>();
-    private File loc;
-
-    public LawsManager(File dir) {
-        this.loc = dir;
-    }
+    Yaml yaml = new Yaml();
+    Logger logger = LoggerFactory.getLogger(getClass());
+    Map<String, Law> laws = new HashMap<>();
+    Map<String, URLClassLoader> classLoaders = new HashMap<>();
 
     public void loadLaws() {
-        if (!loc.exists() || !loc.isDirectory()) {
-            System.out.println("宇宙法则目录不存在！");
-            return;
-        }
-
-        File[] jarFiles = loc.listFiles(file -> file.getName().endsWith(".jar"));
-        if (jarFiles == null) return;
-
-        for (File jarFile : jarFiles) {
+        File[] jarFiles = new File("./laws/").listFiles(file -> file.getName().endsWith(".jar"));
+        for (File file : jarFiles) {
             try {
-                URL[] urls = {jarFile.toURI().toURL()};
-                URLClassLoader classLoader = new URLClassLoader(urls, getClass().getClassLoader());
+                URL[] url = {file.toURI().toURL()};
+                URLClassLoader urlClassLoader = new URLClassLoader(url, getClass().getClassLoader());
 
-                // 读取 law.yml
-                var inputStream = classLoader.getResourceAsStream("law.yml");
+                var inputStream = urlClassLoader.getResourceAsStream("law.yml");
                 if (inputStream == null) {
-                    System.out.println("未找到 law.yml: " + jarFile.getName());
+                    logger.warn("{} 中没有 law.yml", file.getName());
+                    logger.warn("{} 将不会被加载", file.getName());
                     continue;
                 }
 
-                var properties = new java.util.Properties();
-                properties.load(inputStream);
-                String mainClass = properties.getProperty("main");
-                String lawName = properties.getProperty("name");
-                String dependencies = properties.getProperty("dependencies");
-
-                if (mainClass == null || lawName == null) {
-                    System.out.println("law.yml 中缺少必要的 main 或 name 属性: " + jarFile.getName());
+                var lawCFG = yaml.loadAs(inputStream, LawCFG.class);
+                if (lawCFG.main == null && lawCFG.name == null) {
+                    logger.warn("{} 的 law.yml 没有定义 主类 或 唯一限定名", file.getName());
+                    logger.warn("{} 将不会被加载", file.getName());
                     continue;
                 }
 
-                // 通过反射加载主类
-                Class<?> clazz = Class.forName(mainClass, true, classLoader);
-
-                // 检查是否为 Law 子类
+                Class<?> clazz = Class.forName(lawCFG.main, true, urlClassLoader);
                 if (!Law.class.isAssignableFrom(clazz)) {
-                    System.out.println("类 " + mainClass + " 不是 Law 的子类: " + jarFile.getName());
+                    logger.warn("{}({}) 的主类不是 Law 的子类", file.getName(), lawCFG.name);
+                    logger.warn("{} 将不会被加载", file.getName());
                     continue;
                 }
 
-                // 确保调用无参构造函数
                 Law law = (Law) clazz.getDeclaredConstructor().newInstance();
-                law.ID = lawName;
-                if (dependencies != null) {
-                    List<String> dependenciesArray = new ArrayList<>(List.of(dependencies.split(",")));
-                    for (String dependency : dependenciesArray) {
-                        dependency.strip();
-                    }
-                    dependenciesArray.removeIf(Objects::isNull);
-                    dependenciesArray.removeIf(String::isEmpty);
-                    law.Dependencies = dependenciesArray.toArray(new String[0]);
+                law.ID = lawCFG.name;
+                if (lawCFG.dependencies != null) {
+                    law.Dependencies = lawCFG.dependencies.toArray(new String[0]);
                 } else {
                     law.Dependencies = null;
                 }
-                law.ableToRun = law.prepare();
 
-                laws.put(lawName, law);
 
-                Universe.logger.info("成功加载宇宙法则: {}", lawName);
+                laws.put(law.ID, law);
+                classLoaders.put(law.ID, urlClassLoader);
 
-            } catch (InstantiationException e) {
-                Universe.logger.warn("无法实例化类，确保它有无参构造函数: {}", e.getMessage());
+            } catch (MalformedURLException e) {
+                throw new RuntimeException(e);
             } catch (ClassNotFoundException e) {
-                Universe.logger.warn("无法找到主类 {}", e.getMessage());
-            } catch (Exception e) {
-                Universe.logger.warn("加载宇宙法则失败: {}", jarFile.getName());
-                e.printStackTrace();
+                throw new RuntimeException(e);
+            } catch (InvocationTargetException e) {
+                throw new RuntimeException(e);
+            } catch (InstantiationException e) {
+                throw new RuntimeException(e);
+            } catch (IllegalAccessException e) {
+                throw new RuntimeException(e);
+            } catch (NoSuchMethodException e) {
+                throw new RuntimeException(e);
             }
         }
+    }
+
+    public void prepareLaws() {
+        for (Law law : laws.values()) {
+            prepareLaw(law);
+        }
+    }
+
+    private void prepareLaw(Law law) {
+        if (law.isPrepared) return;
+        if (law.Dependencies != null) {
+            List<String> missedDependencies = new ArrayList<>();
+            for (String dependency : law.Dependencies) {
+                Law dependencyLaw = laws.get(dependency);
+                if (dependencyLaw == null) {
+                    missedDependencies.add(dependency);
+                } else {
+                    prepareLaw(dependencyLaw);
+                }
+            }
+            if (!missedDependencies.isEmpty()) {
+                StringBuilder sb = new StringBuilder();
+                sb.append("由于缺失前置宇宙法则，");
+                for (String buffer : missedDependencies) {
+                    sb.append(buffer);
+                }
+                sb.append("，");
+                sb.append(law.ID);
+                sb.append(" 未就绪");
+                Universe.logger.error(sb.toString());
+            }
+        }
+        law.ableToRun = law.prepare();
+        law.isPrepared = true;
     }
 
     public void enableLaws() {
@@ -92,8 +116,9 @@ public class LawsManager {
             enableLaw(law);
         }
     }
+
     public void enableLaw(Law law) {
-        if (law.ableToRun) {
+        if (law.ableToRun && !law.isRunning) {
             // 如果法则有 前置 属性，就要先启动前置法则
             if (law.Dependencies != null) {
                 List<String> missedDependencies = new ArrayList<>();
@@ -102,10 +127,9 @@ public class LawsManager {
                     if (dependencyLaw == null) {
                         missedDependencies.add(dependency);
                     }
+                    enableLaw(dependencyLaw);
                 }
-                if (missedDependencies.isEmpty()) {
-                    law.run();
-                } else {
+                if (!missedDependencies.isEmpty()) {
                     StringBuilder sb = new StringBuilder();
                     sb.append("由于缺失前置宇宙法则，");
                     for (String buffer : missedDependencies) {
@@ -116,10 +140,9 @@ public class LawsManager {
                     sb.append(" 无法运行");
                     Universe.logger.error(sb.toString());
                 }
-            } else {
-                law.run();
-                law.isRunning = true;
             }
+            law.run();
+            law.isRunning = true;
         }
     }
 

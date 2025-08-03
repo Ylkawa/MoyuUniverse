@@ -1,0 +1,4 @@
+name: AIChat
+main: com.nekoyu.Universe.AIChat.AIChat
+version: 1.0
+dependencies: [DeepSeekAdapter]

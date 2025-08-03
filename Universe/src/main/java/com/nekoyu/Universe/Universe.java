@@ -12,8 +12,6 @@ import java.io.File;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Objects;
-import java.util.regex.Pattern;
 
 /** >- 末屿宇宙 -< */
 public class Universe {
@@ -90,10 +88,11 @@ public class Universe {
             UniverseChannel.load();
         }
 
-        LawsManager = new LawsManager(lawsDir);
+        LawsManager = new LawsManager();
 
         // 加载宇宙法则
         LawsManager.loadLaws();
+        LawsManager.prepareLaws();
         LawsManager.enableLaws();
 
 
