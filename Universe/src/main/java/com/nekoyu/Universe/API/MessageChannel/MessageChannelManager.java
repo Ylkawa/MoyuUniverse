@@ -2,6 +2,8 @@ package com.nekoyu.Universe.API.MessageChannel;
 
 import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.Multimap;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -12,6 +14,7 @@ public class MessageChannelManager {
     public Map<String, MessageChannel> MessageChannels = new HashMap<>();
     Multimap<String, MessageChannelListener> sessionListeners = ArrayListMultimap.create();
     List<MessageChannelListener> listenersToAll = new ArrayList<>();
+    Logger logger = LoggerFactory.getLogger(getClass());
 
     public void registerChannel(String id, MessageChannel mc) {
         MessageChannels.put(id, mc);
@@ -31,6 +34,7 @@ public class MessageChannelManager {
 
     public void onMessage(MCMessage mcm) {
         if (mcm.sessionId != null && !mcm.sessionId.isEmpty()) {
+            logger.info("消息通道 {} 接收到来自会话 {} 的消息 {} ({}): {}", mcm.receiver.nickname, mcm.sessionId, mcm.sender.nickname, mcm.sender.id, mcm.message);
             for (MessageChannelListener mcl : sessionListeners.get(mcm.sessionId)) {
                 mcl.onMessage(mcm);
             }

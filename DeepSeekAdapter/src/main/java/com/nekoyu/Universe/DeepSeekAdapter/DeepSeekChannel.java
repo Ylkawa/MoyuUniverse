@@ -4,10 +4,11 @@ import com.google.gson.Gson;
 import okhttp3.*;
 
 import java.io.IOException;
+import java.util.concurrent.TimeUnit;
 
 public class DeepSeekChannel {
     public static final Gson gson = new Gson();
-    public static final OkHttpClient okHttpClient = new OkHttpClient();
+    public static OkHttpClient okHttpClient;
     public static final MediaType JSON = MediaType.get("application/json; charset=utf-8");
 
     public String id;
@@ -18,6 +19,12 @@ public class DeepSeekChannel {
         this.id = id;
         this.base_url = base_url;
         this.api_key = api_key;
+
+        okHttpClient = new OkHttpClient().newBuilder()
+                .connectTimeout(30, TimeUnit.SECONDS)  // 连接超时
+                .readTimeout(60, TimeUnit.SECONDS)      // 读取响应超时（重点调大）
+                .writeTimeout(30, TimeUnit.SECONDS)     // 发送请求超时
+                .build();
     }
 
     public Assistant getAssistant(String model) {
@@ -40,7 +47,9 @@ public class DeepSeekChannel {
 
         // 尝试请求
         try (Response response = okHttpClient.newCall(request).execute()) {
-            return gson.fromJson(response.body().string(), AssistantResponse.class);
+            AssistantResponse assistantResponse = gson.fromJson(response.body().string(), AssistantResponse.class);
+            messageList.addMessage("assistant", assistantResponse.choices[0].message.content);
+            return assistantResponse;
         }
     }
 }

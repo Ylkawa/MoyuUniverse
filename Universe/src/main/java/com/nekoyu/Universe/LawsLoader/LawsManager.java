@@ -28,7 +28,7 @@ public class LawsManager {
         // 第一阶段：只读 law.yml，不加载类
         for (File file : jarFiles) {
             try (JarFile jarFile = new JarFile(file)) {
-                ZipEntry entry = jarFile.getEntry("./law.yml");
+                ZipEntry entry = jarFile.getEntry("law.yml"); // 不能加"./"!!!!!
                 if (entry == null) {
                     logger.warn("{} 中没有 law.yml，将不会被加载", file.getName());
                     continue;
@@ -74,7 +74,7 @@ public class LawsManager {
 
         // 第四阶段：加载（修改后）
         for (List<URL> group : dependencyGroups) {
-            logger.info("准备加载分组: {}", group);
+            logger.debug("准备加载分组: {}", group);
 
             // 创建类加载器但不自动关闭
             URLClassLoader classLoader = new URLClassLoader(
