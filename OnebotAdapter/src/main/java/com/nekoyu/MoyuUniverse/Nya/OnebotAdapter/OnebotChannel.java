@@ -109,6 +109,7 @@ public class OnebotChannel extends MessageChannel {
                                         };
 
                                         broadcastMessage(sessionId.toString(), mcmG);
+                                        break;
                                     case "private":
                                         StringBuilder sessionIdP = new StringBuilder();
                                         sessionIdP.append("user/");
@@ -125,11 +126,12 @@ public class OnebotChannel extends MessageChannel {
                                         mcmP.action = new QuickAction() {
                                             @Override
                                             public void reply(String message) {
-                                                sendGroupMessage(String.valueOf(userId), message);
+                                                sendPrivateMessage(String.valueOf(userId), message);
                                             }
                                         };
 
                                         broadcastMessage(sessionIdP.toString(), mcmP);
+                                        break;
                                 }
                                 break;
                             case "meta_event":

@@ -27,7 +27,6 @@ public class Assistant {
     }
 
     public AssistantResponse request(MessageList ml) throws IOException {
-        dsc.request(ml, this);
-        return null;
+        return dsc.request(ml, this);
     }
 }

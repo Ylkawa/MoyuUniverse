@@ -69,24 +69,21 @@ public class AIChat extends Law {
             switch (cfg.getNode("Trigger").toString()) {
                 case "every":
                     messageLists.put(cfg.getNode("ChannelId").toString(), new MessageList());
-                    Universe.MessageChannelManager.listenToSession(cfg.getNode("ChannelId").toString(), new MessageChannelListener() {
-                        @Override
-                        public void onMessage(MCMessage mcm) {
-                            // 更新聊天记录
-                            MessageList ml = messageLists.get(mcm.sessionId);
-                            ml.addMessage(mcm.message);
-                            Object provider = Universe.Providers.get(cfg.getNode("Provider").toString());
-                            if (provider instanceof DeepSeekChannel dsc) {
-                                Assistant assistant = dsc.getAssistant(cfg.getNode("Model").toString());
-                                try {
-                                    var response = assistant.request(ml);
-                                    mcm.action.reply(response.choices[0].message.content);
-                                } catch (IOException e) {
-                                    throw new RuntimeException(e);
-                                }
-                            } else {
-                                logger.warn("定义的AI服务适配器 {} 无效", cfg.getNode("Provider").toString());
+                    Universe.MessageChannelManager.listenToSession(cfg.getNode("ChannelId").toString(), mcm -> {
+                        // 更新聊天记录
+                        MessageList ml = messageLists.get(mcm.sessionId);
+                        ml.addMessage(mcm.message);
+                        Object provider = Universe.Providers.get(cfg.getNode("Provider").toString());
+                        if (provider instanceof DeepSeekChannel dsc) {
+                            Assistant assistant = dsc.getAssistant(cfg.getNode("Model").toString());
+                            try {
+                                var response = assistant.request(ml);
+                                mcm.action.reply(response.choices[0].message.content);
+                            } catch (IOException e) {
+                                throw new RuntimeException(e);
                             }
+                        } else {
+                            logger.warn("定义的AI服务适配器 {} 无效", cfg.getNode("Provider").toString());
                         }
                     });
                     break;

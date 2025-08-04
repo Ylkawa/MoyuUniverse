@@ -28,7 +28,7 @@ public class LawsManager {
         // 第一阶段：只读 law.yml，不加载类
         for (File file : jarFiles) {
             try (JarFile jarFile = new JarFile(file)) {
-                ZipEntry entry = jarFile.getEntry("law.yml");
+                ZipEntry entry = jarFile.getEntry("./law.yml");
                 if (entry == null) {
                     logger.warn("{} 中没有 law.yml，将不会被加载", file.getName());
                     continue;
