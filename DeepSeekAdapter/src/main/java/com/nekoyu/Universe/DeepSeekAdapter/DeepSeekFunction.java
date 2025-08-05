@@ -13,6 +13,6 @@ public class DeepSeekFunction {
     }
 
     public interface CallbackFunction {
-        public String function(String[] args);
+        String function(String[] args);
     }
 }

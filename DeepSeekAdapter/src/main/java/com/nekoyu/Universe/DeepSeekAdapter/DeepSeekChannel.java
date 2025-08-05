@@ -2,6 +2,8 @@ package com.nekoyu.Universe.DeepSeekAdapter;
 
 import com.google.gson.Gson;
 import okhttp3.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.util.concurrent.TimeUnit;
@@ -14,6 +16,7 @@ public class DeepSeekChannel {
     public String id;
     private String base_url;
     private String api_key;
+    private Logger logger = LoggerFactory.getLogger(getClass());
 
     public DeepSeekChannel(String id, String base_url, String api_key) {
         this.id = id;
@@ -49,6 +52,7 @@ public class DeepSeekChannel {
         try (Response response = okHttpClient.newCall(request).execute()) {
             AssistantResponse assistantResponse = gson.fromJson(response.body().string(), AssistantResponse.class);
             messageList.addMessage("assistant", assistantResponse.choices[0].message.content);
+            logger.info("本次请求消耗token量: 输入: {}(未命中缓存) {}(命中缓存) 输出: {}", assistantResponse.usage.prompt_cache_miss_tokens, assistantResponse.usage.prompt_cache_hit_tokens, assistantResponse.usage.completion_tokens);
             return assistantResponse;
         }
     }

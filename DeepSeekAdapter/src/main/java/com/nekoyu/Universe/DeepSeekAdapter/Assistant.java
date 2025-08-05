@@ -7,6 +7,7 @@ import java.util.List;
 public class Assistant {
     private DeepSeekChannel dsc;
     private List<DeepSeekFunction> deepSeekFunctions = new ArrayList<>();
+    private String prompt = "";
     public String model;
 
     /**
@@ -27,6 +28,14 @@ public class Assistant {
     }
 
     public AssistantResponse request(MessageList ml) throws IOException {
+        Message prompt = new Message();
+        prompt.role = "system";
+        prompt.content = this.prompt;
+        ml.messageList.add(0, prompt);
         return dsc.request(ml, this);
+    }
+
+    public void setSystemPrompt(String prompt) {
+        this.prompt = prompt;
     }
 }

@@ -1,7 +1,5 @@
 package com.nekoyu.Universe.AIChat;
 
-import com.nekoyu.Universe.API.MessageChannel.MCMessage;
-import com.nekoyu.Universe.API.MessageChannel.MessageChannelListener;
 import com.nekoyu.Universe.ConfigureProcessor.CFGFileSyntaxException;
 import com.nekoyu.Universe.ConfigureProcessor.ConfigureProcessor;
 import com.nekoyu.Universe.DeepSeekAdapter.Assistant;
@@ -44,6 +42,9 @@ public class AIChat extends Law {
                      cfg.requireNode("Provider", "[\\s\\S]+", "");
                      cfg.requireNode("Trigger", "^auto$|^every$|^keyword$");
                      cfg.requireNode("Model", "[\\s\\S]+", "deepseek-chat");
+                     if (cfg.getNode("Trigger").toString().equals("keyword")) {
+                         cfg.requireNode("Keyword", "[\\s\\S]+", "");
+                     }
                      int checkFor = cfg.checkFor();
                      if (checkFor == 0) {
                          configs.put((String) cfg.getNode("ChannelId"), cfg);
@@ -51,7 +52,6 @@ public class AIChat extends Law {
                      } else {
                          logger.warn("{} 中仍然有 {} 个错误，将不会被加载", file.getName(), checkFor);
                      }
-
                  } catch (IOException e) {
                      throw new RuntimeException(e);
                  } catch (CFGFileSyntaxException e) {
@@ -66,16 +66,18 @@ public class AIChat extends Law {
     @Override
     public void run() {
         for (ConfigureProcessor cfg : configs.values()) {
+            messageLists.put(cfg.getNode("ChannelId").toString(), new MessageList());
             switch (cfg.getNode("Trigger").toString()) {
                 case "every":
-                    messageLists.put(cfg.getNode("ChannelId").toString(), new MessageList());
                     Universe.MessageChannelManager.listenToSession(cfg.getNode("ChannelId").toString(), mcm -> {
                         // 更新聊天记录
                         MessageList ml = messageLists.get(mcm.sessionId);
-                        ml.addMessage(mcm.message);
+                        ml.addMessage(mcm.sender.getNickname() + ": " + mcm.message);
+                        ml.clean();
                         Object provider = Universe.Providers.get(cfg.getNode("Provider").toString());
                         if (provider instanceof DeepSeekChannel dsc) {
                             Assistant assistant = dsc.getAssistant(cfg.getNode("Model").toString());
+                            assistant.setSystemPrompt(cfg.getNode("Prompt").toString());
                             try {
                                 var response = assistant.request(ml);
                                 mcm.action.reply(response.choices[0].message.content);
@@ -87,6 +89,27 @@ public class AIChat extends Law {
                         }
                     });
                     break;
+                case "keyword":
+                    Universe.MessageChannelManager.listenToSession(cfg.getNode("ChannelId").toString(), mcm -> {
+                        MessageList ml = messageLists.get(mcm.sessionId);
+                        ml.addMessage(mcm.sender.getNickname() + ": " + mcm.message);
+                        ml.clean();
+                        if (mcm.message.contains(cfg.getNode("Keyword").toString())) {
+                            Object provider = Universe.Providers.get(cfg.getNode("Provider").toString());
+                            if (provider instanceof DeepSeekChannel dsc) {
+                                Assistant assistant = dsc.getAssistant(cfg.getNode("Model").toString());
+                                assistant.setSystemPrompt(cfg.getNode("Prompt").toString());
+                                try {
+                                    var response = assistant.request(ml);
+                                    mcm.action.reply(response.choices[0].message.content);
+                                } catch (IOException e) {
+                                    throw new RuntimeException(e);
+                                }
+                            } else {
+                                logger.warn("定义的AI服务适配器 {} 无效", cfg.getNode("Provider").toString());
+                            }
+                        }
+                    });
             }
         }
     }

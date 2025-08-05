@@ -23,4 +23,10 @@ public class MessageList {
         msg.role = role;
         messageList.add(msg);
     }
+
+    public void clean() {
+        if (messageList.size() > 20) {
+            messageList.subList(0, messageList.size() - 20).clear(); // 删除前 N-20 个元素
+        }
+    }
 }
