@@ -2,9 +2,7 @@ package com.nekoyu.Universe.AIChat;
 
 import com.nekoyu.Universe.ConfigureProcessor.CFGFileSyntaxException;
 import com.nekoyu.Universe.ConfigureProcessor.ConfigureProcessor;
-import com.nekoyu.Universe.DeepSeekAdapter.Assistant;
-import com.nekoyu.Universe.DeepSeekAdapter.DeepSeekChannel;
-import com.nekoyu.Universe.DeepSeekAdapter.MessageList;
+import com.nekoyu.Universe.DeepSeekAdapter.*;
 import com.nekoyu.Universe.LawsLoader.Law;
 import com.nekoyu.Universe.Universe;
 import org.slf4j.Logger;
@@ -19,25 +17,45 @@ public class AIChat extends Law {
     Logger logger = LoggerFactory.getLogger(this.getClass());
     Map<String, ConfigureProcessor> configs = new HashMap<>();
     Map<String, MessageList> messageLists = new HashMap<>();
+    ConfigureProcessor config;
+    Map<String, DeepSeekTool> deepSeekTools = new HashMap<>();
 
     @Override
     public boolean prepare() {
-
-        File configDic = new File("./config/AIChat/");
-        if (!configDic.isDirectory()) {
-            if (!configDic.exists()) configDic.mkdir();
+        File configDic = new File("./config/AIChat");
+        if (!configDic.exists()) configDic.mkdir();
+        File sessionCFGDic = new File("./config/AIChat/SessionCFG/");
+        if (!sessionCFGDic.exists()) sessionCFGDic.mkdir();
+        loadSessionCfg(sessionCFGDic);
+        ConfigureProcessor config = new ConfigureProcessor("./config/AIChat/config.yml");
+        config.requireNode("Prompt", "[\\s\\S]+", "");
+        try {
+            config.read();
+        } catch (CFGFileSyntaxException e) {
+            throw new RuntimeException(e);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
         }
-        loadCfg(configDic);
+        this.config = config;
+
+        // LoadBuiltInDeepSeekFunction
+        var dst = new DeepSeekTool("get_weather", "get weather", new DeepSeekTool.CallbackFunction() {
+            @Override
+            public String function(Map<String, String> args) {
+                return "气温26度";
+            }
+        });
+        deepSeekTools.put("get_weather", dst);
         return true;
     }
 
-    private void loadCfg(File configDic) {
+    private void loadSessionCfg(File configDic) {
         for (File file : configDic.listFiles()) {
              if (file.isFile() && file.getName().endsWith(".yml")) {
                  ConfigureProcessor cfg = new ConfigureProcessor(file, true);
                  try {
                      cfg.read();
-                     cfg.requireNode("ChannelId", "[a-zA-Z0-9]+:[a-zA-Z0-9/]+", "");
+                     cfg.requireNode("SessionId", "[a-zA-Z0-9]+:[a-zA-Z0-9/]+", "");
                      cfg.requireNode("Prompt", "[\\s\\S]+", "");
                      cfg.requireNode("Provider", "[\\s\\S]+", "");
                      cfg.requireNode("Trigger", "^auto$|^every$|^keyword$");
@@ -58,7 +76,7 @@ public class AIChat extends Law {
                      logger.warn("{} 的格式错误，无法加载", file.getName());
                  }
              } else if (file.isDirectory()) {
-                 loadCfg(file);
+                 loadSessionCfg(file);
              }
         }
     }
@@ -66,10 +84,16 @@ public class AIChat extends Law {
     @Override
     public void run() {
         for (ConfigureProcessor cfg : configs.values()) {
-            messageLists.put(cfg.getNode("ChannelId").toString(), new MessageList());
+            MessageList newML = new MessageList();
+            StringBuilder prompt = new StringBuilder();
+            prompt.append(config.getNode("Prompt").toString() + "\n\n");
+            prompt.append(cfg.getNode("Prompt").toString());
+
+            newML.setSystemPrompt(prompt.toString());
+            messageLists.put(cfg.getNode("SessionId").toString(), newML);
             switch (cfg.getNode("Trigger").toString()) {
                 case "every":
-                    Universe.MessageChannelManager.listenToSession(cfg.getNode("ChannelId").toString(), mcm -> {
+                    Universe.MessageChannelManager.listenToSession(cfg.getNode("SessionId").toString(), mcm -> {
                         // 更新聊天记录
                         MessageList ml = messageLists.get(mcm.sessionId);
                         ml.addMessage(mcm.sender.getNickname() + ": " + mcm.message);
@@ -77,7 +101,6 @@ public class AIChat extends Law {
                         Object provider = Universe.Providers.get(cfg.getNode("Provider").toString());
                         if (provider instanceof DeepSeekChannel dsc) {
                             Assistant assistant = dsc.getAssistant(cfg.getNode("Model").toString());
-                            assistant.setSystemPrompt(cfg.getNode("Prompt").toString());
                             try {
                                 var response = assistant.request(ml);
                                 mcm.action.reply(response.choices[0].message.content);
@@ -90,7 +113,7 @@ public class AIChat extends Law {
                     });
                     break;
                 case "keyword":
-                    Universe.MessageChannelManager.listenToSession(cfg.getNode("ChannelId").toString(), mcm -> {
+                    Universe.MessageChannelManager.listenToSession(cfg.getNode("SessionId").toString(), mcm -> {
                         MessageList ml = messageLists.get(mcm.sessionId);
                         ml.addMessage(mcm.sender.getNickname() + ": " + mcm.message);
                         ml.clean();
@@ -98,13 +121,12 @@ public class AIChat extends Law {
                             Object provider = Universe.Providers.get(cfg.getNode("Provider").toString());
                             if (provider instanceof DeepSeekChannel dsc) {
                                 Assistant assistant = dsc.getAssistant(cfg.getNode("Model").toString());
-                                assistant.setSystemPrompt(cfg.getNode("Prompt").toString());
-                                try {
-                                    var response = assistant.request(ml);
-                                    mcm.action.reply(response.choices[0].message.content);
-                                } catch (IOException e) {
-                                    throw new RuntimeException(e);
-                                }
+                            try {
+                                var response = assistant.request(ml);
+                                mcm.action.reply(response.choices[0].message.content);
+                            } catch (IOException e) {
+                                throw new RuntimeException(e);
+                            }
                             } else {
                                 logger.warn("定义的AI服务适配器 {} 无效", cfg.getNode("Provider").toString());
                             }

@@ -65,8 +65,7 @@ public class ConfigureProcessor {
                 content = br.lines().collect(Collectors.joining("\n"));
             }
 
-            // 先尝试用 Gson 读取
-            try {
+            if (configureFile.getName().endsWith(".json")) try {
                 configure = new Gson().fromJson(content, Map.class);
                 if (configure == null) throw new JsonSyntaxException("");
                 type = 2;
@@ -74,8 +73,8 @@ public class ConfigureProcessor {
             } catch (JsonSyntaxException ignored) {
 
             }
-            // 再尝试作为 Yaml 读取
-            try {
+
+            if (configureFile.getName().endsWith(".yml") || configureFile.getName().endsWith(".yaml")) try {
                 configure = new Yaml().loadAs(content, Map.class);
                 if (configure == null) throw new YAMLException("");
                 type = 1;
@@ -189,6 +188,8 @@ public class ConfigureProcessor {
                         content = new Gson().toJson(configure);
                         break;
                     case 1:
+                        content = new Yaml().dump(configure);
+                        break;
                     default:
                         content = new Yaml().dump(configure);
                 }

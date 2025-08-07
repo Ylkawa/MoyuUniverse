@@ -2,12 +2,14 @@ package com.nekoyu.Universe.DeepSeekAdapter;
 
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 public class Assistant {
     private DeepSeekChannel dsc;
-    private List<DeepSeekFunction> deepSeekFunctions = new ArrayList<>();
-    private String prompt = "";
+    public Map<String, DeepSeekTool> deepSeekTools = new HashMap();
+    public String prompt = "";
     public String model;
 
     /**
@@ -23,15 +25,11 @@ public class Assistant {
      *
      * @param dsf 要添加的函数
      */
-    public void addFunction(DeepSeekFunction dsf) {
-        deepSeekFunctions.add(dsf);
+    public void addTool(DeepSeekTool dsf) {
+        deepSeekTools.put(dsf.function.name, dsf);
     }
 
     public AssistantResponse request(MessageList ml) throws IOException {
-        Message prompt = new Message();
-        prompt.role = "system";
-        prompt.content = this.prompt;
-        ml.messageList.add(0, prompt);
         return dsc.request(ml, this);
     }
 

@@ -77,26 +77,19 @@ public class LawsManager {
             logger.debug("准备加载分组: {}", group);
 
             // 创建类加载器但不自动关闭
-            URLClassLoader classLoader = new URLClassLoader(
-                    group.toArray(new URL[0]),
-                    getClass().getClassLoader()
-            );
+            var classLoader = new URLClassLoader(group.toArray(new URL[0]), getClass().getClassLoader());
 
             for (URL url : group) {
                 LawCFG cfg = urlToLawCFG.get(url);
                 if (cfg != null) {
                     try {
                         // 设置上下文类加载器
-                        ClassLoader originalLoader = Thread.currentThread().getContextClassLoader();
-                        Thread.currentThread().setContextClassLoader(classLoader);
-
                         Class<?> clazz = Class.forName(cfg.main, true, classLoader);
                         Law law = (Law) clazz.getDeclaredConstructor().newInstance();
                         law.ID = cfg.name;
                         laws.put(cfg.name, law);
 
                         logger.info("成功加载法则: {}", cfg.name);
-                        Thread.currentThread().setContextClassLoader(originalLoader);
                     } catch (Exception e) {
                         logger.error("加载法则 {} 失败", cfg.name, e);
                     }

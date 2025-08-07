@@ -19,18 +19,6 @@ public class AssistantResponse {
             public String role;
             public String content;
             public Tool_call[] tool_calls;
-
-            public static class Tool_call {
-                public int index;
-                public String id;
-                public String type;
-                public Function function;
-
-                public static class Function {
-                    public String name;
-                    public Map<String, String> arguments;
-                }
-            }
         }
 
         public String logprobs;

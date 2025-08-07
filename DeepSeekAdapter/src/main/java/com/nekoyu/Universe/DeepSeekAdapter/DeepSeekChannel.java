@@ -6,6 +6,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.TimeUnit;
 
 public class DeepSeekChannel {
@@ -35,9 +38,18 @@ public class DeepSeekChannel {
     }
 
     public AssistantResponse request(MessageList messageList, Assistant assistant) throws IOException {
+        return request(messageList, assistant, 0);
+    }
+
+    private AssistantResponse request(MessageList messageList, Assistant assistant, int reqNum) throws IOException {
+        reqNum++;
+        if (reqNum >= 5) {
+            throw new OutOfRequestLimit("超出调用次数限制");
+        }
         var ar = new AssistantRequest();
         ar.model = assistant.model;
         ar.messages = messageList.getMessageList().toArray(new Message[0]);
+        if (!assistant.deepSeekTools.isEmpty()) ar.tools = assistant.deepSeekTools.values().toArray(new DeepSeekTool[0]);
 
         // API请求 - 构建请求
         RequestBody body = RequestBody.create(gson.toJson(ar), JSON);
@@ -51,9 +63,21 @@ public class DeepSeekChannel {
         // 尝试请求
         try (Response response = okHttpClient.newCall(request).execute()) {
             AssistantResponse assistantResponse = gson.fromJson(response.body().string(), AssistantResponse.class);
-            messageList.addMessage("assistant", assistantResponse.choices[0].message.content);
             logger.info("本次请求消耗token量: 输入: {}(未命中缓存) {}(命中缓存) 输出: {}", assistantResponse.usage.prompt_cache_miss_tokens, assistantResponse.usage.prompt_cache_hit_tokens, assistantResponse.usage.completion_tokens);
-            return assistantResponse;
+            switch (assistantResponse.choices[0].finish_reason){
+                case "tool_calls", "function_call":
+                    messageList.addToolRequest(assistantResponse.choices[0].message.content, assistantResponse.choices[0].message.tool_calls);
+                    logger.info("发起工具调用");
+                    Map<String, String> map = gson.fromJson(assistantResponse.choices[0].message.tool_calls[0].function.arguments, HashMap.class);
+                    String tool_resp = assistant.deepSeekTools.get(assistantResponse.choices[0].message.tool_calls[0].function.name).function.cf.function(map);
+                    messageList.addToolResponse(tool_resp, assistantResponse.choices[0].message.tool_calls[0].id);
+                    return request(messageList, assistant, reqNum);
+                case "stop":
+                    messageList.addMessage("assistant", assistantResponse.choices[0].message.content);
+                    return assistantResponse;
+
+            }
+            return null;
         }
     }
 }
