@@ -42,7 +42,7 @@ public class UniverseChannel {
                     String tag = (String) args.get("Tag");
                     if (tag == null) return;
                     externalListeners.put(tag, planet.getID());
-                    logger.info("{} 注册了远程消息监听", planet.getID());
+                    logger.info("{} 注册了远程消息监听 {}", planet.getID(), tag);
             }
         });
         wsServer = new WebSocketServer(new InetSocketAddress(port)) {
