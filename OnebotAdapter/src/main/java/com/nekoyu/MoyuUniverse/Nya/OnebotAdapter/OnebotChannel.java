@@ -87,52 +87,39 @@ public class OnebotChannel extends MessageChannel {
                         switch (content.getAsJsonObject().get("post_type").getAsString()) {
                             case "message":
                                 Message message = gson.fromJson(s, Message.class);
+                                MCMessage mcm = new MCMessage();
+                                mcm.message = message.raw_message;
+                                mcm.receiver.setId(String.valueOf(message.self_id));
+                                mcm.receiver.setNickname(nickname);
+                                mcm.receiver.setPlatform("QQ");
+                                mcm.sender.setId(String.valueOf(message.sender.user_id));
+                                mcm.sender.setNickname(message.sender.nickname);
+                                mcm.sender.setPlatform("QQ");
+                                StringBuilder sessionId = new StringBuilder();
+                                sessionId.append(message.message_type).append("/");
                                 switch (message.message_type) {
                                     case "group":
-                                        StringBuilder sessionId = new StringBuilder();
-                                        sessionId.append("group/");
                                         Long groupId = message.group_id;
                                         sessionId.append(groupId);
-                                        MCMessage mcmG = new MCMessage();
-                                        mcmG.message = message.raw_message;
-                                        mcmG.receiver.setId(String.valueOf(message.self_id));
-                                        mcmG.receiver.setNickname(nickname);
-                                        mcmG.receiver.setPlatform("QQ");
-                                        mcmG.sender.setId(String.valueOf(message.sender.user_id));
-                                        mcmG.sender.setNickname(message.sender.nickname);
-                                        mcmG.sender.setPlatform("QQ");
-                                        mcmG.action = new QuickAction() {
+                                        mcm.action = new QuickAction() {
                                             @Override
                                             public void reply(String message) {
                                                 sendGroupMessage(String.valueOf(groupId), message);
                                             }
                                         };
-
-                                        broadcastMessage(sessionId.toString(), mcmG);
                                         break;
                                     case "private":
-                                        StringBuilder sessionIdP = new StringBuilder();
-                                        sessionIdP.append("user/");
                                         Long userId = message.user_id;
-                                        sessionIdP.append(userId);
-                                        MCMessage mcmP = new MCMessage();
-                                        mcmP.message = message.raw_message;
-                                        mcmP.receiver.setId(String.valueOf(message.self_id));
-                                        mcmP.receiver.setNickname(nickname);
-                                        mcmP.receiver.setPlatform("QQ");
-                                        mcmP.sender.setId(String.valueOf(message.sender.user_id));
-                                        mcmP.sender.setNickname(message.sender.nickname);
-                                        mcmP.sender.setPlatform("QQ");
-                                        mcmP.action = new QuickAction() {
+                                        sessionId.append(userId);
+                                        mcm.action = new QuickAction() {
                                             @Override
                                             public void reply(String message) {
                                                 sendPrivateMessage(String.valueOf(userId), message);
                                             }
                                         };
-
-                                        broadcastMessage(sessionIdP.toString(), mcmP);
                                         break;
                                 }
+                                broadcastMessage(sessionId.toString(), mcm);
                                 break;
                             case "meta_event":
                                 Meta_Event meta_event = gson.fromJson(s, Meta_Event.class);
@@ -224,6 +211,6 @@ public class OnebotChannel extends MessageChannel {
     }
 
     private interface Callback {
-        public void callback(OBResponse response);
+        void callback(OBResponse response);
     }
 }

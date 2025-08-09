@@ -2,21 +2,19 @@ package com.nekoyu.Universe;
 
 import com.nekoyu.Universe.API.MessageChannel.MessageChannelManager;
 import com.nekoyu.Universe.API.UniverseChannel;
-import com.nekoyu.Universe.ConfigureProcessor.CFGFileSyntaxException;
-import com.nekoyu.Universe.ConfigureProcessor.ConfigureProcessor;
 import com.nekoyu.Universe.LawsLoader.LawsManager;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.File;
-import java.io.IOException;
+import java.io.*;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Properties;
 
 /** >- 末屿宇宙 -< */
 public class Universe {
     static public Logger logger = LoggerFactory.getLogger(Universe.class);
-    static public ConfigureProcessor PublicConfig = new ConfigureProcessor("config.yml");
+    static public Properties UniverseChannelProp = new Properties();
     static public LawsManager LawsManager;
     static public MessageChannelManager MessageChannelManager = new MessageChannelManager();
     static public UniverseChannel UniverseChannel = new UniverseChannel(2576);
@@ -26,7 +24,8 @@ public class Universe {
 
         File lawsDir = new File("./laws/");
         File configsDir = new File("./config/");
-        File[] necessaryDictionaries = {lawsDir, configsDir};
+        File dataDir = new File("./data/");
+        File[] necessaryDictionaries = {lawsDir, configsDir, dataDir};
         for (File necessaryDictionary : necessaryDictionaries) {
             if (!necessaryDictionary.exists()) {
                 necessaryDictionary.mkdir();
@@ -45,45 +44,30 @@ public class Universe {
         }
 
         // 加载配置文件
-        PublicConfig.setAllowAutoCreate(true);
         try {
-            PublicConfig.read();
-        } catch (CFGFileSyntaxException e) { // 处理config格式有误的错误
-            logger.error(e.getMessage());
-            throw new RuntimeException(e);
-        } catch (IOException e) {
-            logger.error(e.getMessage());
-            throw new RuntimeException(e);
-        }
-
-        // 检查 & 修复配置文件
-        for (String[] check : new String[][]{
-                {"UniverseChannel.Port", "^(0|[1-9]\\d{0,3}|[1-5]\\d{4}|6[0-4]\\d{3}|65[0-4]\\d{2}|655[0-2]\\d|6553[0-5])$", "2576"},
-                {"UniverseChannel.Token", "^.+$", ""},
-                {"UniverseChannel.Enable", "^(true|false)$", "true"}
-        }) {
-            if (check.length == 2) { // length 是 两位长度，则没有携带默认值
-                PublicConfig.requireNode(check[0], check[1]);
-            } else { // 否则分配默认值
-                PublicConfig.requireNode(check[0], check[1], check[2]);
+            UniverseChannelProp.load(new FileReader("./UniverseChannel.properties"));
+        } catch (FileNotFoundException e) { // 出这个错就新建配置文件 并以默认配置继续运行
+            UniverseChannelProp.put("Port", "2576");
+            UniverseChannelProp.put("Token", "token");
+            UniverseChannelProp.put("Enable", "false");
+            try (FileOutputStream fos = new FileOutputStream("./UniverseChannel.properties")) {
+                UniverseChannelProp.store(fos, "Moyu Universe Network Channel Config");
+            } catch (IOException ex) {
+                throw new RuntimeException(ex);
             }
-        }
-        int errorsOfConfig = PublicConfig.checkFor();
-        if (errorsOfConfig != 0) {
-            logger.error("配置文件还有 {} 个错误，请修复", errorsOfConfig);
-            System.exit(2);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
         }
 
         // 加载宇宙标准消息通道
-        if (PublicConfig.getNode("UniverseChannel.Enable").equals("true")) {
-            String port = (String) PublicConfig.getNode("UniverseChannel.port");
+        if (UniverseChannelProp.get("Enable").equals("true")) {
+            Object port = UniverseChannelProp.get("Port");
             if (port != null) {
-                int portI = Integer.getInteger(port);
-                UniverseChannel.setPort(portI);
+                UniverseChannel.setPort(Integer.parseInt(port.toString()));
             }
-            String token = (String) PublicConfig.getNode("UniverseChannel.Token");
+            Object token = UniverseChannelProp.get("Token");
             if (token != null) {
-                UniverseChannel.setToken(token);
+                UniverseChannel.setToken(token.toString());
             }
             UniverseChannel.load();
         }
@@ -95,6 +79,8 @@ public class Universe {
         LawsManager.prepareLaws();
         LawsManager.enableLaws();
 
+        // 清理内存
+        System.gc();
 
         //程序退出动作
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {

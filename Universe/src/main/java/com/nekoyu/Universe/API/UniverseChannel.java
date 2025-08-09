@@ -101,6 +101,7 @@ public class UniverseChannel {
                 logger.info("宇宙穿隧加载成功");
             }
         };
+        wsServer.setReuseAddr(true);
         wsServer.start();
     }
 

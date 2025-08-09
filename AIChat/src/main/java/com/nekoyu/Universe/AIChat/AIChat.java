@@ -39,13 +39,22 @@ public class AIChat extends Law {
         this.config = config;
 
         // LoadBuiltInDeepSeekFunction
-        var dst = new DeepSeekTool("get_weather", "get weather", new DeepSeekTool.CallbackFunction() {
+        var get_weather = new DeepSeekTool("get_weather", "get weather", new DeepSeekTool.CallbackFunction() {
             @Override
             public String function(Map<String, String> args) {
                 return "气温26度";
             }
-        });
-        deepSeekTools.put("get_weather", dst);
+        }, new HashMap<>(), new String[]{});
+        deepSeekTools.put("get_weather", get_weather);
+        var add_memory = new DeepSeekTool("add_memory", "Add a new info into memory", new DeepSeekTool.CallbackFunction() {
+            @Override
+            public String function(Map<String, String> args) {
+                return "";
+            }
+        }, new HashMap<>(){{
+            put("memory_content", new DeepSeekTool.Function.Parameters.Property("记忆的内容"));
+        }}, new String[]{"memory_content"});
+        deepSeekTools.put("add_memory", add_memory);
         return true;
     }
 
