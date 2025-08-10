@@ -44,6 +44,7 @@ public class DeepSeekTool {
         this.function.name = name;
         this.function.description = description;
         this.function.cf = cf;
+        this.function.parameters = new Function.Parameters();
         this.function.parameters.properties = properties;
         this.function.parameters.required = required;
     }

@@ -88,13 +88,15 @@ public class OnebotChannel extends MessageChannel {
                             case "message":
                                 Message message = gson.fromJson(s, Message.class);
                                 MCMessage mcm = new MCMessage();
-                                mcm.message = message.raw_message;
+                                mcm.time = message.time;
+                                mcm.message = message.getMessageString();
                                 mcm.receiver.setId(String.valueOf(message.self_id));
                                 mcm.receiver.setNickname(nickname);
                                 mcm.receiver.setPlatform("QQ");
                                 mcm.sender.setId(String.valueOf(message.sender.user_id));
                                 mcm.sender.setNickname(message.sender.nickname);
                                 mcm.sender.setPlatform("QQ");
+                                mcm.sender.setSex(message.sender.sex);
                                 StringBuilder sessionId = new StringBuilder();
                                 sessionId.append(message.message_type).append("/");
                                 switch (message.message_type) {
@@ -181,7 +183,7 @@ public class OnebotChannel extends MessageChannel {
         obr.action = action;
         obr.params = params;
 
-        wsConnection.send(new Gson().toJson(obr));
+        action(obr);
     }
 
     private void reload() {

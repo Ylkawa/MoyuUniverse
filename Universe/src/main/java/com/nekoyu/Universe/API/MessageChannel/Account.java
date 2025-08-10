@@ -4,6 +4,7 @@ public class Account {
     String id;
     String platform;
     String nickname;
+    String sex;
 
     public String getId() {
         return id;
@@ -27,5 +28,13 @@ public class Account {
 
     public void setNickname(String nickname) {
         this.nickname = nickname;
+    }
+
+    public String getSex() {
+        return sex;
+    }
+
+    public void setSex(String sex) {
+        this.sex = sex;
     }
 }

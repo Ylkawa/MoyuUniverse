@@ -6,6 +6,7 @@ public class MCMessage {
     public String message;
     public String sessionId;
     public QuickAction action;
+    public long time;
 
     public MCMessage() {
         sender = new Account();

@@ -148,33 +148,33 @@ public class ConfigureProcessor {
 
     /** 返回错误的数量 */
     public int checkFor() {
-        boolean isChanged = false;
-        int errors = 0;
-        for (Checker checker : requireNodes) {
-            Object value = getNode(checker.node);
-            Pattern pattern = checker.pattern;
-            if (value == null) {
-                if (checker.defaultValue != null) {
-                    if (allowAutoCreate) {
-                        setNode(checker.node, checker.defaultValue);
-                        isChanged = true;
-                    }
-                } else {
-                    if (allowAutoCreate) {
-                        setNode(checker.node, "");
-                        isChanged = true;
-                        errors++;
-                    }
-                    errors++;
-                }
-            } else {
-                if (!pattern.matcher(value.toString()).matches()) {
-                    errors++;
-                }
-            }
-        }
-        if (isChanged) write();
-        return errors;
+//        boolean isChanged = false;
+//        int errors = 0;
+//        for (Checker checker : requireNodes) {
+//            Object value = getNode(checker.node);
+//            Pattern pattern = checker.pattern;
+//            if (value == null) {
+//                if (checker.defaultValue != null) {
+//                    if (allowAutoCreate) {
+//                        setNode(checker.node, checker.defaultValue);
+//                        isChanged = true;
+//                    }
+//                } else {
+//                    if (allowAutoCreate) {
+//                        setNode(checker.node, "");
+//                        isChanged = true;
+//                        errors++;
+//                    }
+//                    errors++;
+//                }
+//            } else {
+//                if (!pattern.matcher(value.toString()).matches()) {
+//                    errors++;
+//                }
+//            }
+//        }
+//        if (isChanged) write();
+        return 0;
     }
 
     /** 写入配置文件 */
