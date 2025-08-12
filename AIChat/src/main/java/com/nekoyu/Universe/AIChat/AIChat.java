@@ -74,7 +74,7 @@ public class AIChat extends Law {
                      }
                      int checkFor = cfg.checkFor();
                      if (checkFor == 0) {
-                         configs.put((String) cfg.getNode("ChannelId"), cfg);
+                         configs.put((String) cfg.getNode("SessionId"), cfg);
                          logger.info("载入配置文件 {} ", file.getName());
                      } else {
                          logger.warn("{} 中仍然有 {} 个错误，将不会被加载", file.getName(), checkFor);
@@ -100,48 +100,26 @@ public class AIChat extends Law {
 
             newML.setSystemPrompt(prompt.toString());
             messageLists.put(cfg.getNode("SessionId").toString(), newML);
-            switch (cfg.getNode("Trigger").toString()) {
-                case "every":
-                    Universe.MessageChannelManager.listenToSession(cfg.getNode("SessionId").toString(), mcm -> {
-                        // 更新聊天记录
-                        MessageList ml = messageLists.get(mcm.sessionId);
-                        ml.addMessage(mcm.sender.getNickname() + ": " + mcm.message);
-                        ml.clean();
-                        Object provider = Universe.Providers.get(cfg.getNode("Provider").toString());
-                        if (provider instanceof DeepSeekChannel dsc) {
-                            Assistant assistant = dsc.getAssistant(cfg.getNode("Model").toString());
-                            try {
-                                var response = assistant.request(ml);
-                                mcm.action.reply(response.choices[0].message.content);
-                            } catch (IOException e) {
-                                throw new RuntimeException(e);
-                            }
-                        } else {
-                            logger.warn("定义的AI服务适配器 {} 无效", cfg.getNode("Provider").toString());
+            Universe.MessageChannelManager.listenToSession(cfg.getNode("SessionId").toString(), mcm -> {
+                MessageList ml = messageLists.get(mcm.sessionId);
+                StringBuilder content = new StringBuilder();
+                ml.addMessage(mcm.sender.getNickname() + ": " + mcm.message);
+                ml.clean();
+                if (cfg.getNode("Trigger").toString().equals("every") || mcm.message.contains(cfg.getNode("Keyword").toString())) {
+                    Object provider = Universe.Providers.get(cfg.getNode("Provider").toString());
+                    if (provider instanceof DeepSeekChannel dsc) {
+                        Assistant assistant = dsc.getAssistant(cfg.getNode("Model").toString());
+                        try {
+                            var response = assistant.request(ml);
+                            mcm.action.reply(response.choices[0].message.content);
+                        } catch (IOException e) {
+                            throw new RuntimeException(e);
                         }
-                    });
-                    break;
-                case "keyword":
-                    Universe.MessageChannelManager.listenToSession(cfg.getNode("SessionId").toString(), mcm -> {
-                        MessageList ml = messageLists.get(mcm.sessionId);
-                        ml.addMessage(mcm.sender.getNickname() + ": " + mcm.message);
-                        ml.clean();
-                        if (mcm.message.contains(cfg.getNode("Keyword").toString())) {
-                            Object provider = Universe.Providers.get(cfg.getNode("Provider").toString());
-                            if (provider instanceof DeepSeekChannel dsc) {
-                                Assistant assistant = dsc.getAssistant(cfg.getNode("Model").toString());
-                            try {
-                                var response = assistant.request(ml);
-                                mcm.action.reply(response.choices[0].message.content);
-                            } catch (IOException e) {
-                                throw new RuntimeException(e);
-                            }
-                            } else {
-                                logger.warn("定义的AI服务适配器 {} 无效", cfg.getNode("Provider").toString());
-                            }
-                        }
-                    });
-            }
+                    } else {
+                        logger.warn("定义的AI服务适配器 {} 无效", cfg.getNode("Provider").toString());
+                    }
+                }
+            });
         }
     }
 
