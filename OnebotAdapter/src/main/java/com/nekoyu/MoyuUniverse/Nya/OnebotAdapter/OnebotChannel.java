@@ -97,6 +97,7 @@ public class OnebotChannel extends MessageChannel {
                                 mcm.sender.setNickname(message.sender.nickname);
                                 mcm.sender.setPlatform("QQ");
                                 mcm.sender.setSex(message.sender.sex);
+                                mcm.id = message.message_id;
                                 StringBuilder sessionId = new StringBuilder();
                                 sessionId.append(message.message_type).append("/");
                                 switch (message.message_type) {

@@ -10,12 +10,12 @@ import org.slf4j.LoggerFactory;
 
 import java.io.File;
 import java.io.IOException;
-import java.util.HashMap;
-import java.util.Map;
+import java.text.SimpleDateFormat;
+import java.util.*;
 
 public class AIChat extends Law {
     Logger logger = LoggerFactory.getLogger(this.getClass());
-    Map<String, ConfigureProcessor> configs = new HashMap<>();
+    List<ConfigureProcessor> configs = new ArrayList<>();
     Map<String, MessageList> messageLists = new HashMap<>();
     ConfigureProcessor config;
     Map<String, DeepSeekTool> deepSeekTools = new HashMap<>();
@@ -74,7 +74,7 @@ public class AIChat extends Law {
                      }
                      int checkFor = cfg.checkFor();
                      if (checkFor == 0) {
-                         configs.put((String) cfg.getNode("SessionId"), cfg);
+                         configs.add(cfg);
                          logger.info("载入配置文件 {} ", file.getName());
                      } else {
                          logger.warn("{} 中仍然有 {} 个错误，将不会被加载", file.getName(), checkFor);
@@ -92,18 +92,26 @@ public class AIChat extends Law {
 
     @Override
     public void run() {
-        for (ConfigureProcessor cfg : configs.values()) {
+        SimpleDateFormat sdf = new SimpleDateFormat("[yyyy-MM-dd HH:mm:ss]");
+        for (ConfigureProcessor cfg : configs) {
             MessageList newML = new MessageList();
-            StringBuilder prompt = new StringBuilder();
-            prompt.append(config.getNode("Prompt").toString() + "\n\n");
-            prompt.append(cfg.getNode("Prompt").toString());
-
-            newML.setSystemPrompt(prompt.toString());
             messageLists.put(cfg.getNode("SessionId").toString(), newML);
             Universe.MessageChannelManager.listenToSession(cfg.getNode("SessionId").toString(), mcm -> {
+                StringBuilder prompt = new StringBuilder();
+                prompt.append("当前时间: ").append(sdf.format(new Date(System.currentTimeMillis()))).append("\n");
+                prompt.append("当前所处会话: ").append(cfg.getNode("SessionId")).append("\n");
+                prompt.append("你的账号: ").append(mcm.receiver.getId());
+                prompt.append("\n");
+                prompt.append(config.getNode("Prompt").toString()).append("\n");
+                prompt.append(cfg.getNode("Prompt").toString());
+                newML.setSystemPrompt(prompt.toString());
                 MessageList ml = messageLists.get(mcm.sessionId);
                 StringBuilder content = new StringBuilder();
-                ml.addMessage(mcm.sender.getNickname() + ": " + mcm.message);
+                content.append(sdf.format(new Date(mcm.time * 1000))); // [时间]
+                content.append("[").append(mcm.id).append("]"); // [时间] [消息id]
+                content.append(mcm.sender.getNickname()).append("(").append(mcm.sender.getId()).append(")").append(mcm.sender.getSex()); // [时间] [消息id] [昵称](用户QQ号)性别
+                content.append(": ").append(mcm.message); // [时间] [消息id] [昵称](用户QQ号)性别: [消息内容]
+                ml.addMessage(content.toString());
                 ml.clean();
                 if (cfg.getNode("Trigger").toString().equals("every") || mcm.message.contains(cfg.getNode("Keyword").toString())) {
                     Object provider = Universe.Providers.get(cfg.getNode("Provider").toString());
