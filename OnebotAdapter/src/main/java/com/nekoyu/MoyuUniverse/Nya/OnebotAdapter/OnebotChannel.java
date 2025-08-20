@@ -196,6 +196,7 @@ public class OnebotChannel extends MessageChannel {
         obr.params.put("group_name", name);
 
         action(obr);
+        logger.info("将 {} 的群名称修改为 {}", split[1], name);
     }
 
     private void sendRequest(String action, Map params) {
