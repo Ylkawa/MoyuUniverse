@@ -1,0 +1,9 @@
+<component name="ArtifactManager">
+  <artifact type="jar" name="NetworkStatusMonitor:jar">
+    <output-path>$PROJECT_DIR$/out/artifacts/NetworkStatusMonitor_jar</output-path>
+    <root id="archive" name="NetworkStatusMonitor.jar">
+      <element id="module-output" name="NetworkStatusMonitor" />
+      <element id="file-copy" path="$PROJECT_DIR$/NetworkStatusMonitor/src/main/resources/law.yml" />
+    </root>
+  </artifact>
+</component>

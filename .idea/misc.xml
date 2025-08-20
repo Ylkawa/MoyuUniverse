@@ -5,6 +5,7 @@
       <item index="0" class="java.lang.String" itemvalue="com.google.common.eventbus.Subscribe" />
       <item index="1" class="java.lang.String" itemvalue="com.velocitypowered.api.event.Subscribe" />
     </list>
+    <pattern value="com.nekoyu.Universe.LawsLoader.Law" hierarchically="true" />
   </component>
   <component name="ExternalStorageConfigurationManager" enabled="true" />
   <component name="MavenProjectsManager">

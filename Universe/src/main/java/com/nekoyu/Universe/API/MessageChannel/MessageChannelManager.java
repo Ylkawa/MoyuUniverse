@@ -43,4 +43,11 @@ public class MessageChannelManager {
             }
         }
     }
+
+    public void setSessionName(String sessionId, String name) throws UnsupportedAction {
+        String[] split = sessionId.split(":");
+        MessageChannel mc = MessageChannels.get(split[0]);
+        if (mc == null) throw new UnsupportedAction("无此MessageChannel");
+        mc.setSessionName(split[1], name);
+    }
 }

@@ -3,10 +3,14 @@
   <component name="Encoding">
     <file url="file://$PROJECT_DIR$/AIChat/src/main/java" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/AIChat/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/ColorGroupName/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/ColorGroupName/src/main/resources" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/DeepSeekAdapter/src/main/java" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/DeepSeekAdapter/src/main/resources" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/Minecraft-Connect/src/main/java" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/Minecraft-Connect/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/NetworkStatusMonitor/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/NetworkStatusMonitor/src/main/resources" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/OnebotAdapter/src/main/java" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/OnebotAdapter/src/main/resources" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/SMTPAdapter/src/main/java" charset="UTF-8" />

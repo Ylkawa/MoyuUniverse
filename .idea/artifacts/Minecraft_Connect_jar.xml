@@ -3,7 +3,6 @@
     <output-path>$PROJECT_DIR$/out/artifacts/Minecraft_Connect_jar</output-path>
     <root id="archive" name="Minecraft-Connect.jar">
       <element id="module-output" name="Minecraft-Connect" />
-      <element id="module-output" name="Universe" />
       <element id="file-copy" path="$PROJECT_DIR$/Minecraft-Connect/src/main/resources/plugin.yml" />
       <element id="file-copy" path="$PROJECT_DIR$/Minecraft-Connect/src/main/resources/law.yml" />
       <element id="extracted-dir" path="$MAVEN_REPOSITORY$/org/java-websocket/Java-WebSocket/1.6.0/Java-WebSocket-1.6.0.jar" path-in-jar="/" />

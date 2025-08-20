@@ -120,4 +120,8 @@ public class UniverseChannel {
             clientList.get(id).send(new Gson().toJson(ucm));
         }
     }
+
+    public Collection<WebSocket> listConnections() {
+        return wsServer.getConnections();
+    }
 }

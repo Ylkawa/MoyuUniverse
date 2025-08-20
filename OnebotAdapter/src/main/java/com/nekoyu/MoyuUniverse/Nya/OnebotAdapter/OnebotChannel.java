@@ -9,6 +9,7 @@ import com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.event.Meta_Event;
 import com.nekoyu.Universe.API.MessageChannel.MCMessage;
 import com.nekoyu.Universe.API.MessageChannel.MessageChannel;
 import com.nekoyu.Universe.API.MessageChannel.QuickAction;
+import com.nekoyu.Universe.API.MessageChannel.UnsupportedAction;
 import com.nekoyu.Universe.API.MessageSession;
 import com.nekoyu.Universe.Universe;
 import org.java_websocket.client.WebSocketClient;
@@ -177,6 +178,24 @@ public class OnebotChannel extends MessageChannel {
             case "private":
                 sendPrivateMessage(target[1], message);
         }
+    }
+
+    /**
+     *
+     * @param sessionId group/*******
+     * @param name
+     * @throws UnsupportedAction
+     */
+    @Override
+    public void setSessionName(String sessionId, String name) throws UnsupportedAction {
+        String[] split = sessionId.split("/");
+        if (!split[0].equals("group")) throw new UnsupportedAction("只有Group类型的会话支持此功能");
+        OBRequest obr = new OBRequest();
+        obr.action = "set_group_name";
+        obr.params.put("group_id", split[1]);
+        obr.params.put("group_name", name);
+
+        action(obr);
     }
 
     private void sendRequest(String action, Map params) {

@@ -3,7 +3,6 @@
     <output-path>$PROJECT_DIR$/out/artifacts/DeepSeekAdapter_jar</output-path>
     <root id="archive" name="DeepSeekAdapter.jar">
       <element id="module-output" name="DeepSeekAdapter" />
-      <element id="module-output" name="Universe" />
       <element id="file-copy" path="$PROJECT_DIR$/DeepSeekAdapter/src/main/resources/law.yml" />
     </root>
   </artifact>

@@ -118,7 +118,7 @@ public class AIChat extends Law {
                     if (provider instanceof DeepSeekChannel dsc) {
                         Assistant assistant = dsc.getAssistant(cfg.getNode("Model").toString());
                         if (cfg.getNode("Tools") instanceof List) {
-                            for (String tool : (List) cfg.getNode("Tools")) {
+                            for (String tool : (List<String>) cfg.getNode("Tools")) {
                                 if (deepSeekTools.get(tool) != null) assistant.addTool(deepSeekTools.get(tool));
                             } // 为assistant添加指定的tools // 如果不存在这个tool就不添加
                         }

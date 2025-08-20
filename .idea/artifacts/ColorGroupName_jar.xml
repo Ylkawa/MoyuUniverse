@@ -1,0 +1,9 @@
+<component name="ArtifactManager">
+  <artifact type="jar" name="ColorGroupName:jar">
+    <output-path>$PROJECT_DIR$/out/artifacts/ColorGroupName_jar</output-path>
+    <root id="archive" name="ColorGroupName.jar">
+      <element id="module-output" name="ColorGroupName" />
+      <element id="file-copy" path="$PROJECT_DIR$/ColorGroupName/src/main/resources/law.yml" />
+    </root>
+  </artifact>
+</component>

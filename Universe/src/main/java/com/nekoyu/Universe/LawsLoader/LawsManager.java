@@ -195,32 +195,33 @@ public class LawsManager {
     }
 
     public void enableLaw(Law law) {
-        if (law.ableToRun && !law.isRunning) {
-            // 如果法则有 前置 属性，就要先启动前置法则
-            if (law.Dependencies != null) {
-                List<String> missedDependencies = new ArrayList<>();
-                for (String dependency : law.Dependencies) {
-                    Law dependencyLaw = laws.get(dependency);
-                    if (dependencyLaw == null) {
-                        missedDependencies.add(dependency);
+        if (law.ableToRun) {
+            if (!law.isRunning) {
+                // 如果法则有 前置 属性，就要先启动前置法则
+                if (law.Dependencies != null) {
+                    List<String> missedDependencies = new ArrayList<>();
+                    for (String dependency : law.Dependencies) {
+                        Law dependencyLaw = laws.get(dependency);
+                        if (dependencyLaw == null) {
+                            missedDependencies.add(dependency);
+                        }
+                        enableLaw(dependencyLaw);
                     }
-                    enableLaw(dependencyLaw);
-                }
-                if (!missedDependencies.isEmpty()) {
-                    StringBuilder sb = new StringBuilder();
-                    sb.append("由于缺失前置宇宙法则，");
-                    for (String buffer : missedDependencies) {
-                        sb.append(buffer);
+                    if (!missedDependencies.isEmpty()) {
+                        StringBuilder sb = new StringBuilder();
+                        sb.append("由于缺失前置宇宙法则，");
+                        for (String buffer : missedDependencies) {
+                            sb.append(buffer);
+                        }
+                        sb.append("，");
+                        sb.append(law.ID);
+                        sb.append(" 无法运行");
+                        Universe.logger.error(sb.toString());
                     }
-                    sb.append("，");
-                    sb.append(law.ID);
-                    sb.append(" 无法运行");
-                    Universe.logger.error(sb.toString());
                 }
+                new Thread(new LawThread(law)).start(); // 用新的线程独立运行各个插件
             }
-            law.run();
-            law.isRunning = true;
-        }
+        } else logger.warn("{} 报告未就绪，不会加载", law.ID);
     }
 
     public void stopLaws() {
