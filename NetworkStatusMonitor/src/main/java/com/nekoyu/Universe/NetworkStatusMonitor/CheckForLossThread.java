@@ -17,7 +17,7 @@ public class CheckForLossThread implements Runnable{
             for (int i = 0; i < 10; i++) {
                 if (!inetAddresses.isReachable(1000)) fails++;
             }
-            PlaceHolder.setReplacement("Loss:"+name, fails/1000+"%");
+            PlaceHolder.setReplacement("Loss:"+name, fails * 10 + "%");
         } catch (IOException e) {
             logger.error(e.getMessage(), e);
         }
