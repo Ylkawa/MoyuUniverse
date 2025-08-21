@@ -3,8 +3,7 @@ package com.nekoyu.Universe.NetworkStatusMonitor;
 import com.google.gson.Gson;
 import com.nekoyu.Universe.LawsLoader.Law;
 
-import java.io.FileNotFoundException;
-import java.io.FileReader;
+import java.io.*;
 import java.net.InetAddress;
 import java.net.UnknownHostException;
 import java.util.HashMap;
@@ -30,7 +29,17 @@ public class NetworkStatusMonitor extends Law {
                 }
             }
         } catch (FileNotFoundException e) {
-            logger.error(e.getMessage(), e);
+            try {
+                File conf = new File("./config/NetworkStatusMonitor/config.json");
+                conf.createNewFile();
+                try (FileWriter fw = new FileWriter(conf)) {
+                    cfg = new Config();
+                    cfg.watch.put("watch_target", "localhost");
+                    fw.write(new Gson().toJson(cfg));
+                }
+            } catch (IOException ex) {
+                throw new RuntimeException(ex);
+            }
             return false;
         }
         return true;

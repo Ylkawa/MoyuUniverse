@@ -48,7 +48,7 @@ public class ColorGroupName extends Law {
     @Override
     public void run() {
         Map<String, String> currentName = new HashMap<>();
-        for (Map.Entry<String, Config.Set> entry : cfg.Settings.entrySet()) {
+        if (cfg.Settings != null) for (Map.Entry<String, Config.Set> entry : cfg.Settings.entrySet()) {
             synchronized (this) {
                 boolean keepAble = true;
                 while (keepAble) {

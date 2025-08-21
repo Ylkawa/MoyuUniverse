@@ -27,6 +27,7 @@ import java.util.concurrent.TimeUnit;
 @Plugin(id = "minecraftconnectvelocity", name = "Minecraft Connect - Moyu Universe", version = "0.1.0-SNAPSHOT",
         url = "https://nekoyu.com", description = "A connector to Moyu Universe", authors = {"Huanyue Moyu", "imylk"})
 public class MinecraftConnectVelocity {
+    public static final Gson gson = new Gson();
     private String ID;
     @Inject
     private final ProxyServer velocity;
@@ -121,10 +122,11 @@ public class MinecraftConnectVelocity {
                         statusUpload.tag = "Minecraft-Connect";
                         statusUpload.message = "StatusUpload";
                         statusUpload.args.put("Players", velocity.getAllPlayers().toArray());
+                        wsClient.send(gson.toJson(statusUpload));
                     }
                 })
-                .delay(10, TimeUnit.SECONDS) // 延迟1秒后第一次执行
-                .repeat(5, TimeUnit.SECONDS) // 每5秒执行一次
+                .delay(5, TimeUnit.SECONDS)
+                .repeat(5, TimeUnit.SECONDS)
                 .schedule();
     }
 
@@ -140,7 +142,7 @@ public class MinecraftConnectVelocity {
                 ucm.tag = "Universe";
                 ucm.message = "RegisterListener";
                 ucm.args.put("Tag", "Minecraft-Connect");
-                wsClient.send(new Gson().toJson(ucm));
+                wsClient.send(gson.toJson(ucm));
                 logger.info("已与宇宙建立连结");
             }
 

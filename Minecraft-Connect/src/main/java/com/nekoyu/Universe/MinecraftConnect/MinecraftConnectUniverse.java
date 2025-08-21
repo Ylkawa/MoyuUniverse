@@ -5,6 +5,7 @@ import com.google.common.collect.Multimap;
 import com.nekoyu.Universe.API.MessageChannel.MCMessage;
 import com.nekoyu.Universe.API.MessageChannel.MessageChannel;
 import com.nekoyu.Universe.API.MessageChannel.MessageChannelListener;
+import com.nekoyu.Universe.API.PlaceHolder;
 import com.nekoyu.Universe.API.Planet;
 import com.nekoyu.Universe.API.UniverseChannelMessage;
 import com.nekoyu.Universe.API.UniverseListener;
@@ -95,8 +96,11 @@ public class MinecraftConnectUniverse extends Law implements UniverseListener {
         switch (message) {
             case "StatusUpload":
                 switch (planet.getType()) {
-                    case "":
+                    case "Velocity":
+                        // 把在线人数添加到 PlaceHolder
+                        PlaceHolder.setReplacement("Online:"+planet.getID(), String.valueOf(((ArrayList<String>) args.get("Players")).size()));
                 }
+                break;
             case "player_join_game":
                 if (defineOfForward.isEmpty()) {
                     logger.warn("没有为 {} 定义有效的转发规则", planet.getID());

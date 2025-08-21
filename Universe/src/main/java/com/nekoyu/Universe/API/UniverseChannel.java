@@ -72,6 +72,7 @@ public class UniverseChannel {
 
             @Override
             public void onMessage(WebSocket webSocket, String rawContent) {
+                logger.debug("Receive msg: {}", rawContent);
                 try {
                     var sender = new Planet();
                     sender.ID = (String) ((HashMap) webSocket.getAttachment()).get("ID");
