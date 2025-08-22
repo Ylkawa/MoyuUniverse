@@ -121,7 +121,14 @@ public class MinecraftConnectVelocity {
                         var statusUpload = new UniverseChannelMessage();
                         statusUpload.tag = "Minecraft-Connect";
                         statusUpload.message = "StatusUpload";
-                        statusUpload.args.put("Players", velocity.getAllPlayers().toArray());
+                        statusUpload.args.put("Players", velocity.getAllPlayers().stream()
+                                .map(player -> {
+                                    var info = new HashMap<String, Object>();
+                                    info.put("uuid", player.getUniqueId().toString());
+                                    info.put("name", player.getUsername());
+                                    return info;
+                                })
+                                .toList());
                         wsClient.send(gson.toJson(statusUpload));
                     }
                 })

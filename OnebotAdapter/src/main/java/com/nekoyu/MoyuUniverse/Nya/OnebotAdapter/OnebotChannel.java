@@ -218,6 +218,7 @@ public class OnebotChannel extends MessageChannel {
      * @param obr OnebotRequest
      */
     private void action(OBRequest obr) {
+        if (!wsConnection.isOpen()) return;
         wsConnection.send(new Gson().toJson(obr));
     }
 
@@ -227,6 +228,7 @@ public class OnebotChannel extends MessageChannel {
      * @param callback 回调函数
      */
     private void syncAction(OBRequest obr, Callback callback) {
+        if (!wsConnection.isOpen()) return;
         UUID uuid = UUID.randomUUID(); // 实现方法非常简单，发过去一个唯一的文本字符串，然后 Onebot实现端 把响应发回来的时候依照它原封不动发回来的字符串匹配回对应的回调函数
         obr.echo = uuid.toString();
         syncActions.put(obr.echo, callback);
