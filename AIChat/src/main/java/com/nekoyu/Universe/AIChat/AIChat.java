@@ -1,5 +1,6 @@
 package com.nekoyu.Universe.AIChat;
 
+import com.nekoyu.Universe.API.PlaceHolder;
 import com.nekoyu.Universe.ConfigureProcessor.CFGFileSyntaxException;
 import com.nekoyu.Universe.ConfigureProcessor.ConfigureProcessor;
 import com.nekoyu.Universe.DeepSeekAdapter.*;
@@ -39,17 +40,13 @@ public class AIChat extends Law {
         this.config = config;
 
         // LoadBuiltInDeepSeekFunction
-        var get_weather = new DeepSeekTool("get_weather", "get weather", new DeepSeekTool.CallbackFunction() {
-            @Override
-            public String function(Map<String, String> args) {
-                return "气温26度";
-            }
-        }, new HashMap<>(), new String[]{});
+        var get_weather = new DeepSeekTool("get_weather", "get weather", args -> "气温26度", new HashMap<>(), new String[]{});
         deepSeekTools.put("get_weather", get_weather);
         var add_memory = new DeepSeekTool("add_memory", "Add a new info into memory", new DeepSeekTool.CallbackFunction() {
             @Override
             public String function(Map<String, String> args) {
-                return "";
+
+                return null;
             }
         }, new HashMap<>(){{
             put("memory_content", new DeepSeekTool.Function.Parameters.Property("记忆的内容"));
@@ -104,7 +101,7 @@ public class AIChat extends Law {
                 prompt.append("\n");
                 prompt.append(config.getNode("Prompt").toString()).append("\n");
                 prompt.append(cfg.getNode("Prompt").toString());
-                newML.setSystemPrompt(prompt.toString());
+                newML.setSystemPrompt(PlaceHolder.replace(prompt.toString()));
                 MessageList ml = messageLists.get(mcm.sessionId);
                 StringBuilder content = new StringBuilder();
                 content.append(sdf.format(new Date(mcm.time * 1000))); // [时间]

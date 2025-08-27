@@ -28,7 +28,7 @@ public class Message {
     public String getMessageString() {
         if (stringMsg != null) return stringMsg;
         StringBuilder msg = new StringBuilder();
-        for (MessageSegment ms : message) {
+        for (MessageSegment ms : message) { // 此处参考 https://github.com/botuniverse/onebot-11/blob/master/message/segment.md
             switch (ms.type) {
                 case "text":
                     msg.append(ms.data.get("text"));

@@ -6,7 +6,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public class PlaceHolder {
-    static Map<String, String> replacements = new HashMap<>();
+    static Map<String, String> replacements = new HashMap<>(){{put("%%", "%");}};
     private static final Pattern PLACEHOLDER_PATTERN = Pattern.compile("%([^%]+)%");
 
     public static void setReplacement(String key, String value) {

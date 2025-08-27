@@ -66,16 +66,29 @@ public class DeepSeekChannel {
             logger.info("本次请求消耗token量: 输入: {}(未命中缓存) {}(命中缓存) 输出: {}", assistantResponse.usage.prompt_cache_miss_tokens, assistantResponse.usage.prompt_cache_hit_tokens, assistantResponse.usage.completion_tokens);
             switch (assistantResponse.choices[0].finish_reason){
                 case "tool_calls", "function_call":
-                    messageList.addToolRequest(assistantResponse.choices[0].message.content, assistantResponse.choices[0].message.tool_calls);
-                    logger.info("发起工具调用");
-                    Map<String, String> map = gson.fromJson(assistantResponse.choices[0].message.tool_calls[0].function.arguments, HashMap.class);
-                    String tool_resp = assistant.deepSeekTools.get(assistantResponse.choices[0].message.tool_calls[0].function.name).function.cf.function(map);
-                    messageList.addToolResponse(tool_resp, assistantResponse.choices[0].message.tool_calls[0].id);
-                    return request(messageList, assistant, reqNum);
+                    logger.info("发起工具调用: {}/{}", reqNum, 5);
+                    var tool_calls = new HashMap<Tool_call, String>();
+                    for (Tool_call tool_call : assistantResponse.choices[0].message.tool_calls) {
+                        Map<String, String> args = gson.fromJson(tool_call.function.arguments, HashMap.class);
+                        String tool_resp = assistant.deepSeekTools.get(tool_call.function.name).function.cf.function(args);
+                        if (tool_resp != null) {
+                            tool_calls.put(tool_call, tool_resp);
+                        }
+                    }
+                    if (tool_calls.isEmpty()) { // 如果调用的函数都返回了 null 则默认为模型不需要知道调用的结果，直接继续
+                        messageList.addMessage("assistant", assistantResponse.choices[0].message.content);
+                        if (assistantResponse.choices[0].message.content.isEmpty()) return request(messageList, assistant, reqNum); // 但是我还是怕有憨批模型调用了函数但是一声不吭
+                        return assistantResponse;
+                    } else {
+                        messageList.addToolRequest(assistantResponse.choices[0].message.content, tool_calls.keySet().toArray(new Tool_call[0]));
+                        for (Map.Entry<Tool_call, String> entry : tool_calls.entrySet()) {
+                            messageList.addToolResponse(entry.getValue(), entry.getKey().id);
+                        }
+                        return request(messageList, assistant, reqNum);
+                    }
                 case "stop":
                     messageList.addMessage("assistant", assistantResponse.choices[0].message.content);
                     return assistantResponse;
-
             }
             return null;
         }
