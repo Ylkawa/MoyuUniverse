@@ -5,8 +5,12 @@ public class ShareContactField extends MsgField {
     String sessionId;
 
     public ShareContactField(String platform, String sessionId) {
-        super.type = "ShareContact";
+        super.type = "shareContact";
         this.platform = platform;
         this.sessionId = sessionId;
+    }
+
+    public String getAsString() {
+        return "[分享会话: "+sessionId+"]";
     }
 }

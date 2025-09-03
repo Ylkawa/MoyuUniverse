@@ -117,7 +117,7 @@ public class OnebotChannel extends MessageChannel {
                                             msg.append("[图片]");
                                             var imageField = new ImageField();
                                             try {
-                                                imageField.file = new URI(ms.data.get("file"));
+                                                imageField.file = new URI(ms.data.get("url"));
                                                 mcm.messageFields.add(imageField);
                                             } catch (URISyntaxException e) {
                                                 logger.error("无法以 {} 创建URL对象", ms.data.get("file"), e);

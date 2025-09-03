@@ -6,7 +6,11 @@ public class AtField extends MsgField {
     Account target;
 
     public AtField(Account target) {
-        super.type = "At";
+        super.type = "at";
         this.target = target;
+    }
+
+    public String getAsString() {
+        return "@"+target.getId();
     }
 }

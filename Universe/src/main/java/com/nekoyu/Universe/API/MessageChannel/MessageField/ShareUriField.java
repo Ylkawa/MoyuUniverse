@@ -4,11 +4,16 @@ import java.net.URI;
 
 public class ShareUriField extends MsgField {
     String title;
-    URI share;
+    URI uri;
 
-    public ShareUriField(String title, URI share) {
-        super.type = "ShareUri";
+    public ShareUriField(String title, URI uri) {
+        super.type = "shareUri";
         this.title = title;
-        this.share = share;
+        this.uri = uri;
+    }
+
+    @Override
+    public String getAsString() {
+        return "[分享链接, "+title+": "+uri+"]";
     }
 }

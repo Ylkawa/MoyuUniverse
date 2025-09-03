@@ -5,8 +5,13 @@ public class LocationField extends MsgField {
     double lon;
 
     public LocationField(double lat, double lon) {
-        super.type = "Location";
+        super.type = "location";
         this.lat = lat;
         this.lon = lon;
+    }
+
+    @Override
+    public String getAsString() {
+        return "[位置分享: 经度: "+lon+", 纬度: "+lat+"]";
     }
 }

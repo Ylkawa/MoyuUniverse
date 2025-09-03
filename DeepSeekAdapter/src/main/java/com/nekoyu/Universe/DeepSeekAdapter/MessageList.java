@@ -8,9 +8,9 @@ public class MessageList {
 
     public void setSystemPrompt(String systemPrompt) {
         if (!messageList.isEmpty() && messageList.get(0).role.equals("system")){
-            messageList.get(0).content = systemPrompt;
+            ((StringMessage) messageList.get(0)).content = systemPrompt;
         } else {
-            Message prompt = new Message();
+            StringMessage prompt = new StringMessage();
             prompt.role = "system";
             prompt.content = systemPrompt;
             messageList.add(0, prompt);
@@ -18,7 +18,7 @@ public class MessageList {
     }
 
     public void addMessage(String content) {
-        var msg = new Message();
+        var msg = new StringMessage();
         msg.content = content;
         msg.role = "user";
         messageList.add(msg);
@@ -29,10 +29,14 @@ public class MessageList {
     }
 
     public void addMessage(String role, String content) {
-        var msg = new Message();
+        var msg = new StringMessage();
         msg.content = content;
         msg.role = role;
         messageList.add(msg);
+    }
+
+    public void addMessage(Message message) {
+        messageList.add(message);
     }
 
     public void clean() {
@@ -60,7 +64,7 @@ public class MessageList {
     }
 
     public void addToolResponse(String content, String tool_call_id) {
-        var msg = new Message();
+        var msg = new StringMessage();
         msg.content = content;
         msg.role = "tool";
         msg.tool_call_id = tool_call_id;
@@ -68,7 +72,7 @@ public class MessageList {
     }
 
     public void addToolRequest(String content, Tool_call[] tool_calls) {
-        var msg = new Message();
+        var msg = new StringMessage();
         msg.role = "assistant";
         msg.content = content;
         msg.tool_calls = tool_calls;

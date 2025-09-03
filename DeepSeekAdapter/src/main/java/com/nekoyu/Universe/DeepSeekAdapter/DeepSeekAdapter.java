@@ -1,16 +1,17 @@
 package com.nekoyu.Universe.DeepSeekAdapter;
 
+import com.nekoyu.Universe.API.MessageChannel.PictureSolver;
 import com.nekoyu.Universe.ConfigureProcessor.CFGFileSyntaxException;
 import com.nekoyu.Universe.ConfigureProcessor.ConfigureProcessor;
+import com.nekoyu.Universe.DeepSeekAdapter.ContentPiece.ImageUrlPiece;
+import com.nekoyu.Universe.DeepSeekAdapter.ContentPiece.TextPiece;
 import com.nekoyu.Universe.LawsLoader.Law;
 import com.nekoyu.Universe.Universe;
-import org.yaml.snakeyaml.Yaml;
-import org.yaml.snakeyaml.constructor.Constructor;
 
 import java.io.File;
 import java.io.IOException;
+import java.net.URI;
 import java.util.Objects;
-import java.util.regex.Pattern;
 
 public class DeepSeekAdapter extends Law {
 
@@ -35,6 +36,26 @@ public class DeepSeekAdapter extends Law {
                 if (checkFor == 0) {
                     DeepSeekChannel dsc = new DeepSeekChannel(cp.getNode("id").toString(), cp.getNode("base_url").toString(), cp.getNode("api_key").toString());
                     Universe.Providers.put(dsc.id, dsc);
+                    if (cp.getNode("PictureSolver") != null) {
+                        Universe.pictureSolver = new PictureSolver() {
+                            @Override
+                            public String getDescription(URI uri) {
+                                var assistant = dsc.getAssistant(cp.getNode("PictureSolver").toString());
+                                var ml = new MessageList();
+                                var msg = new ArrayMessage();
+                                msg.role = "user";
+                                msg.content.add(new ImageUrlPiece(uri.toString()));
+                                msg.content.add(new TextPiece("请概括此图片的内容"));
+                                ml.addMessage(msg);
+                                try {
+                                    return assistant.request(ml).choices[0].message.content;
+                                } catch (IOException e) {
+                                    logger.error(e.getMessage(), e);
+                                    return null;
+                                }
+                            }
+                        };
+                    }
                     logger.info("已载入 DeepSeek 适配器 {}", dsc.id);
                 } else {
                     logger.warn("配置文件 {} 仍存在 {} 个错误，将不会被加载", file.getName(), checkFor);
@@ -54,7 +75,12 @@ public class DeepSeekAdapter extends Law {
 
     @Override
     public void run() {
-
+        var picSolver = new PictureSolver() {
+            @Override
+            public String getDescription(URI uri) {
+                return "";
+            }
+        };
     }
 
     @Override

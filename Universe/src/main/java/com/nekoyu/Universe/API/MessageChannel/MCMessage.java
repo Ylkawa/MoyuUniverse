@@ -20,4 +20,12 @@ public class MCMessage {
         receiver = new Account();
         messageFields = new LinkedList<>();
     }
+
+    public String solveAll() {
+        var sb = new StringBuilder();
+        for (MsgField msgField: messageFields) {
+            sb.append(msgField.getAsString());
+        }
+        return sb.toString();
+    }
 }

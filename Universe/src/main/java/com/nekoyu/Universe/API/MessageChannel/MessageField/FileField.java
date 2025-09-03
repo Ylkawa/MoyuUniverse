@@ -7,6 +7,11 @@ public class FileField extends MsgField {
     private String content;
 
     public FileField() {
-        super.type = "File";
+        super.type = "file";
+    }
+
+    @Override
+    public String getAsString() {
+        return "[文件]";
     }
 }
