@@ -27,6 +27,8 @@ public class AIChat extends Law {
         if (!configDic.exists()) configDic.mkdir();
         File sessionCFGDic = new File("./config/AIChat/SessionCFG/");
         if (!sessionCFGDic.exists()) sessionCFGDic.mkdir();
+        File toolsCFGDic = new File("./config/AIChat/ToolsCFG");
+        if (!toolsCFGDic.exists()) toolsCFGDic.mkdir();
         loadSessionCfg(sessionCFGDic);
         ConfigureProcessor config = new ConfigureProcessor("./config/AIChat/config.yml");
         config.requireNode("Prompt", "[\\s\\S]+", "");
@@ -45,7 +47,6 @@ public class AIChat extends Law {
         var add_memory = new DeepSeekTool("add_memory", "Add a new info into memory", new DeepSeekTool.CallbackFunction() {
             @Override
             public String function(Map<String, String> args) {
-
                 return null;
             }
         }, new HashMap<>(){{
@@ -107,10 +108,10 @@ public class AIChat extends Law {
                 content.append(sdf.format(new Date(mcm.time * 1000))); // [时间]
                 content.append("[").append(mcm.id).append("]"); // [时间] [消息id]
                 content.append(mcm.sender.getNickname()).append("(").append(mcm.sender.getId()).append(")").append(mcm.sender.getSex()); // [时间] [消息id] [昵称](用户QQ号)性别
-                content.append(": ").append(mcm.message); // [时间] [消息id] [昵称](用户QQ号)性别: [消息内容]
+                content.append(": ").append(mcm.messageString); // [时间] [消息id] [昵称](用户QQ号)性别: [消息内容]
                 ml.addMessage(content.toString());
                 ml.clean();
-                if (cfg.getNode("Trigger").toString().equals("every") || mcm.message.contains(cfg.getNode("Keyword").toString())) {
+                if (cfg.getNode("Trigger").toString().equals("every") || mcm.messageString.contains(cfg.getNode("Keyword").toString())) {
                     Object provider = Universe.Providers.get(cfg.getNode("Provider").toString());
                     if (provider instanceof DeepSeekChannel dsc) {
                         Assistant assistant = dsc.getAssistant(cfg.getNode("Model").toString());

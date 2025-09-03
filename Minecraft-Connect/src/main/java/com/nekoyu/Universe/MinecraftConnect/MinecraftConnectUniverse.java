@@ -77,7 +77,7 @@ public class MinecraftConnectUniverse extends Law implements UniverseListener {
                     UniverseChannelMessage ucm = new UniverseChannelMessage();
                     ucm.message = "ForwardChat";
                     ucm.args.put("sender", mcm.sender.getNickname());
-                    ucm.args.put("message", mcm.message);
+                    ucm.args.put("message", mcm.messageString);
 
                     Universe.UniverseChannel.broadcast(target, ucm);
                 }
