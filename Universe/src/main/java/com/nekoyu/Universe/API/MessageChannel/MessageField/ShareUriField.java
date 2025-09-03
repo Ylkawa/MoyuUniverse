@@ -7,6 +7,7 @@ public class ShareUriField extends MsgField {
     URI share;
 
     public ShareUriField(String title, URI share) {
+        super.type = "ShareUri";
         this.title = title;
         this.share = share;
     }

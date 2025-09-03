@@ -197,7 +197,7 @@ public class OnebotChannel extends MessageChannel {
                                             break;
                                         case "location":
                                             msg.append("[分享一处位置, ").append("纬度").append(ms.data.get("lat")).append(", 经度").append(ms.data.get("lon"));
-                                            mcm.messageFields.add(new MapField(Double.parseDouble(ms.data.get("lat")), Double.parseDouble(ms.data.get("lon"))));
+                                            mcm.messageFields.add(new LocationField(Double.parseDouble(ms.data.get("lat")), Double.parseDouble(ms.data.get("lon"))));
                                             break;
                                         case "music": // 音乐分享，普通的卡片要和自定义的卡片分开讨论
                                             switch (ms.data.get("type")) {

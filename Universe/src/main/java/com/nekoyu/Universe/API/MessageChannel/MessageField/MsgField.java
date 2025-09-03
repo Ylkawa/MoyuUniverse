@@ -1,5 +1,5 @@
 package com.nekoyu.Universe.API.MessageChannel.MessageField;
 
-public class MsgField {
+public abstract class MsgField {
     public String type;
 }

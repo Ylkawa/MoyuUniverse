@@ -4,6 +4,7 @@ public class TextField extends MsgField{
     String text;
 
     public TextField(String text) {
+        super.type = "Text";
         this.text = text;
     }
 }

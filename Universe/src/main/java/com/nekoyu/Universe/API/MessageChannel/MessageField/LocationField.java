@@ -1,10 +1,11 @@
 package com.nekoyu.Universe.API.MessageChannel.MessageField;
 
-public class MapField extends MsgField {
+public class LocationField extends MsgField {
     double lat;
     double lon;
 
-    public MapField(double lat, double lon) {
+    public LocationField(double lat, double lon) {
+        super.type = "Location";
         this.lat = lat;
         this.lon = lon;
     }
