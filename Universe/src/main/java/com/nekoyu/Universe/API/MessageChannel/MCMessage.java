@@ -2,7 +2,6 @@ package com.nekoyu.Universe.API.MessageChannel;
 
 import com.nekoyu.Universe.API.MessageChannel.MessageField.MsgField;
 
-import java.io.File;
 import java.util.LinkedList;
 
 public class MCMessage {

@@ -92,24 +92,11 @@ public class AIChat extends Law {
     public void run() {
         SimpleDateFormat sdf = new SimpleDateFormat("[yyyy-MM-dd HH:mm:ss]");
         for (ConfigureProcessor cfg : configs) {
-            MessageList newML = new MessageList();
-            messageLists.put(cfg.getNode("SessionId").toString(), newML);
+            MessageList ml = new MessageList();
             Universe.MessageChannelManager.listenToSession(cfg.getNode("SessionId").toString(), mcm -> {
-                StringBuilder prompt = new StringBuilder();
-                prompt.append("当前时间: ").append(sdf.format(new Date(System.currentTimeMillis()))).append("\n");
-                prompt.append("当前所处会话: ").append(cfg.getNode("SessionId")).append("\n");
-                prompt.append("你的账号: ").append(mcm.receiver.getId());
-                prompt.append("\n");
-                prompt.append(config.getNode("Prompt").toString()).append("\n");
-                prompt.append(cfg.getNode("Prompt").toString());
-                newML.setSystemPrompt(PlaceHolder.replace(prompt.toString()));
-                MessageList ml = messageLists.get(mcm.sessionId);
-                StringBuilder content = new StringBuilder();
-                content.append(sdf.format(new Date(mcm.time * 1000))); // [时间]
-                content.append("[").append(mcm.id).append("]"); // [时间] [消息id]
-                content.append(mcm.sender.getNickname()).append("(").append(mcm.sender.getId()).append(")").append(mcm.sender.getSex()); // [时间] [消息id] [昵称](用户QQ号)性别
-                content.append(": ").append(mcm.messageString); // [时间] [消息id] [昵称](用户QQ号)性别: [消息内容]
-                ml.addMessage(content.toString());
+                アンテナ39 newMsg = new アンテナ39(mcm);
+                newMsg.role = "user";
+                ml.addMessage(newMsg);
                 ml.clean();
                 if (cfg.getNode("Trigger").toString().equals("every") || mcm.messageString.contains(cfg.getNode("Keyword").toString())) {
                     Object provider = Universe.Providers.get(cfg.getNode("Provider").toString());
@@ -119,6 +106,22 @@ public class AIChat extends Law {
                             for (String tool : (List<String>) cfg.getNode("Tools")) {
                                 if (deepSeekTools.get(tool) != null) assistant.addTool(deepSeekTools.get(tool));
                             } // 为assistant添加指定的tools // 如果不存在这个tool就不添加
+                        }
+                        // 决定让AI发言
+                        // 设置 System Prompt
+                        StringBuilder prompt = new StringBuilder();
+                        prompt.append("当前时间: ").append(sdf.format(new Date(System.currentTimeMillis()))).append("\n");
+                        prompt.append("当前所处会话: ").append(cfg.getNode("SessionId")).append("\n");
+                        prompt.append("你的账号: ").append(mcm.receiver.getId());
+                        prompt.append("\n");
+                        prompt.append(config.getNode("Prompt").toString()).append("\n");
+                        prompt.append(cfg.getNode("Prompt").toString());
+                        ml.setSystemPrompt(PlaceHolder.replace(prompt.toString()));
+                        // 把还没转换好的MCMessage转换成String
+                        for (Message message : ml.getMessageList()) {
+                            if (!(message instanceof アンテナ39)) continue;
+                            アンテナ39 antena39 = (アンテナ39) message;
+                            antena39.content = antena39.mcMessage.solveAll();
                         }
                         try {
                             var response = assistant.request(ml);

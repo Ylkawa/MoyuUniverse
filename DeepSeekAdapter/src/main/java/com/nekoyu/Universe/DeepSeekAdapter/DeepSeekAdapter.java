@@ -39,7 +39,8 @@ public class DeepSeekAdapter extends Law {
                     if (cp.getNode("PictureSolver") != null) {
                         Universe.pictureSolver = new PictureSolver() {
                             @Override
-                            public String getDescription(URI uri) {
+                            public String getDescription(URI uri) throws IOException {
+                                logger.info("尝试解析图片 {}", uri.toString());
                                 var assistant = dsc.getAssistant(cp.getNode("PictureSolver").toString());
                                 var ml = new MessageList();
                                 var msg = new ArrayMessage();
@@ -51,7 +52,7 @@ public class DeepSeekAdapter extends Law {
                                     return assistant.request(ml).choices[0].message.content;
                                 } catch (IOException e) {
                                     logger.error(e.getMessage(), e);
-                                    return null;
+                                    throw e;
                                 }
                             }
                         };
@@ -75,12 +76,7 @@ public class DeepSeekAdapter extends Law {
 
     @Override
     public void run() {
-        var picSolver = new PictureSolver() {
-            @Override
-            public String getDescription(URI uri) {
-                return "";
-            }
-        };
+
     }
 
     @Override
