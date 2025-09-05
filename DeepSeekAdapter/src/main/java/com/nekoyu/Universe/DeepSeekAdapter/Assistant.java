@@ -29,7 +29,7 @@ public class Assistant {
         deepSeekTools.put(dsf.function.name, dsf);
     }
 
-    public AssistantResponse request(MessageList ml) throws IOException {
+    public AssistantResponse request(MessageList ml) throws IOException,DSException {
         return dsc.request(ml, this);
     }
 

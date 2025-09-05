@@ -13,6 +13,7 @@ public class MCMessage {
     public long time;
     public int id;
     public LinkedList<MsgField> messageFields;
+    public MessageChannel messageChannel;
 
     public MCMessage() {
         sender = new Account();
