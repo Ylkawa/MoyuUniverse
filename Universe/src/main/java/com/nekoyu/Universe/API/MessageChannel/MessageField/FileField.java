@@ -1,12 +1,12 @@
 package com.nekoyu.Universe.API.MessageChannel.MessageField;
 
-import java.net.URI;
+import java.net.URL;
 
 public class FileField extends MsgField {
-    public URI file;
-    private String content;
+    public URL url;
 
-    public FileField() {
+    public FileField(URL url) {
+        this.url = url;
         super.type = "file";
     }
 

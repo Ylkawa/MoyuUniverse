@@ -16,8 +16,10 @@ import org.java_websocket.handshake.ServerHandshake;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.net.MalformedURLException;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.net.URL;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -115,11 +117,10 @@ public class OnebotChannel extends MessageChannel {
                                         // 暂时没看到有能和emoji一一对应的表格，先不管
                                         case "image":
                                             msg.append("[图片]");
-                                            var imageField = new ImageField();
                                             try {
-                                                imageField.file = new URI(ms.data.get("url"));
+                                                var imageField = new ImageField(new URL(ms.data.get("url")));
                                                 mcm.messageFields.add(imageField);
-                                            } catch (URISyntaxException e) {
+                                            } catch (MalformedURLException e) {
                                                 logger.error("无法以 {} 创建URL对象", ms.data.get("file"), e);
                                                 mcm.messageFields.add(new TextField("[图片]"));
                                             }
@@ -127,21 +128,18 @@ public class OnebotChannel extends MessageChannel {
                                         // 放不进去文本，先这样
                                         case "record":
                                             msg.append("[语音]");
-                                            var voiceField = new VoiceField();
                                             try {
-                                                voiceField.file = new URI(ms.data.get("file"));
-                                                mcm.messageFields.add(voiceField);
-                                            } catch (URISyntaxException e) {
+                                                mcm.messageFields.add(new VoiceField(new URL(ms.data.get("file"))));
+                                            } catch (MalformedURLException e) {
                                                 logger.error("无法以 {} 创建URL对象", ms.data.get("file"), e);
                                                 mcm.messageFields.add(new TextField("[语音]"));
                                             }
                                             break;
                                         case "video":
                                             msg.append("[视频]");
-                                            var videoField = new VideoField();
                                             try {
-                                                videoField.file = new URI(ms.data.get("file"));
-                                            } catch (URISyntaxException e) {
+                                                mcm.messageFields.add(new VideoField(new URL(ms.data.get("file"))));
+                                            } catch (MalformedURLException e) {
                                                 logger.error("无法以 {} 创建URL对象", ms.data.get("file"), e);
                                                 mcm.messageFields.add(new TextField("[视频]"));
                                             }

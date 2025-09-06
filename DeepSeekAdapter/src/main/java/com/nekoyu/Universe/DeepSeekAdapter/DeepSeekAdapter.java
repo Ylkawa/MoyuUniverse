@@ -11,6 +11,7 @@ import com.nekoyu.Universe.Universe;
 import java.io.File;
 import java.io.IOException;
 import java.net.URI;
+import java.net.URL;
 import java.util.Objects;
 
 public class DeepSeekAdapter extends Law {
@@ -39,13 +40,13 @@ public class DeepSeekAdapter extends Law {
                     if (cp.getNode("PictureSolver") != null) {
                         Universe.pictureSolver = new PictureSolver() {
                             @Override
-                            public String getDescription(URI uri) throws DSException {
-                                logger.info("尝试解析图片 {}", uri.toString());
+                            public String getDescription(URL url) throws DSException {
+                                logger.info("尝试解析图片 {}", url.toString());
                                 var assistant = dsc.getAssistant(cp.getNode("PictureSolver").toString());
                                 var ml = new MessageList();
                                 var msg = new ArrayMessage();
                                 msg.role = "user";
-                                msg.content.add(new ImageUrlPiece(uri.toString()));
+                                msg.content.add(new ImageUrlPiece(url.toString()));
                                 msg.content.add(new TextPiece("请概括此图片的内容"));
                                 ml.addMessage(msg);
                                 try {
