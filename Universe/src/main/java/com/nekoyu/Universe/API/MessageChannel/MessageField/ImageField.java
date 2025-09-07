@@ -85,17 +85,23 @@ public class ImageField extends FileField {
                                         RegeoResponse regeoResponse = amapClient.regeoRequest(regeoRequest);
                                         RegeoResponse.Regeocode regeocode = regeoResponse.regeocode;
                                         descriptionBuilder.append("\n地图位置: ").append(regeocode.formatted_address);
-                                        descriptionBuilder.append("\n附近道路: ");
-                                        for (var road : regeocode.roads) {
-                                            descriptionBuilder.append(road.name).append("(").append(road.direction).append(", ").append(road.distance).append("m); ");
+                                        if (regeocode.roads != null) {
+                                            descriptionBuilder.append("\n附近道路: ");
+                                            for (var road : regeocode.roads) {
+                                                descriptionBuilder.append(road.name).append("(").append(road.direction).append(", ").append(road.distance).append("m); ");
+                                            }
                                         }
-                                        descriptionBuilder.append("\n附近路口: ");
-                                        for (var roadInter : regeocode.roadinters) {
-                                            descriptionBuilder.append(roadInter.first_name).append(roadInter.second_name).append("口").append("(").append(roadInter.direction).append(", ").append(roadInter.distance).append("m); ");
+                                        if (regeocode.roadinters != null) {
+                                            descriptionBuilder.append("\n附近路口: ");
+                                            for (var roadInter : regeocode.roadinters) {
+                                                descriptionBuilder.append(roadInter.first_name).append(roadInter.second_name).append("口").append("(").append(roadInter.direction).append(", ").append(roadInter.distance).append("m); ");
+                                            }
                                         }
-                                        descriptionBuilder.append("\n附近兴趣点: ");
-                                        for (var poi : regeocode.pois) {
-                                            descriptionBuilder.append(poi.name).append("(").append(poi.direction).append(", ").append(poi.distance).append("m); ");
+                                        if (regeocode.pois != null) {
+                                            descriptionBuilder.append("\n附近兴趣点: ");
+                                            for (var poi : regeocode.pois) {
+                                                descriptionBuilder.append(poi.name).append("(").append(poi.direction).append(", ").append(poi.distance).append("m); ");
+                                            }
                                         }
                                     } catch (Exception e) {
                                         logger.error(e.getMessage(), e);
