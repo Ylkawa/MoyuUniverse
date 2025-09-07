@@ -72,7 +72,7 @@ public class ImageField extends FileField {
                             descriptionBuilder.append("\n纬度: ").append(latitude);
                             if (longitude != 0.0d && latitude != 0.0d) {
                                 String amapKey = System.getenv("AmapAPIKey");
-                                if (!amapKey.isEmpty()) {
+                                if (amapKey != null && !amapKey.isEmpty()) {
                                     DecimalFormat df = new DecimalFormat("0.000000");
                                     df.setRoundingMode(RoundingMode.HALF_UP);
 
