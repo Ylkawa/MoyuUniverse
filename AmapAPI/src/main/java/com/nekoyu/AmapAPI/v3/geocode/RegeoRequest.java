@@ -3,10 +3,10 @@ package com.nekoyu.AmapAPI.v3.geocode;
 import java.util.HashMap;
 import java.util.Map;
 
-public class regeoRequest {
+public class RegeoRequest {
     public Map<String, String> args;
 
-    public regeoRequest() {
+    public RegeoRequest() {
         args = new HashMap<>();
         args.put("output", "JSON");
     }
