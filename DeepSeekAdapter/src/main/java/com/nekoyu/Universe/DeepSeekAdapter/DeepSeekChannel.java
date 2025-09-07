@@ -36,7 +36,7 @@ public class DeepSeekChannel {
         return new Assistant(this, model);
     }
 
-    public AssistantResponse request(MessageList messageList, Assistant assistant) throws IOException {
+    public AssistantResponse request(MessageList messageList, Assistant assistant) throws IOException, DSException {
         return request(messageList, assistant, 0);
     }
 
@@ -61,8 +61,9 @@ public class DeepSeekChannel {
 
         // 尝试请求
         try (Response response = okHttpClient.newCall(request).execute()) {
+            String rawContent = response.body().string();
             if (response.code() == 200) {
-                AssistantResponse assistantResponse = gson.fromJson(response.body().string(), AssistantResponse.class);
+                AssistantResponse assistantResponse = gson.fromJson(rawContent, AssistantResponse.class);
                 if (assistantResponse.usage != null) {
                     logger.info("本次请求消耗token量: 输入: {}(未命中缓存) {}(命中缓存) 输出: {}", assistantResponse.usage.prompt_cache_miss_tokens, assistantResponse.usage.prompt_cache_hit_tokens, assistantResponse.usage.completion_tokens);
                     switch (assistantResponse.choices[0].finish_reason) {
@@ -96,7 +97,7 @@ public class DeepSeekChannel {
                 }
             }
             DSException dsException = new DSException("未知错误");
-            dsException.setRawResponse(response.body().string());
+            dsException.setRawResponse(rawContent);
             throw dsException;
         }
     }

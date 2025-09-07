@@ -52,6 +52,7 @@ public class DeepSeekAdapter extends Law {
                                     return assistant.request(ml).choices[0].message.content;
                                 } catch (DSException e) {
                                     logger.error(e.getMessage(), e);
+                                    logger.error(e.rawResponse);
                                     throw e;
                                 } catch (IOException e) {
                                     throw new RuntimeException(e);
