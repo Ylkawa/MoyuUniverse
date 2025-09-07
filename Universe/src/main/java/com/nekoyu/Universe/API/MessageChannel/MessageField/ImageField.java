@@ -95,7 +95,7 @@ public class ImageField extends FileField {
                                         }
                                         descriptionBuilder.append("\n附近兴趣点: ");
                                         for (var poi : regeocode.pois) {
-                                            descriptionBuilder.append(poi.name).append("(").append(poi.distance).append(", ").append(poi.distance).append("m); ");
+                                            descriptionBuilder.append(poi.name).append("(").append(poi.direction).append(", ").append(poi.distance).append("m); ");
                                         }
                                     } catch (Exception e) {
                                         logger.error(e.getMessage(), e);
