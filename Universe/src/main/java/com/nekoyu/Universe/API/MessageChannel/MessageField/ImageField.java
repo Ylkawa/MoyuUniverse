@@ -34,7 +34,7 @@ public class ImageField extends FileField {
                 StringBuilder descriptionBuilder = new StringBuilder().append("[图片, \n");
                 try {
                     descriptionBuilder.append("内容描述: \n").append(Universe.pictureSolver.getDescription(url)).append("\n");
-                } catch (IOException e) {
+                } catch (IOException | RuntimeException e) {
                     descriptionBuilder.append("出错，解析失败");
                 }
                 Metadata metadata = getMetadata();
