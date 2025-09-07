@@ -41,11 +41,11 @@ public class ImageField extends FileField {
             synchronized (description) {
                 if (!description.isEmpty()) return description;
                 StringBuilder descriptionBuilder = new StringBuilder().append("[图片, \n");
-//                try {
-//                    descriptionBuilder.append("内容描述: \n").append(Universe.pictureSolver.getDescription(url)).append("\n");
-//                } catch (Exception e) {
-//                    descriptionBuilder.append("出错，解析失败");
-//                }
+                try {
+                    descriptionBuilder.append("内容描述: \n").append(Universe.pictureSolver.getDescription(url)).append("\n");
+                } catch (Exception e) {
+                    descriptionBuilder.append("出错，解析失败");
+                }
                 Metadata metadata = getMetadata();
                 if (metadata != null) { // 如果EXIF信息存在
                     // 尝试解析EXIF信息

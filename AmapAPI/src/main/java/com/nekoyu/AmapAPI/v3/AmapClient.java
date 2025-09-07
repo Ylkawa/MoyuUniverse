@@ -32,7 +32,6 @@ public class AmapClient {
         try (Response response = httpClient.newCall(request).execute()) {
             String rawResponse = response.body().string();
             if (response.code() == 200) {
-                System.out.println(rawResponse);
                 // 由于缺德地图的API响应体中，空的值不是null，而是一个空的数组？？？所以解析的时候，空数组不能被解析成对象，代码不兼容（不是，这么写报复社会来的吧……），我没辙，把所有空数组转换成null，应该能规避这个特性吧
                 RegeoResponse regeoResponse = gson.fromJson(rawResponse.replaceAll("\\[\\]", "null"), RegeoResponse.class);
                 if (regeoResponse.info.equals("OK")) return regeoResponse;
