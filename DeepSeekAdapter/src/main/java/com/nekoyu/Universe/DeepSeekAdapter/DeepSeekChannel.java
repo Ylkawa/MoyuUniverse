@@ -96,7 +96,9 @@ public class DeepSeekChannel {
                     return null;
                 }
             }
-            DSException dsException = new DSException("未知错误");
+            var dsError = gson.fromJson(rawContent, DSError.class);
+            DSException dsException = new DSException(dsError.error.message);
+            dsException.error = dsError;
             dsException.setRawResponse(rawContent);
             throw dsException;
         }

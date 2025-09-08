@@ -98,7 +98,7 @@ public class AIChat extends Law {
                 newMsg.role = "user";
                 ml.addMessage(newMsg);
                 ml.clean();
-                if (cfg.getNode("Trigger").toString().equals("every") || mcm.messageString.contains(cfg.getNode("Keyword").toString())) {
+                if (cfg.getNode("Trigger").toString().equals("every") || mcm.messageString.contains(cfg.getNode("Keyword").toString()) || mcm.level >= 2) {
                     Object provider = Universe.Providers.get(cfg.getNode("Provider").toString());
                     if (provider instanceof DeepSeekChannel dsc) {
                         Assistant assistant = dsc.getAssistant(cfg.getNode("Model").toString());

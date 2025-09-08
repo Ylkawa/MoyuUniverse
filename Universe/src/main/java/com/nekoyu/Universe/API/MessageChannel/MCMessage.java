@@ -14,11 +14,13 @@ public class MCMessage {
     public int id;
     public LinkedList<MsgField> messageFields;
     public MessageChannel messageChannel;
+    public int level;
 
     public MCMessage() {
         sender = new Account();
         receiver = new Account();
         messageFields = new LinkedList<>();
+        level = 0;
     }
 
     public String solveAll() {

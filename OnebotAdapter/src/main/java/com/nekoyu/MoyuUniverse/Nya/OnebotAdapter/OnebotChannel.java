@@ -256,6 +256,13 @@ public class OnebotChannel extends MessageChannel {
                                     }
                                 }
                                 mcm.messageString = msg.toString();
+                                // 给消息定级
+                                for (MessageSegment seg : message.message) {
+                                    if (seg.type.equals("at") && seg.data.get("qq").equals(String.valueOf(qqId))) {
+                                        mcm.level = 2;
+                                        break;
+                                    }
+                                }
                                 switch (message.message_type) {
                                     case "group":
                                         Long groupId = message.group_id;

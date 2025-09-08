@@ -8,7 +8,6 @@ import com.drew.metadata.exif.ExifIFD0Directory;
 import com.drew.metadata.exif.ExifSubIFDDirectory;
 import com.drew.metadata.exif.GpsDirectory;
 import com.nekoyu.AmapAPI.v3.AmapClient;
-import com.nekoyu.AmapAPI.v3.AmapException;
 import com.nekoyu.AmapAPI.v3.geocode.RegeoRequest;
 import com.nekoyu.AmapAPI.v3.geocode.RegeoResponse;
 import com.nekoyu.Universe.Universe;

@@ -2,6 +2,7 @@ package com.nekoyu.Universe.DeepSeekAdapter;
 
 public class DSException extends RuntimeException {
     String rawResponse;
+    DSError error;
 
     public DSException(String message) {
         super(message);
