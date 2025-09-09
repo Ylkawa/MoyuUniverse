@@ -23,6 +23,10 @@ public class MCMessage {
         level = 0;
     }
 
+    /**
+     * 将本段所有段落全部整合到同一个字符串内
+     * @return 此条消息内容（纯文本形式）
+     */
     public String solveAll() {
         var sb = new StringBuilder();
         for (MsgField msgField: messageFields) {
