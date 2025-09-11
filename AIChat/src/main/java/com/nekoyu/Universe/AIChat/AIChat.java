@@ -9,21 +9,31 @@ import com.nekoyu.Universe.LawsLoader.Law;
 import com.nekoyu.Universe.Universe;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.yaml.snakeyaml.Yaml;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
+import java.lang.reflect.InvocationTargetException;
+import java.net.URL;
+import java.net.URLClassLoader;
 import java.text.SimpleDateFormat;
 import java.util.*;
+import java.util.jar.JarFile;
+import java.util.zip.ZipEntry;
 
 public class AIChat extends Law {
+    public static final Yaml yaml = new Yaml();
     Logger logger = LoggerFactory.getLogger(this.getClass());
     List<ConfigureProcessor> configs = new ArrayList<>();
     Map<String, MessageList> messageLists = new HashMap<>();
     ConfigureProcessor config;
     Map<String, DeepSeekTool> deepSeekTools = new HashMap<>();
+    List<AIChatPlugin> aiChatPlugins = new ArrayList<>();
 
     @Override
     public boolean prepare() {
+        getDataDir();
         File configDic = new File("./config/AIChat");
         if (!configDic.exists()) configDic.mkdir();
         File sessionCFGDic = new File("./config/AIChat/SessionCFG/");
@@ -54,6 +64,52 @@ public class AIChat extends Law {
             put("memory_content", new DeepSeekTool.Function.Parameters.Property("记忆的内容"));
         }}, new String[]{"memory_content"});
         deepSeekTools.put("add_memory", add_memory);
+
+        File toolsDic = new File("./data/AIChat/Tools");
+        if (toolsDic.isDirectory()) {
+            // 加载外置的Tool(Advanced)
+            File[] files = toolsDic.listFiles((dir, name) -> name.toLowerCase().endsWith(".jar"));
+            List<AIChatPluginInfo> aiChatPluginInfos = new ArrayList<>();
+            List<URL> urls = new ArrayList<>();
+            for (File f : files) {
+                try {
+                    JarFile jf = new JarFile(f);
+                    ZipEntry ze = jf.getEntry("tool.yml");
+                    if (ze == null) continue;
+                    try (InputStream is = jf.getInputStream(ze)) {
+                        Properties properties = new Properties();
+                        properties.load(is);
+                        AIChatPluginInfo aiChatPluginInfo = new AIChatPluginInfo();
+                        aiChatPluginInfo.url = f.toURI().toURL();
+                        aiChatPluginInfo.mainClass = properties.getProperty("Main");
+                        aiChatPluginInfo.id = properties.getProperty("ID");
+                        if (aiChatPluginInfo.id != null && aiChatPluginInfo.mainClass != null) {
+                            aiChatPluginInfos.add(aiChatPluginInfo);
+                            urls.add(f.toURI().toURL());
+                        }
+                    }
+                } catch (IOException e) {
+                    throw new RuntimeException(e);
+                }
+            }
+            var classloader = new URLClassLoader(urls.toArray(new URL[0]), getClass().getClassLoader());
+            for (var info : aiChatPluginInfos) {
+                try {
+                    Class<?> clazz = Class.forName(info.mainClass, true, classloader);
+                    AIChatPlugin aiChatPlugin = (AIChatPlugin) clazz.getDeclaredConstructor().newInstance();
+                    aiChatPlugins.add(aiChatPlugin);
+                } catch (ClassNotFoundException e) {
+                    logger.error("AI Chat插件 {} 主类缺失，无法加载({})", info.id, info.mainClass, e);
+                } catch (InvocationTargetException | InstantiationException | IllegalAccessException | NoSuchMethodException e) {
+                    logger.error("AI Chat插件 {} 加载失败", info.id, e);
+                }
+            }
+            for (var plug : aiChatPlugins) {
+                plug.onEnable();
+            }
+        } else {
+            toolsDic.mkdir();
+        }
         return true;
     }
 
@@ -120,8 +176,7 @@ public class AIChat extends Law {
                         ml.setSystemPrompt(PlaceHolder.replace(prompt.toString()));
                         // 把还没转换好的MCMessage转换成String
                         for (Message message : ml.getMessageList()) {
-                            if (!(message instanceof アンテナ39)) continue;
-                            アンテナ39 antena39 = (アンテナ39) message;
+                            if (!(message instanceof アンテナ39 antena39)) continue;
                             antena39.content = antena39.mcMessage.solveAll();
                         }
                         RequestEvent re = new RequestEvent();
@@ -142,6 +197,8 @@ public class AIChat extends Law {
 
     @Override
     public void stop() {
-
+        for (var plug : aiChatPlugins) {
+            plug.onDisable();
+        }
     }
 }

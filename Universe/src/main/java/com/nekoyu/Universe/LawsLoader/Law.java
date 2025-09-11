@@ -22,7 +22,13 @@ public abstract class Law {
 
     public File getConfigDir() {
         File file = new File("./config/"+this.ID);
-        if (!file.exists()) file.mkdir();
+        if (!file.exists()) file.mkdirs();
+        return file;
+    }
+
+    public File getDataDir() {
+        File file = new File("./data/"+this.ID);
+        if (!file.exists()) file.mkdirs();
         return file;
     }
 }
