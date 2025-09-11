@@ -142,6 +142,7 @@ public class OnebotChannel extends MessageChannel {
                                             } catch (MalformedURLException e) {
                                                 logger.error("无法以 {} 创建URL对象", ms.data.get("file"), e);
                                                 mcm.messageFields.add(new TextField("[视频]"));
+                                                // 这里发生过报错，疑似是视频消息里面，file字段本身就不是URL
                                             }
                                             break;
                                         case "at":

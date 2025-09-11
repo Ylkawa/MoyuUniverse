@@ -1,5 +1,6 @@
 package com.nekoyu.Universe.AIChat;
 
+import com.nekoyu.Universe.AIChat.Event.RequestEvent;
 import com.nekoyu.Universe.API.PlaceHolder;
 import com.nekoyu.Universe.ConfigureProcessor.CFGFileSyntaxException;
 import com.nekoyu.Universe.ConfigureProcessor.ConfigureProcessor;
@@ -123,6 +124,8 @@ public class AIChat extends Law {
                             アンテナ39 antena39 = (アンテナ39) message;
                             antena39.content = antena39.mcMessage.solveAll();
                         }
+                        RequestEvent re = new RequestEvent();
+                        re.messageList = ml;
                         try {
                             var response = assistant.request(ml);
                             mcm.action.reply(response.choices[0].message.content);

@@ -18,6 +18,7 @@ import java.util.Properties;
 
 @SuppressWarnings("unused")
 public class MinecraftConnectSpigot extends JavaPlugin {
+    public static final Gson gson = new Gson();
     WebSocketClient webSocketClient;
     Properties properties;
     URI uri;
@@ -96,8 +97,13 @@ public class MinecraftConnectSpigot extends JavaPlugin {
 
             @Override
             public void onMessage(String s) {
-                UniverseChannelMessage ucm = new Gson().fromJson(s, UniverseChannelMessage.class);
-                Bukkit.broadcastMessage(ChatColor.GRAY + "[" + ucm.args.get("sender") + "]: " + ucm.args.get("message"));
+                UniverseChannelMessage ucm = gson.fromJson(s, UniverseChannelMessage.class);
+                switch (ucm.message) {
+                    case "ForwardChat":
+                        ForwardChat fc = gson.fromJson(s, ForwardChat.class);
+                        Bukkit.broadcastMessage(ChatColor.GRAY + "[" + ucm.args.get("sender") + "]: " + ucm.args.get("messageString"));
+                        break;
+                }
             }
 
             @Override

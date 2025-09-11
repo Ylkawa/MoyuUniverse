@@ -69,7 +69,7 @@ public class ImageField extends FileField {
                             double latitude = location.getLatitude();
                             descriptionBuilder.append("\n经度: ").append(longitude);
                             descriptionBuilder.append("\n纬度: ").append(latitude);
-                            if (longitude != 0.0d && latitude != 0.0d) {
+                            if (longitude != 0.0d && latitude != 0.0d) { // 排除被抹除掉位置信息的照片，这类照片不处理（实测鸿蒙4会把经纬度改成0而不是删掉这个字段）
                                 String amapKey = System.getenv("AmapAPIKey");
                                 if (amapKey != null && !amapKey.isEmpty()) {
                                     DecimalFormat df = new DecimalFormat("0.000000");

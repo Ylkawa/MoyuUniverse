@@ -2,6 +2,7 @@ package com.nekoyu.Universe.MinecraftConnect;
 
 import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.Multimap;
+import com.google.gson.Gson;
 import com.nekoyu.Universe.API.MessageChannel.MCMessage;
 import com.nekoyu.Universe.API.MessageChannel.MessageChannel;
 import com.nekoyu.Universe.API.MessageChannel.MessageChannelListener;
@@ -17,8 +18,8 @@ import java.io.*;
 import java.util.*;
 import java.util.regex.Pattern;
 
-@SuppressWarnings("unused")
 public class MinecraftConnectUniverse extends Law implements UniverseListener {
+    private static final Gson gson = new Gson();
     Multimap<String, String> forwardingStructureToChannel = ArrayListMultimap.create();
     Multimap<String, String> forwardingStructureToServer = ArrayListMultimap.create();
     @Override
@@ -74,10 +75,10 @@ public class MinecraftConnectUniverse extends Law implements UniverseListener {
                 String target = entry.getValue();
                 @Override
                 public void onMessage(MCMessage mcm) {
-                    UniverseChannelMessage ucm = new UniverseChannelMessage();
+                    ForwardChat ucm = new ForwardChat();
                     ucm.message = "ForwardChat";
                     ucm.args.put("sender", mcm.sender.getNickname());
-                    ucm.args.put("message", mcm.messageString);
+                    ucm.args.put("messageString", mcm.messageString);
 
                     Universe.UniverseChannel.broadcast(target, ucm);
                 }
