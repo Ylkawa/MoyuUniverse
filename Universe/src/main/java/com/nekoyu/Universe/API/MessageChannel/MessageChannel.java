@@ -15,7 +15,7 @@ public abstract class MessageChannel {
 
     protected void broadcastMessage(String sessionId, MCMessage message) {
         message.sessionId = ID + ":" + sessionId;
-        Universe.MessageChannelManager.onMessage(message);
+        Universe.MessageChannelManager.onMessage(this, message);
     }
 
     public MessageChannel(String id) {

@@ -4,35 +4,38 @@ import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.Multimap;
 import com.google.gson.Gson;
 import com.google.gson.JsonSyntaxException;
+import com.sun.net.httpserver.HttpExchange;
+import com.sun.net.httpserver.HttpHandler;
+import com.sun.net.httpserver.HttpServer;
 import org.java_websocket.WebSocket;
 import org.java_websocket.handshake.ClientHandshake;
 import org.java_websocket.server.WebSocketServer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.IOException;
+import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.util.*;
 
 public class UniverseChannel {
     private WebSocketServer wsServer;
-    private int port;
+    private int wsPort;
+    private int httpPort;
     private final Multimap<String, UniverseListener> internalListeners = ArrayListMultimap.create();
     private final Multimap<String, String> externalListeners = ArrayListMultimap.create();
     private final Multimap<String, WebSocket> clientGroup = ArrayListMultimap.create();
     private String token = null;
     private final Logger logger = LoggerFactory.getLogger(getClass());
     private final Map<String, WebSocket> clientList = new HashMap<>();
+    private HttpServer httpServer = null;
 
     public void setToken(String token) {
         this.token = token;
     }
 
-    public UniverseChannel(int port) {
-        this.port = port;
-    }
-
-    public void setPort(int port) {
-        this.port = port;
+    public void setWsPort(int port) {
+        this.wsPort = port;
     }
 
     public void load() {
@@ -45,7 +48,7 @@ public class UniverseChannel {
                     logger.info("{} 注册了远程消息监听 {}", planet.getID(), tag);
             }
         });
-        wsServer = new WebSocketServer(new InetSocketAddress(port)) {
+        wsServer = new WebSocketServer(new InetSocketAddress(wsPort)) {
             @Override
             public void onOpen(WebSocket webSocket, ClientHandshake clientHandshake) {
                 if (token != null) {
@@ -104,6 +107,20 @@ public class UniverseChannel {
         };
         wsServer.setReuseAddr(true);
         wsServer.start();
+
+        try {
+            httpServer = HttpServer.create(new InetSocketAddress(httpPort), 0);
+            httpServer.start();
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+        httpServer.createContext("/", exchange -> {
+            String response = "400 Bad Request";
+            exchange.sendResponseHeaders(400, response.getBytes().length);
+            OutputStream os = exchange.getResponseBody();
+            os.write(response.getBytes());
+            os.close();
+        });
     }
 
     public void registerListener(String tag, UniverseListener universeListener) {
@@ -124,5 +141,17 @@ public class UniverseChannel {
 
     public Collection<WebSocket> listConnections() {
         return wsServer.getConnections();
+    }
+
+    public void setHttpPort(int httpPort) {
+        this.httpPort = httpPort;
+    }
+
+    public void addHttpHandler(String path, HttpHandler hh) {
+        httpServer.createContext(path, hh);
+    }
+
+    public void removeHttpHandler(String path) {
+        httpServer.removeContext(path);
     }
 }

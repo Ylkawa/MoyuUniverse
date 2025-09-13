@@ -32,9 +32,9 @@ public class MessageChannelManager {
         }
     }
 
-    public void onMessage(MCMessage mcm) {
+    public void onMessage(MessageChannel mc, MCMessage mcm) {
         if (mcm.sessionId != null && !mcm.sessionId.isEmpty()) {
-            logger.info("消息通道 {} 接收到来自会话 {} 的消息 {} ({}): {}", mcm.receiver.nickname, mcm.sessionId, mcm.sender.nickname, mcm.sender.id, mcm.messageString);
+            logger.info("{} 接收到来自会话 {} 的消息 {} ({}): {}", mcm.receiver.nickname, mcm.sessionId, mcm.sender.nickname, mcm.sender.id, mcm.messageString);
             for (MessageChannelListener mcl : sessionListeners.get(mcm.sessionId)) {
                 mcl.onMessage(mcm);
             }

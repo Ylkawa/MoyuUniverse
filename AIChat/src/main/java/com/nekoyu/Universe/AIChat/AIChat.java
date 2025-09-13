@@ -7,6 +7,7 @@ import com.nekoyu.Universe.ConfigureProcessor.ConfigureProcessor;
 import com.nekoyu.Universe.DeepSeekAdapter.*;
 import com.nekoyu.Universe.LawsLoader.Law;
 import com.nekoyu.Universe.Universe;
+import com.sun.net.httpserver.HttpServer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yaml.snakeyaml.Yaml;
@@ -166,6 +167,11 @@ public class AIChat extends Law {
                         }
                         // 决定让AI发言
                         // 设置 System Prompt
+                        // 先让插件处理事件 插件提供局部的PlaceHolder
+                        var reqEv = new RequestEvent();
+                        for (var plug : aiChatPlugins) {
+                            plug.onRequest(reqEv);
+                        }
                         StringBuilder prompt = new StringBuilder();
                         prompt.append("当前时间: ").append(sdf.format(new Date(System.currentTimeMillis()))).append("\n");
                         prompt.append("当前所处会话: ").append(cfg.getNode("SessionId")).append("\n");
@@ -173,7 +179,7 @@ public class AIChat extends Law {
                         prompt.append("\n");
                         prompt.append(config.getNode("Prompt").toString()).append("\n");
                         prompt.append(cfg.getNode("Prompt").toString());
-                        ml.setSystemPrompt(PlaceHolder.replace(prompt.toString()));
+                        ml.setSystemPrompt(PlaceHolder.replace(prompt.toString(), reqEv.placeholders));
                         // 把还没转换好的MCMessage转换成String
                         for (Message message : ml.getMessageList()) {
                             if (!(message instanceof アンテナ39 antena39)) continue;
@@ -184,7 +190,7 @@ public class AIChat extends Law {
                         try {
                             var response = assistant.request(ml);
                             mcm.action.reply(response.choices[0].message.content);
-                        } catch (IOException e) {
+                        } catch (Exception e) {
                             throw new RuntimeException(e);
                         }
                     } else {

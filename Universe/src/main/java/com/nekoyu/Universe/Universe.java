@@ -15,10 +15,10 @@ import java.util.Properties;
 /** >- 末屿宇宙 -< */
 public class Universe {
     static public Logger logger = LoggerFactory.getLogger(Universe.class);
-    static public Properties UniverseChannelProp = new Properties();
+    static public Properties universeChannelProp = new Properties();
     static public LawsManager LawsManager;
     static public MessageChannelManager MessageChannelManager = new MessageChannelManager();
-    static public UniverseChannel UniverseChannel = new UniverseChannel(2576);
+    static public UniverseChannel UniverseChannel = null;
     static public Map<String, Object> Providers = new HashMap<>();
     static public PictureSolver pictureSolver = null;
 
@@ -47,13 +47,14 @@ public class Universe {
 
         // 加载配置文件
         try {
-            UniverseChannelProp.load(new FileReader("./UniverseChannel.properties"));
+            universeChannelProp.load(new FileReader("./UniverseChannel.properties"));
         } catch (FileNotFoundException e) { // 出这个错就新建配置文件 并以默认配置继续运行
-            UniverseChannelProp.put("Port", "2576");
-            UniverseChannelProp.put("Token", "token");
-            UniverseChannelProp.put("Enable", "false");
+            universeChannelProp.put("WsPort", "2576");
+            universeChannelProp.put("HttpPort", "2577");
+            universeChannelProp.put("Token", "token");
+            universeChannelProp.put("Enable", "false");
             try (FileOutputStream fos = new FileOutputStream("./UniverseChannel.properties")) {
-                UniverseChannelProp.store(fos, "Moyu Universe Network Channel Config");
+                universeChannelProp.store(fos, "Moyu Universe Network Channel Config");
             } catch (IOException ex) {
                 throw new RuntimeException(ex);
             }
@@ -62,21 +63,29 @@ public class Universe {
         }
 
         // 加载宇宙标准消息通道
-        if (UniverseChannelProp.get("Enable").equals("true")) {
-            Object port = UniverseChannelProp.get("Port");
-            if (port != null) {
-                UniverseChannel.setPort(Integer.parseInt(port.toString()));
+        if (universeChannelProp.get("Enable").equals("true")) {
+            UniverseChannel = new UniverseChannel();
+            Object wsPort = universeChannelProp.get("WsPort");
+            if (wsPort != null) {
+                UniverseChannel.setWsPort(Integer.parseInt(wsPort.toString()));
+            } else {
+                UniverseChannel.setWsPort(2576);
             }
-            Object token = UniverseChannelProp.get("Token");
+            Object httpPort = universeChannelProp.get("HttpPort");
+            if (httpPort != null) {
+                UniverseChannel.setHttpPort(Integer.parseInt(httpPort.toString()));
+            } else {
+                UniverseChannel.setHttpPort(2577);
+            }
+            Object token = universeChannelProp.get("Token");
             if (token != null) {
                 UniverseChannel.setToken(token.toString());
             }
             UniverseChannel.load();
         }
 
-        LawsManager = new LawsManager();
-
         // 加载宇宙法则
+        LawsManager = new LawsManager();
         LawsManager.loadLaws();
         LawsManager.prepareLaws();
         LawsManager.enableLaws();

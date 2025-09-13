@@ -36,4 +36,27 @@ public class PlaceHolder {
         matcher.appendTail(result);
         return result.toString();
     }
+
+    public static String replace(String text, Map<String, String> localReplacements) {
+        Matcher matcher = PLACEHOLDER_PATTERN.matcher(text);
+        StringBuffer result = new StringBuffer();
+
+        while (matcher.find()) {
+            String placeholder = matcher.group(1); // 提取占位符名称（去掉%）
+            String replacement = localReplacements.get(placeholder);
+            if (replacement.isEmpty()) {
+                replacement = replacements.get(placeholder);
+            }
+
+            // 处理未识别的占位符（保留原文本）
+            if (replacement == null) {
+                replacement = matcher.group(0); // 使用原始占位符文本
+            }
+
+            // 转义特殊字符后替换
+            matcher.appendReplacement(result, Matcher.quoteReplacement(replacement));
+        }
+        matcher.appendTail(result);
+        return result.toString();
+    }
 }
