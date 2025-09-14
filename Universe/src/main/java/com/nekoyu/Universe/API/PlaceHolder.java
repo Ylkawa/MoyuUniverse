@@ -44,7 +44,7 @@ public class PlaceHolder {
         while (matcher.find()) {
             String placeholder = matcher.group(1); // 提取占位符名称（去掉%）
             String replacement = localReplacements.get(placeholder);
-            if (replacement.isEmpty()) {
+            if (replacement == null || replacement.isEmpty()) {
                 replacement = replacements.get(placeholder);
             }
 

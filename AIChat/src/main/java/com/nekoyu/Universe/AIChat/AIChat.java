@@ -7,7 +7,6 @@ import com.nekoyu.Universe.ConfigureProcessor.ConfigureProcessor;
 import com.nekoyu.Universe.DeepSeekAdapter.*;
 import com.nekoyu.Universe.LawsLoader.Law;
 import com.nekoyu.Universe.Universe;
-import com.sun.net.httpserver.HttpServer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yaml.snakeyaml.Yaml;
@@ -66,17 +65,20 @@ public class AIChat extends Law {
         }}, new String[]{"memory_content"});
         deepSeekTools.put("add_memory", add_memory);
 
-        File toolsDic = new File("./data/AIChat/Tools");
+        File toolsDic = new File("./data/AIChat/Plugins/");
         if (toolsDic.isDirectory()) {
+            logger.info("准备加载AI Chat插件...");
             // 加载外置的Tool(Advanced)
             File[] files = toolsDic.listFiles((dir, name) -> name.toLowerCase().endsWith(".jar"));
             List<AIChatPluginInfo> aiChatPluginInfos = new ArrayList<>();
             List<URL> urls = new ArrayList<>();
             for (File f : files) {
-                try {
-                    JarFile jf = new JarFile(f);
-                    ZipEntry ze = jf.getEntry("tool.yml");
-                    if (ze == null) continue;
+                try (JarFile jf = new JarFile(f)) {
+                    ZipEntry ze = jf.getEntry("plug.properties");
+                    if (ze == null) {
+                        logger.info("{} 无描述文件", f.getName());
+                        continue;
+                    }
                     try (InputStream is = jf.getInputStream(ze)) {
                         Properties properties = new Properties();
                         properties.load(is);
@@ -87,6 +89,8 @@ public class AIChat extends Law {
                         if (aiChatPluginInfo.id != null && aiChatPluginInfo.mainClass != null) {
                             aiChatPluginInfos.add(aiChatPluginInfo);
                             urls.add(f.toURI().toURL());
+                        } else {
+                            logger.info("{} 没有有效的描述文件", f.getName());
                         }
                     }
                 } catch (IOException e) {
@@ -99,6 +103,7 @@ public class AIChat extends Law {
                     Class<?> clazz = Class.forName(info.mainClass, true, classloader);
                     AIChatPlugin aiChatPlugin = (AIChatPlugin) clazz.getDeclaredConstructor().newInstance();
                     aiChatPlugins.add(aiChatPlugin);
+                    logger.info("已载入AI Chat插件 {}", info.id);
                 } catch (ClassNotFoundException e) {
                     logger.error("AI Chat插件 {} 主类缺失，无法加载({})", info.id, info.mainClass, e);
                 } catch (InvocationTargetException | InstantiationException | IllegalAccessException | NoSuchMethodException e) {
@@ -109,7 +114,7 @@ public class AIChat extends Law {
                 plug.onEnable();
             }
         } else {
-            toolsDic.mkdir();
+            toolsDic.mkdirs();
         }
         return true;
     }

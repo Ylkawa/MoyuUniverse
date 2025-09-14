@@ -1,0 +1,9 @@
+<component name="ArtifactManager">
+  <artifact type="jar" name="AIChat-Memory:jar">
+    <output-path>$PROJECT_DIR$/out/artifacts/AIChat_Memory_jar</output-path>
+    <root id="archive" name="AIChat-Memory.jar">
+      <element id="module-output" name="AIChat-Memory" />
+      <element id="file-copy" path="$PROJECT_DIR$/AIChat-Memory/src/main/resources/plug.properties" />
+    </root>
+  </artifact>
+</component>

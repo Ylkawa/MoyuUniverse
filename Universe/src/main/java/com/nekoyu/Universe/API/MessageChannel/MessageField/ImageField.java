@@ -123,8 +123,7 @@ public class ImageField extends FileField {
                 .readTimeout(30, TimeUnit.SECONDS)
                 .build();
 
-        Request request;
-        request = new Request.Builder()
+        Request request = new Request.Builder()
                 .url(url)
                 .build();
 
