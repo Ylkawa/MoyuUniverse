@@ -20,13 +20,13 @@ public abstract class Law {
     public abstract void run();
     public abstract void stop();
 
-    public File getConfigDir() {
+    protected File getConfigDir() {
         File file = new File("./config/"+this.ID);
         if (!file.exists()) file.mkdirs();
         return file;
     }
 
-    public File getDataDir() {
+    protected File getDataDir() {
         File file = new File("./data/"+this.ID);
         if (!file.exists()) file.mkdirs();
         return file;

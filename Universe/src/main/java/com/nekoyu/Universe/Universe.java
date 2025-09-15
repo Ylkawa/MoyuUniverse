@@ -4,6 +4,8 @@ import com.nekoyu.Universe.API.MessageChannel.MessageChannelManager;
 import com.nekoyu.Universe.API.MessageChannel.PictureSolver;
 import com.nekoyu.Universe.API.UniverseChannel;
 import com.nekoyu.Universe.LawsLoader.LawsManager;
+import org.apache.logging.log4j.Level;
+import org.apache.logging.log4j.core.config.Configurator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -45,7 +47,27 @@ public class Universe {
             lawsDir.mkdir();
         }
 
-        // 加载配置文件
+        // 加载主配置文件
+        Properties properties = new Properties();
+        try {
+            properties.load(new FileReader("./Config.properties"));
+        } catch (FileNotFoundException e) {
+            properties.put("Debug", "false");
+            try (FileOutputStream fos = new FileOutputStream("./Config.properties")) {
+                properties.store(fos, "Moyu Universe Main Config");
+            } catch (FileNotFoundException ex) {
+                throw new RuntimeException(ex);
+            } catch (IOException ex) {
+                throw new RuntimeException(ex);
+            }
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+
+        if (properties.get("Debug").toString().equalsIgnoreCase("debug")) Configurator.setRootLevel(Level.DEBUG);
+        if (properties.get("Debug").toString().equalsIgnoreCase("trace")) Configurator.setRootLevel(Level.TRACE);
+
+        // 加载宇宙通道配置文件
         try {
             universeChannelProp.load(new FileReader("./UniverseChannel.properties"));
         } catch (FileNotFoundException e) { // 出这个错就新建配置文件 并以默认配置继续运行
