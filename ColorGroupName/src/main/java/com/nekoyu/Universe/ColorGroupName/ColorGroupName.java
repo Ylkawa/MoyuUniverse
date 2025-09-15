@@ -49,7 +49,7 @@ public class ColorGroupName extends Law {
     public void run() {
         Map<String, String> currentName = new HashMap<>();
         if (cfg.Settings != null) for (Map.Entry<String, Config.Set> entry : cfg.Settings.entrySet()) {
-            synchronized (this) {
+            new Thread(() -> {
                 boolean keepAble = true;
                 while (keepAble) {
                     try {
@@ -68,7 +68,7 @@ public class ColorGroupName extends Law {
                         }
                     }
                 }
-            }
+            }).start();
         }
     }
 
