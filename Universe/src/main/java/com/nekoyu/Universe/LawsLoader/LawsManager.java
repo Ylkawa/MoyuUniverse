@@ -166,7 +166,6 @@ public class LawsManager {
     public void enableLaws() {
         for (var law : laws.values()) {
             new Thread(() -> {
-                logger.info("启动 {} ...", law.ID);
                 enableLaw(law);
             }).start();
         }
@@ -181,6 +180,9 @@ public class LawsManager {
             return;
         }
         if (law.isRunning) return;
+
+
+        logger.info("启动 {} ...", law.ID);
 
         // 启动前确保前置法则先启动
         if (law.Dependencies != null) {
