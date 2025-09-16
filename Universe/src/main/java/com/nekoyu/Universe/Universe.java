@@ -110,9 +110,6 @@ public class Universe {
         LawsManager.prepareLaws();
         LawsManager.enableLaws();
 
-        // 清理内存
-        System.gc();
-
         //程序退出动作
         Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             logger.info("Exiting");

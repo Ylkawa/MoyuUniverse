@@ -181,9 +181,7 @@ public class LawsManager {
         }
         if (law.isRunning) return;
 
-
         logger.info("启动 {} ...", law.ID);
-
         // 启动前确保前置法则先启动
         if (law.Dependencies != null) {
             List<String> missing = new ArrayList<>();
