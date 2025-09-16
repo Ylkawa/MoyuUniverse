@@ -55,8 +55,6 @@ public class Universe {
             properties.put("Debug", "false");
             try (FileOutputStream fos = new FileOutputStream("./Config.properties")) {
                 properties.store(fos, "Moyu Universe Main Config");
-            } catch (FileNotFoundException ex) {
-                throw new RuntimeException(ex);
             } catch (IOException ex) {
                 throw new RuntimeException(ex);
             }

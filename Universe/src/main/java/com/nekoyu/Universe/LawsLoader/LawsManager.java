@@ -137,7 +137,9 @@ public class LawsManager {
             if (depLaw == null) {
                 missing.add(dep);
             } else if (preparePhase && !depLaw.isPrepared) {
-                prepareLaw(depLaw);
+                synchronized (depLaw) {
+                    if (!depLaw.isPrepared) prepareLaw(depLaw);
+                }
             }
         }
         if (!missing.isEmpty()) {
@@ -153,15 +155,29 @@ public class LawsManager {
     private void prepareLaw(Law law) {
         if (law.isPrepared) return;
         if (!checkDependenciesAndPrepare(law, true)) return;
-        law.ableToRun = law.prepare();
-        law.isPrepared = true;
+        new Thread(() -> {
+            synchronized (law) {
+                law.ableToRun = law.prepare();
+                law.isPrepared = true;
+            }
+        }).start();
     }
 
-    public void enableLaws() { laws.values().forEach(this::enableLaw); }
+    public void enableLaws() {
+        for (var law : laws.values()) {
+            new Thread(() -> {
+                logger.info("启动 {} ...", law.ID);
+                enableLaw(law);
+            }).start();
+        }
+    }
 
     public void enableLaw(Law law) {
+        while (!law.isPrepared) {
+            Thread.yield();
+        }
         if (!law.ableToRun) {
-            logger.warn("{} 报告未就绪，不会加载", law.ID);
+            logger.warn("{} 报告未就绪，不会运行", law.ID);
             return;
         }
         if (law.isRunning) return;

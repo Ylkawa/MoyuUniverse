@@ -4,6 +4,7 @@
     <root id="archive" name="AIChat-Memory.jar">
       <element id="module-output" name="AIChat-Memory" />
       <element id="file-copy" path="$PROJECT_DIR$/AIChat-Memory/src/main/resources/plug.properties" />
+      <element id="extracted-dir" path="$MAVEN_REPOSITORY$/com/mysql/mysql-connector-j/8.4.0/mysql-connector-j-8.4.0.jar" path-in-jar="/" />
     </root>
   </artifact>
 </component>

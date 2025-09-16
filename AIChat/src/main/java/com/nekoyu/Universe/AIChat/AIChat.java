@@ -33,6 +33,11 @@ public class AIChat extends Law {
 
     @Override
     public boolean prepare() {
+        try {
+            Class.forName("com.mysql.cj.jdbc.Driver");
+        } catch (ClassNotFoundException e) {
+            throw new RuntimeException(e);
+        }
         getDataDir();
         File configDic = new File("./config/AIChat");
         if (!configDic.exists()) configDic.mkdir();
@@ -102,6 +107,7 @@ public class AIChat extends Law {
                 try {
                     Class<?> clazz = Class.forName(info.mainClass, true, classloader);
                     AIChatPlugin aiChatPlugin = (AIChatPlugin) clazz.getDeclaredConstructor().newInstance();
+                    aiChatPlugin.id = info.id;
                     aiChatPlugins.add(aiChatPlugin);
                     logger.info("已载入AI Chat插件 {}", info.id);
                 } catch (ClassNotFoundException e) {
