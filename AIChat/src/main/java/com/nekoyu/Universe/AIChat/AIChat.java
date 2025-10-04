@@ -33,11 +33,6 @@ public class AIChat extends Law {
 
     @Override
     public boolean prepare() {
-        try {
-            Class.forName("com.mysql.cj.jdbc.Driver");
-        } catch (ClassNotFoundException e) {
-            throw new RuntimeException(e);
-        }
         getDataDir();
         File configDic = new File("./config/AIChat");
         if (!configDic.exists()) configDic.mkdir();

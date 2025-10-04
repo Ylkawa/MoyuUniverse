@@ -111,7 +111,7 @@ public class Universe {
         LawsManager.enableLaws();
 
         //程序退出动作
-        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> { 
             logger.info("Exiting");
             LawsManager.stopLaws();
         }));

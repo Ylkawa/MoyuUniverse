@@ -268,22 +268,10 @@ public class OnebotChannel extends MessageChannel {
                                     case "group":
                                         Long groupId = message.group_id;
                                         sessionId.append(groupId);
-                                        mcm.action = new QuickAction() {
-                                            @Override
-                                            public void reply(String message) {
-                                                sendGroupMessage(String.valueOf(groupId), message);
-                                            }
-                                        };
                                         break;
                                     case "private":
                                         Long userId = message.user_id;
                                         sessionId.append(userId);
-                                        mcm.action = new QuickAction() {
-                                            @Override
-                                            public void reply(String message) {
-                                                sendPrivateMessage(String.valueOf(userId), message);
-                                            }
-                                        };
                                         break;
                                 }
                                 broadcastMessage(sessionId.toString(), mcm);

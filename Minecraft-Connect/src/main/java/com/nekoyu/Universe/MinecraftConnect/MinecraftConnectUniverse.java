@@ -107,13 +107,7 @@ public class MinecraftConnectUniverse extends Law implements UniverseListener {
                     logger.warn("没有为 {} 定义有效的转发规则", planet.getID());
                 }
                 for (String value : defineOfForward) {
-                    String[] target = value.split(":");
-                    MessageChannel mc = Universe.MessageChannelManager.getChannel(target[0]);
-                    if (mc == null) {
-                        logger.warn("为 {} 定义的消息通道不存在，转发失败", planet.getID());
-                        return;
-                    }
-                    mc.sendMessage(target[1], args.get("Joiner") + " 加入了服务器");
+                    Universe.MessageChannelManager.sendMessage(value, args.get("Joiner") + " 加入了服务器");
                 }
                 break;
             case "player_leave_game":
@@ -121,13 +115,7 @@ public class MinecraftConnectUniverse extends Law implements UniverseListener {
                     logger.warn("没有为 {} 定义有效的转发规则", planet.getID());
                 }
                 for (String value : defineOfForward) {
-                    String[] target = value.split(":");
-                    MessageChannel mc = Universe.MessageChannelManager.getChannel(target[0]);
-                    if (mc == null) {
-                        logger.warn("为 {} 定义的消息通道不存在，转发失败", planet.getID());
-                        return;
-                    }
-                    mc.sendMessage(target[1], args.get("Leaver") + " 退出了服务器");
+                    Universe.MessageChannelManager.sendMessage(value, args.get("Leaver") + " 退出了服务器");
                 }
                 break;
         }

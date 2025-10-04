@@ -34,7 +34,13 @@ public class MessageChannelManager {
 
     public void onMessage(MessageChannel mc, MCMessage mcm) {
         if (mcm.sessionId != null && !mcm.sessionId.isEmpty()) {
-            logger.info("{} 接收到来自会话 {} 的消息 {} ({}): {}", mcm.receiver.nickname, mcm.sessionId, mcm.sender.nickname, mcm.sender.id, mcm.messageString);
+            logger.info("{} 接收到来自会话 {} 的消息 {} ({}): {}", mc.ID, mcm.sessionId, mcm.sender.nickname, mcm.sender.id, mcm.messageString);
+            mcm.action = new QuickAction() {
+                @Override
+                public void reply(String message) {
+                    mc.sendMessage(message, mcm.sessionId);
+                }
+            };
             for (MessageChannelListener mcl : sessionListeners.get(mcm.sessionId)) {
                 mcl.onMessage(mcm);
             }
@@ -49,5 +55,18 @@ public class MessageChannelManager {
         MessageChannel mc = MessageChannels.get(split[0]);
         if (mc == null) throw new UnsupportedAction("无此MessageChannel");
         mc.setSessionName(split[1], name);
+    }
+
+    public void sendMessage(String sessionId, String message) {
+        String[] target = sessionId.split(":");
+        MessageChannel mc = getChannel(target[0]);
+        if (mc == null) {
+            // 不存在这个Channel，之后做异常处理
+            logger.warn("不存在此Channel {}", target[0]);
+        } else {
+            // 灵羽『θPlvme』 接收到来自会话 lingyu:group/771886810 的消息 冷艳 (703964965): 边上飞过去好几辆电车
+            logger.info("{} 向会话 {} 发送消息: {}", mc.ID, sessionId, message);
+            mc.sendMessage(target[1], message);
+        }
     }
 }

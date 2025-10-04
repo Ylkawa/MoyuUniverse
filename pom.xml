@@ -12,7 +12,6 @@
         <module>Universe</module>
         <module>OnebotAdapter</module>
         <module>Minecraft-Connect</module>
-        <module>SMTPAdapter</module>
         <module>DeepSeekAdapter</module>
         <module>AIChat</module>
         <module>NetworkStatusMonitor</module>
