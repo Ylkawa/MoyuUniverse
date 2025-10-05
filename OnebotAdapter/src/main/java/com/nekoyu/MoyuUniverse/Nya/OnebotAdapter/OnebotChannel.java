@@ -23,6 +23,8 @@ import java.net.URL;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 public class OnebotChannel extends MessageChannel {
     WebSocketClient wsConnection;
@@ -297,12 +299,7 @@ public class OnebotChannel extends MessageChannel {
 
             @Override
             public void onClose(int i, String s, boolean b) {
-                try {
-                    Thread.sleep(10000);
-                } catch (InterruptedException ex) {
-                    throw new RuntimeException(ex);
-                }
-                reload();
+                Executors.newSingleThreadScheduledExecutor().schedule(() -> reload(), 10, TimeUnit.SECONDS);
             }
 
             @Override
@@ -326,8 +323,12 @@ public class OnebotChannel extends MessageChannel {
         switch (target[0]) {
             case "group":
                 sendGroupMessage(target[1], message);
+                break;
             case "private":
                 sendPrivateMessage(target[1], message);
+                break;
+            default:
+                logger.warn("前所未闻的会话ID: {}", sessionId);
         }
     }
 

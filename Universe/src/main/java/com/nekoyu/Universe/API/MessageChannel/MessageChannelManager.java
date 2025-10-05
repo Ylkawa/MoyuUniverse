@@ -38,7 +38,7 @@ public class MessageChannelManager {
             mcm.action = new QuickAction() {
                 @Override
                 public void reply(String message) {
-                    mc.sendMessage(message, mcm.sessionId);
+                    mc.sendMessage(mcm.sessionId.split(":")[1], message);
                 }
             };
             for (MessageChannelListener mcl : sessionListeners.get(mcm.sessionId)) {
