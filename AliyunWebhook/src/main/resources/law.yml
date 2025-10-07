@@ -1,0 +1,3 @@
+name: AliyunWebhook
+main: com.nekoyu.Universe.AliyunWebhook.AliyunWebhook
+version: 1.0

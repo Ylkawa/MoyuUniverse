@@ -1,0 +1,9 @@
+<component name="ArtifactManager">
+  <artifact type="jar" name="AliyunWebhook:jar">
+    <output-path>$PROJECT_DIR$/out/artifacts/AliyunWebhook_jar</output-path>
+    <root id="archive" name="AliyunWebhook.jar">
+      <element id="module-output" name="AliyunWebhook" />
+      <element id="file-copy" path="$PROJECT_DIR$/AliyunWebhook/src/main/resources/law.yml" />
+    </root>
+  </artifact>
+</component>
