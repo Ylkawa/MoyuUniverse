@@ -6,16 +6,13 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.nekoyu.Universe.LawsLoader.Law;
 import com.nekoyu.Universe.Universe;
-import org.yaml.snakeyaml.Yaml;
 
 import java.io.*;
-import java.net.URI;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
-import java.util.Properties;
 
 public class AliyunWebhook extends Law {
     Gson gson = new GsonBuilder()

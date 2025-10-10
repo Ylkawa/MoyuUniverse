@@ -15,6 +15,7 @@ public class MessageChannelManager {
     Multimap<String, MessageChannelListener> sessionListeners = ArrayListMultimap.create();
     List<MessageChannelListener> listenersToAll = new ArrayList<>();
     Logger logger = LoggerFactory.getLogger(getClass());
+    Map<String, List<MCMessage>> messageHistory = new HashMap();
 
     public void registerChannel(String id, MessageChannel mc) {
         MessageChannels.put(id, mc);
@@ -34,11 +35,15 @@ public class MessageChannelManager {
 
     public void onMessage(MessageChannel mc, MCMessage mcm) {
         if (mcm.sessionId != null && !mcm.sessionId.isEmpty()) {
-            logger.info("{} 接收到来自会话 {} 的消息 {} ({}): {}", mc.ID, mcm.sessionId, mcm.sender.nickname, mcm.sender.id, mcm.messageString);
+            logger.info("接收到来自会话 {} 的消息 {} ({}): {}", mcm.sessionId, mcm.sender.nickname, mcm.sender.id, mcm.messageString);
+            messageHistory.computeIfAbsent(mcm.sessionId, k -> new ArrayList<>());
+            messageHistory.get(mcm.sessionId).add(mcm);
+
             mcm.action = new QuickAction() {
                 @Override
                 public void reply(String message) {
                     mc.sendMessage(mcm.sessionId.split(":")[1], message);
+                    logger.info("向 {} 回复消息: {}", mcm.sessionId, message);
                 }
             };
             for (MessageChannelListener mcl : sessionListeners.get(mcm.sessionId)) {
@@ -64,7 +69,6 @@ public class MessageChannelManager {
             // 不存在这个Channel，之后做异常处理
             logger.warn("不存在此Channel {}", target[0]);
         } else {
-            // 灵羽『θPlvme』 接收到来自会话 lingyu:group/771886810 的消息 冷艳 (703964965): 边上飞过去好几辆电车
             logger.info("{} 向会话 {} 发送消息: {}", mc.ID, sessionId, message);
             mc.sendMessage(target[1], message);
         }
