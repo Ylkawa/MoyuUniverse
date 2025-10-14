@@ -8,7 +8,7 @@ public class MCMessage {
     public Account receiver;
     public Account sender;
     public String messageString;
-    public String sessionId;
+    public String sessionId; // 这个sessionId应该是Global SessionId
     public QuickAction action;
     public long time;
     public int id;

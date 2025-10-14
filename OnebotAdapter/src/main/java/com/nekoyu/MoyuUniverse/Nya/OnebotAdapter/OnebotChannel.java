@@ -51,19 +51,19 @@ public class OnebotChannel extends MessageChannel {
     }
 
     private void sendGroupMessage(String id, String message) {
-        Map<String, String> params = new HashMap<>();
-        params.put("group_id", id);
-        params.put("message", message);
-
-        sendRequest("send_group_msg", params);
+        sendMessage("group", id, message);
     }
 
     private void sendPrivateMessage(String id, String message) {
+        sendMessage("user", id, message);
+    }
+
+    private void sendMessage(String msgType, String id, String message) {
         Map<String, String> params = new HashMap<>();
-        params.put("user_id", id);
+        params.put(msgType + "_id", id);
         params.put("message", message);
 
-        sendRequest("send_private_msg", params);
+        sendRequest("send_msg", params);
     }
 
     @Override
@@ -140,9 +140,9 @@ public class OnebotChannel extends MessageChannel {
                                         case "video":
                                             msg.append("[视频]");
                                             try {
-                                                mcm.messageFields.add(new VideoField(new URL(ms.data.get("file"))));
+                                                mcm.messageFields.add(new VideoField(new URL(ms.data.get("url"))));
                                             } catch (MalformedURLException e) {
-                                                logger.error("无法以 {} 创建URL对象", ms.data.get("file"), e);
+                                                logger.error("无法以 {} 创建URL对象", ms.data.get("url"), e);
                                                 mcm.messageFields.add(new TextField("[视频]"));
                                                 // 这里发生过报错，疑似是视频消息里面，file字段本身就不是URL
                                             }
@@ -318,7 +318,7 @@ public class OnebotChannel extends MessageChannel {
     }
 
     @Override
-    public void sendMessage(String sessionId, String message) {
+    public void sendMessage(String sessionId, String message, MessageList messageList) {
         String[] target = sessionId.split("\\/");
         switch (target[0]) {
             case "group":

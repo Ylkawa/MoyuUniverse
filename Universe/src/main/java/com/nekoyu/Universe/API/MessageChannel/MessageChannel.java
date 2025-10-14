@@ -10,7 +10,7 @@ public abstract class MessageChannel {
     abstract public MessageSession getSession(String sessionId);
     abstract public void load();
     abstract public void stop();
-    abstract public void sendMessage(String sessionId, String message);
+    abstract public void sendMessage(String sessionId, String message, MessageList messageList);
     abstract public void setSessionName(String sessionId, String name) throws UnsupportedAction;
 
     protected void broadcastMessage(String sessionId, MCMessage message) {
