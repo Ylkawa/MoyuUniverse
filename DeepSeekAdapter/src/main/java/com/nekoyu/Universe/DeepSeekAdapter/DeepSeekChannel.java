@@ -16,9 +16,9 @@ public class DeepSeekChannel {
     public static final MediaType JSON = MediaType.get("application/json; charset=utf-8");
 
     public String id;
-    private String base_url;
-    private String api_key;
-    private Logger logger = LoggerFactory.getLogger(getClass());
+    private final String base_url;
+    private final String api_key;
+    private final Logger logger = LoggerFactory.getLogger(getClass());
 
     public DeepSeekChannel(String id, String base_url, String api_key) {
         this.id = id;
