@@ -41,17 +41,6 @@ public class AIChat extends Law {
         File toolsCFGDic = new File("./config/AIChat/ToolsCFG");
         if (!toolsCFGDic.exists()) toolsCFGDic.mkdir();
         loadSessionCfg(sessionCFGDic);
-        ConfigureProcessor config = new ConfigureProcessor("./config/AIChat/config.yml");
-        // 这个配置管理的模式已经完了，得重写这块
-        config.requireNode("Prompt", "[\\s\\S]+", "");
-        try {
-            config.read();
-        } catch (CFGFileSyntaxException e) {
-            throw new RuntimeException(e);
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-        this.config = config;
 
         // 从这里开始重写
         try {
