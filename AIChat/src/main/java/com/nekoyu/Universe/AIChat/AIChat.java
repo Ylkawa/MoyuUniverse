@@ -1,5 +1,6 @@
 package com.nekoyu.Universe.AIChat;
 
+import com.google.gson.Gson;
 import com.nekoyu.Universe.AIChat.Event.RequestEvent;
 import com.nekoyu.Universe.API.PlaceHolder;
 import com.nekoyu.Universe.ConfigureProcessor.CFGFileSyntaxException;
@@ -11,9 +12,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yaml.snakeyaml.Yaml;
 
-import java.io.File;
-import java.io.IOException;
-import java.io.InputStream;
+import java.io.*;
 import java.lang.reflect.InvocationTargetException;
 import java.net.URL;
 import java.net.URLClassLoader;
@@ -30,6 +29,7 @@ public class AIChat extends Law {
     ConfigureProcessor config;
     Map<String, DeepSeekTool> deepSeekTools = new HashMap<>();
     List<AIChatPlugin> aiChatPlugins = new ArrayList<>();
+    Config new_cfg;
 
     @Override
     public boolean prepare() {
@@ -42,6 +42,7 @@ public class AIChat extends Law {
         if (!toolsCFGDic.exists()) toolsCFGDic.mkdir();
         loadSessionCfg(sessionCFGDic);
         ConfigureProcessor config = new ConfigureProcessor("./config/AIChat/config.yml");
+        // 这个配置管理的模式已经完了，得重写这块
         config.requireNode("Prompt", "[\\s\\S]+", "");
         try {
             config.read();
@@ -51,6 +52,20 @@ public class AIChat extends Law {
             throw new RuntimeException(e);
         }
         this.config = config;
+
+        // 从这里开始重写
+        try {
+            new_cfg = new Gson().fromJson(new FileReader("./config/AIChat/config.json"), Config.class);
+        } catch (FileNotFoundException e) {
+            // 没找到配置文件，所以新建一个配置文件
+            new_cfg = new Config();
+            new_cfg.Prompt = ""; // 默认的System_prompt，这里留白了没写
+            try (FileWriter fw = new FileWriter("./config/AIChat/config.json")) {
+                fw.write(new Gson().toJson(new_cfg)); //写入
+            } catch (IOException ex) {
+                throw new RuntimeException(ex);
+            }
+        }
 
         // LoadBuiltInDeepSeekFunction
         var get_weather = new DeepSeekTool("get_weather", "get weather", args -> "气温26度", new HashMap<>(), new String[]{});
@@ -181,9 +196,8 @@ public class AIChat extends Law {
                         StringBuilder prompt = new StringBuilder();
                         prompt.append("当前时间: ").append(sdf.format(new Date(System.currentTimeMillis()))).append("\n");
                         prompt.append("当前所处会话: ").append(cfg.getNode("SessionId")).append("\n");
-                        prompt.append("你的账号: ").append(mcm.receiver.getId());
-                        prompt.append("\n");
-                        prompt.append(config.getNode("Prompt").toString()).append("\n");
+                        prompt.append("你的账号: ").append(mcm.receiver.getId()).append("\n");
+                        prompt.append(new_cfg.Prompt).append("\n");
                         prompt.append(cfg.getNode("Prompt").toString());
                         ml.setSystemPrompt(PlaceHolder.replace(prompt.toString(), reqEv.placeholders));
                         // 把还没转换好的MCMessage转换成String
@@ -195,7 +209,7 @@ public class AIChat extends Law {
                         re.messageList = ml;
                         try {
                             var response = assistant.request(ml);
-                            mcm.action.reply(response.choices[0].message.content);
+                            mcm.reply(response.choices[0].message.content);
                         } catch (Exception e) {
                             throw new RuntimeException(e);
                         }
