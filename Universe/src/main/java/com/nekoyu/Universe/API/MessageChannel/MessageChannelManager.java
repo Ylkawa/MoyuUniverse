@@ -70,10 +70,14 @@ public class MessageChannelManager {
             mcm.id = mc.sendMessage(target[1], message); //将sessionId转换成局部形式传给MessageChannel处理，同时把聊天记录对象传过去
             mcm.messageFields.add(new TextField(message));
             mcm.time = System.currentTimeMillis() / 1000;
-            mcm.sender.id = mc.ID;
+            mcm.sender.id = mc.accountId;
             // 应该没别的必须的参数了，留空算了
 
             messageHistory.get(sessionId).add(mcm);
         }
+    }
+
+    public MessageList getMessageHistory(String sessionId) {
+        return messageHistory.get(sessionId);
     }
 }

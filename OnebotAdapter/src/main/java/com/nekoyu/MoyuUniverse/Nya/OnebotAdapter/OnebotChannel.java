@@ -34,7 +34,6 @@ public class OnebotChannel extends MessageChannel {
     String token;
     Map<String, Callback> syncActions = new HashMap<>();
     String nickname = null;
-    long qqId;
 
     public OnebotChannel(String id) {
         super(id);
@@ -90,8 +89,8 @@ public class OnebotChannel extends MessageChannel {
                 syncAction(new OBRequest("get_login_info"), response -> {
                     JsonObject responseData = response.data.getAsJsonObject();
                     nickname = responseData.get("nickname").getAsString();
-                    qqId = responseData.get("user_id").getAsLong();
-                    logger.info("{} 登录的 QQ号 为 {} ({})", ID, nickname, qqId);
+                    accountId = responseData.get("user_id").getAsString();
+                    logger.info("{} 登录的 QQ号 为 {} ({})", ID, nickname, accountId);
                 });
             }
 
@@ -273,7 +272,7 @@ public class OnebotChannel extends MessageChannel {
                                 mcm.messageString = msg.toString();
                                 // 给消息定级
                                 for (MessageSegment seg : message.message) {
-                                    if (seg.type.equals("at") && seg.data.get("qq").equals(String.valueOf(qqId))) {
+                                    if (seg.type.equals("at") && seg.data.get("qq").equals(String.valueOf(accountId))) {
                                         mcm.level = 2;
                                         break;
                                     }

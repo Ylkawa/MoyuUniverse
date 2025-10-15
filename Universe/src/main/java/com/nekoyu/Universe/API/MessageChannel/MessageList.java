@@ -4,7 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class MessageList {
-    List<MCMessage> messages = new ArrayList<>();
+    public List<MCMessage> messages = new ArrayList<>();
 
     public void add(MCMessage message) {
         messages.add(message);
