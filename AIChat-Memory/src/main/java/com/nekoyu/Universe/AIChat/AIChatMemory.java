@@ -16,6 +16,10 @@ public class AIChatMemory extends AIChatPlugin {
     Properties config;
     boolean ready = true;
 
+    public AIChatMemory(AIChat aiChat) {
+        super(aiChat);
+    }
+
     @Override
     public void onEnable() {
         getConfigDir();

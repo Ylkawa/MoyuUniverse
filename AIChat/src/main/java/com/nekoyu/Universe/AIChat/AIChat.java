@@ -105,7 +105,7 @@ public class AIChat extends Law {
             for (var info : aiChatPluginInfos) {
                 try {
                     Class<?> clazz = Class.forName(info.mainClass, true, classloader);
-                    AIChatPlugin aiChatPlugin = (AIChatPlugin) clazz.getDeclaredConstructor().newInstance();
+                    AIChatPlugin aiChatPlugin = (AIChatPlugin) clazz.getDeclaredConstructor(AIChat.class).newInstance(this);
                     aiChatPlugin.id = info.id;
                     aiChatPlugins.add(aiChatPlugin);
                     logger.info("已载入AI Chat插件 {}", info.id);

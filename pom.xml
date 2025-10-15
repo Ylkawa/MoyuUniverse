@@ -18,6 +18,7 @@
         <module>ColorGroupName</module>
         <module>AIChat-Memory</module>
         <module>AliyunWebhook</module>
+        <module>WebSearchAI</module>
     </modules>
 
     <properties>

@@ -6,7 +6,10 @@ import java.io.File;
 
 public abstract class AIChatPlugin {
     public String id;
-    public AIChatPlugin() {} // 留一个空的构造函数备用
+    AIChat aiChat;
+    public AIChatPlugin(AIChat aiChat) {
+        this.aiChat = aiChat;
+    } // 留一个空的构造函数备用
 
     public void onEnable() {}
     public void onDisable() {}
