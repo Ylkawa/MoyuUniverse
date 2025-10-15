@@ -1,6 +1,7 @@
 package com.nekoyu.Universe.API.MessageChannel;
 
 import com.nekoyu.Universe.API.MessageChannel.MessageField.MsgField;
+import com.nekoyu.Universe.Universe;
 
 import java.util.LinkedList;
 
@@ -9,11 +10,9 @@ public class MCMessage {
     public Account sender;
     public String messageString;
     public String sessionId; // 这个sessionId应该是Global SessionId
-    public QuickAction action;
     public long time;
     public int id;
     public LinkedList<MsgField> messageFields;
-    public MessageChannel messageChannel;
     public int level;
 
     public MCMessage() {
@@ -33,5 +32,9 @@ public class MCMessage {
             sb.append(msgField.getAsString());
         }
         return sb.toString();
+    }
+
+    public void reply(String message) {
+        Universe.MessageChannelManager.sendMessage(sessionId, message);
     }
 }

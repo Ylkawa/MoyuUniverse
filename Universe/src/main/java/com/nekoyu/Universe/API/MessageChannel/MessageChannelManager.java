@@ -2,13 +2,11 @@ package com.nekoyu.Universe.API.MessageChannel;
 
 import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.Multimap;
+import com.nekoyu.Universe.API.MessageChannel.MessageField.TextField;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 
 public class MessageChannelManager {
     public Map<String, MessageChannel> MessageChannels = new HashMap<>();
@@ -33,19 +31,13 @@ public class MessageChannelManager {
         }
     }
 
+    /** 处理接收到的消息 */
     public void onMessage(MessageChannel mc, MCMessage mcm) {
         if (mcm.sessionId != null && !mcm.sessionId.isEmpty()) {
             logger.info("接收到来自会话 {} 的消息 {} ({}): {}", mcm.sessionId, mcm.sender.nickname, mcm.sender.id, mcm.messageString);
             messageHistory.computeIfAbsent(mcm.sessionId, k -> new MessageList());
             messageHistory.get(mcm.sessionId).add(mcm);
 
-            mcm.action = new QuickAction() {
-                @Override
-                public void reply(String message) {
-                    mc.sendMessage(mcm.sessionId.split(":")[1], message, messageHistory.get(mcm.sessionId));
-                    logger.info("向 {} 回复消息: {}", mcm.sessionId, message);
-                }
-            };
             for (MessageChannelListener mcl : sessionListeners.get(mcm.sessionId)) {
                 mcl.onMessage(mcm);
             }
@@ -55,6 +47,7 @@ public class MessageChannelManager {
         }
     }
 
+    /** 设置会话名称 */
     public void setSessionName(String sessionId, String name) throws UnsupportedAction {
         String[] split = sessionId.split(":");
         MessageChannel mc = MessageChannels.get(split[0]);
@@ -62,6 +55,9 @@ public class MessageChannelManager {
         mc.setSessionName(split[1], name);
     }
 
+    /** 发送消息
+     * sessionId 必须为全局sessionId
+     */
     public void sendMessage(String sessionId, String message) {
         String[] target = sessionId.split(":");
         MessageChannel mc = getChannel(target[0]);
@@ -70,7 +66,14 @@ public class MessageChannelManager {
             logger.warn("不存在此Channel {}", target[0]);
         } else {
             logger.info("{} 向会话 {} 发送消息: {}", mc.ID, sessionId, message);
-            mc.sendMessage(target[1], message, messageHistory.get(sessionId));
+            MCMessage mcm = new MCMessage();
+            mcm.id = mc.sendMessage(target[1], message); //将sessionId转换成局部形式传给MessageChannel处理，同时把聊天记录对象传过去
+            mcm.messageFields.add(new TextField(message));
+            mcm.time = System.currentTimeMillis() / 1000;
+            mcm.sender.id = mc.ID;
+            // 应该没别的必须的参数了，留空算了
+
+            messageHistory.get(sessionId).add(mcm);
         }
     }
 }

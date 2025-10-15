@@ -8,7 +8,7 @@ public class MessageList {
 
     public void add(MCMessage message) {
         messages.add(message);
-        clean(20);
+        clean(30);
     }
 
     public void clean(int maxSize) {

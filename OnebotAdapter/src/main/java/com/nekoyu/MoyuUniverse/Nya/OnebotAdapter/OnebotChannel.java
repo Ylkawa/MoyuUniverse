@@ -50,20 +50,32 @@ public class OnebotChannel extends MessageChannel {
         };
     }
 
-    private void sendGroupMessage(String id, String message) {
-        sendMessage("group", id, message);
+    private int sendGroupMessage(String id, String message) {
+        return sendMessage("group", id, message);
     }
 
-    private void sendPrivateMessage(String id, String message) {
-        sendMessage("user", id, message);
+    private int sendPrivateMessage(String id, String message) {
+        return sendMessage("user", id, message);
     }
 
-    private void sendMessage(String msgType, String id, String message) {
-        Map<String, String> params = new HashMap<>();
-        params.put(msgType + "_id", id);
-        params.put("message", message);
+    private int sendMessage(String msgType, String id, String message) {
+        OBRequest obr = new OBRequest("send_msg");
+        obr.params.put(msgType + "_id", id);
+        obr.params.put("message", message);
 
-        sendRequest("send_msg", params);
+        final int[] messageId = {-1};
+
+        syncAction(obr, response -> {
+            JsonObject jsonObject = response.data.getAsJsonObject();
+            messageId[0] = jsonObject.get("message_id").getAsInt();
+        });
+
+        int loopTimes = 0;
+        while (messageId[0] == -1 && loopTimes < 10) {
+            loopTimes++;
+            Thread.yield();
+        }
+        return messageId[0];
     }
 
     @Override
@@ -318,17 +330,16 @@ public class OnebotChannel extends MessageChannel {
     }
 
     @Override
-    public void sendMessage(String sessionId, String message, MessageList messageList) {
+    public int sendMessage(String sessionId, String message) {
         String[] target = sessionId.split("\\/");
         switch (target[0]) {
             case "group":
-                sendGroupMessage(target[1], message);
-                break;
+                return sendGroupMessage(target[1], message);
             case "private":
-                sendPrivateMessage(target[1], message);
-                break;
+                return sendPrivateMessage(target[1], message);
             default:
                 logger.warn("前所未闻的会话ID: {}", sessionId);
+                return -1;
         }
     }
 
