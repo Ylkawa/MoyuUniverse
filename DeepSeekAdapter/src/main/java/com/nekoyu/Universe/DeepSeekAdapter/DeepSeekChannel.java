@@ -65,7 +65,9 @@ public class DeepSeekChannel {
             if (response.code() == 200) {
                 AssistantResponse assistantResponse = gson.fromJson(rawContent, AssistantResponse.class);
                 if (assistantResponse.usage != null) {
-                    logger.info("本次请求消耗token量: 输入: {}(未命中缓存) {}(命中缓存) 输出: {}", assistantResponse.usage.prompt_cache_miss_tokens, assistantResponse.usage.prompt_cache_hit_tokens, assistantResponse.usage.completion_tokens);
+                    logger.info("本次请求消耗token量: 输入: {} 输出: {}",
+                            assistantResponse.usage.prompt_tokens,
+                            assistantResponse.usage.completion_tokens);
                     switch (assistantResponse.choices[0].finish_reason) {
                         case "tool_calls", "function_call":
                             logger.info("发起工具调用: {}/{}", reqNum, 5);
