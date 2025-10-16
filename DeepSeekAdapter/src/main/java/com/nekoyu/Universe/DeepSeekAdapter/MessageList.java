@@ -90,11 +90,11 @@ public class MessageList {
             }
         }
 
-        // 如果有工具响应内容，就加一条新的 assistant 普通消息
+        // 如果有工具响应内容，就加一条新的 user 普通消息
         if (toolContent.length() > 0) {
             var newMsg = new StringMessage();
-            newMsg.role = "assistant";
-            newMsg.content = "【工具返回】\n" + toolContent.toString().trim();
+            newMsg.role = "user";
+            newMsg.content = "【Tool】\n" + toolContent.toString().trim();
             newMsg.tool_call_id = null;
             newMsg.tool_calls = null;
             messageList.add(newMsg);
