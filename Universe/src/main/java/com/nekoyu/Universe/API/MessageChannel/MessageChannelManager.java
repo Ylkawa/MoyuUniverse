@@ -59,6 +59,10 @@ public class MessageChannelManager {
      * sessionId 必须为全局sessionId
      */
     public void sendMessage(String sessionId, String message) {
+        if (message.isEmpty()) {
+            logger.warn("严肃谴责发空白消息的情况");
+            return;
+        }
         String[] target = sessionId.split(":");
         MessageChannel mc = getChannel(target[0]);
         if (mc == null) {

@@ -51,7 +51,8 @@ public class DeepSeekChannel {
         if (!assistant.deepSeekTools.isEmpty()) ar.tools = assistant.deepSeekTools.values().toArray(new DeepSeekTool[0]);
 
         // API请求 - 构建请求
-        RequestBody body = RequestBody.create(gson.toJson(ar), JSON);
+        String json = gson.toJson(ar);
+        RequestBody body = RequestBody.create(json, JSON);
 
         Request request = new Request.Builder()
                 .url(base_url + "/chat/completions")
@@ -70,10 +71,10 @@ public class DeepSeekChannel {
                             assistantResponse.usage.completion_tokens);
                     switch (assistantResponse.choices[0].finish_reason) {
                         case "tool_calls", "function_call":
-                            logger.info("发起工具调用: {}/{}", reqNum, 5);
                             var tool_calls = new HashMap<Tool_call, String>();
                             for (Tool_call tool_call : assistantResponse.choices[0].message.tool_calls) {
                                 Map<String, String> args = gson.fromJson(tool_call.function.arguments, HashMap.class);
+                                logger.info("发起工具调用: {} ({}/{})", tool_call.function.name, reqNum, 5);
                                 String tool_resp = assistant.deepSeekTools.get(tool_call.function.name).function.cf.function(args);
                                 if (tool_resp != null) {
                                     tool_calls.put(tool_call, tool_resp);
@@ -93,6 +94,7 @@ public class DeepSeekChannel {
                             }
                         case "stop":
                             messageList.addMessage("assistant", assistantResponse.choices[0].message.content);
+                            messageList.clean();
                             return assistantResponse;
                     }
                     return null;
@@ -105,4 +107,5 @@ public class DeepSeekChannel {
             throw dsException;
         }
     }
+
 }

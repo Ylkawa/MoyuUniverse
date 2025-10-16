@@ -27,7 +27,7 @@ public class AIChat extends Law {
     List<ConfigureProcessor> configs = new ArrayList<>();
     Map<String, MessageList> messageLists = new HashMap<>();
     ConfigureProcessor config;
-    Map<String, DeepSeekTool> deepSeekTools = new HashMap<>();
+    static Map<String, DeepSeekTool> deepSeekTools = new HashMap<>();
     List<AIChatPlugin> aiChatPlugins = new ArrayList<>();
     Config new_cfg;
 
@@ -215,5 +215,9 @@ public class AIChat extends Law {
         for (var plug : aiChatPlugins) {
             plug.onDisable();
         }
+    }
+
+    public static void registerTool(String toolName, DeepSeekTool tool) {
+        deepSeekTools.put(toolName, tool);
     }
 }

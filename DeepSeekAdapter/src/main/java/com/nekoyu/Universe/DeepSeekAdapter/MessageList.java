@@ -40,6 +40,9 @@ public class MessageList {
     }
 
     public void clean() {
+        // ✅ 先把 tool 响应合并成一条 assistant 普通消息，避免被删掉
+        absorbToolResponse();
+
         int maxSize = 20;
         if (messageList.size() <= maxSize) {
             return; // 如果消息数量未超过限制，无需清理
@@ -62,6 +65,42 @@ public class MessageList {
             messageList.subList(0, removeCount).clear();
         }
     }
+
+    private void absorbToolResponse() {
+        StringBuilder toolContent = new StringBuilder();
+        String toolCallId = null;
+
+        // 用迭代器避免 ConcurrentModificationException
+        var iterator = messageList.iterator();
+        while (iterator.hasNext()) {
+            Message msg = iterator.next();
+
+            // 删除 assistant 的 tool 调用
+            if ("assistant".equals(msg.role) && msg.tool_calls != null && msg.tool_calls.length > 0) {
+                iterator.remove();
+            }
+
+            // 收集并删除 tool 消息
+            else if ("tool".equals(msg.role)) {
+                if (msg instanceof StringMessage stringMsg && stringMsg.content != null) {
+                    toolContent.append(stringMsg.content).append("\n");
+                    toolCallId = msg.tool_call_id; // 记一下，万一你以后需要追踪
+                }
+                iterator.remove();
+            }
+        }
+
+        // 如果有工具响应内容，就加一条新的 assistant 普通消息
+        if (toolContent.length() > 0) {
+            var newMsg = new StringMessage();
+            newMsg.role = "assistant";
+            newMsg.content = "【工具返回】\n" + toolContent.toString().trim();
+            newMsg.tool_call_id = null;
+            newMsg.tool_calls = null;
+            messageList.add(newMsg);
+        }
+    }
+
 
     public void addToolResponse(String content, String tool_call_id) {
         var msg = new StringMessage();
