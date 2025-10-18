@@ -1,6 +1,7 @@
 package com.nekoyu.Universe.AIChat.WebSearch;
 
 import com.google.gson.Gson;
+import com.google.gson.JsonSyntaxException;
 import com.nekoyu.Universe.AIChat.AIChat;
 import com.nekoyu.Universe.AIChat.AIChatPlugin;
 import com.nekoyu.Universe.AIChat.WebSearch.GoogleWebSearchAPI.SearchResponse;
@@ -69,9 +70,16 @@ public class WebSearch extends AIChatPlugin {
                 new HashMap<>(){{put("搜索词", new DeepSeekTool.Function.Parameters.Property("搜索词"));}},
                 new String[]{"搜索词"});
         registerTool("WebSearch", dst);
+
+        DeepSeekTool visitUrl = new DeepSeekTool("访问网页",
+                "获取部分受支持的网页中的信息（内容会被精简）",
+                args -> visitUrl(args.get("网址")),
+                new HashMap<>(){{put("网址", new DeepSeekTool.Function.Parameters.Property("目标访问网址"));}},
+                new String[]{"网址"});
+        registerTool("VisitURL", visitUrl);
     }
 
-    public String search(String content) {
+    private String search(String content) {
         // 构建请求
         HttpUrl url = HttpUrl.parse("https://www.googleapis.com/customsearch/v1")
                 .newBuilder()
@@ -85,21 +93,34 @@ public class WebSearch extends AIChatPlugin {
                 .build();
         try (Response response = client.newCall(req).execute()) {
             if (response.isSuccessful()) {
-                SearchResponse searchR = gson.fromJson(response.body().string(), SearchResponse.class);
-                // 构建自然语言响应
-                StringBuilder sb = new StringBuilder();
-                for (SearchResponse.Item item : searchR.items) {
-                    sb.append("{\n");
-                    sb.append("「").append(item.title).append("」 - ").append(item.link).append("\n");
-                    sb.append("摘要: ").append(item.snippet).append("\n");
-                    sb.append("}\n\n");
+                try {
+                    SearchResponse searchR = gson.fromJson(response.body().string(), SearchResponse.class);
+                    // 构建自然语言响应
+                    StringBuilder sb = new StringBuilder();
+                    if (searchR.items != null && !searchR.items.isEmpty()) {
+                        sb.append("\"").append(searchR.queries.request.get(0).searchTerms).append("\" 的搜索结果");
+                        for (SearchResponse.Item item : searchR.items) {
+                            sb.append("{\n");
+                            sb.append("「").append(item.title).append("」 - ").append(item.link).append("\n");
+                            sb.append("摘要: ").append(item.snippet).append("\n");
+                            sb.append("}\n\n");
+                        }
+                        logger.debug(sb.toString());
+                        return sb.toString();
+                    } else return "未搜索到结果";
+                } catch (JsonSyntaxException e) {
+                    logger.error("Google API返回意料之外的结果", e);
+                    return "搜索发生错误: "+e.getMessage();
                 }
-                return sb.toString();
             } else {
                 return "搜索失败，状态码: "+response.code();
             }
         } catch (IOException e) {
             return "搜索异常: "+e.getMessage();
         }
+    }
+
+    private String visitUrl(String url) {
+        return "未知原因导致访问失败";
     }
 }

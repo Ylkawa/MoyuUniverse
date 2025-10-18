@@ -31,6 +31,7 @@ public class OnebotChannel extends MessageChannel {
     boolean isReady = true;
     Logger logger = LoggerFactory.getLogger(this.getClass());
     URI uri;
+    Gson gson = new Gson();
     String token;
     Map<String, Callback> syncActions = new HashMap<>();
     String nickname = null;
@@ -72,8 +73,14 @@ public class OnebotChannel extends MessageChannel {
         int loopTimes = 0;
         while (messageId[0] == -1 && loopTimes < 10) {
             loopTimes++;
-            Thread.yield();
+            try {
+                Thread.sleep(500);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                break;
+            }
         }
+
         return messageId[0];
     }
 

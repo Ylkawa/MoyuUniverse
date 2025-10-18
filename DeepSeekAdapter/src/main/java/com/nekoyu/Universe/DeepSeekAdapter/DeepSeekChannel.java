@@ -1,6 +1,7 @@
 package com.nekoyu.Universe.DeepSeekAdapter;
 
 import com.google.gson.Gson;
+import com.google.gson.JsonSyntaxException;
 import okhttp3.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -64,40 +65,44 @@ public class DeepSeekChannel {
         try (Response response = okHttpClient.newCall(request).execute()) {
             String rawContent = response.body().string();
             if (response.code() == 200) {
-                AssistantResponse assistantResponse = gson.fromJson(rawContent, AssistantResponse.class);
-                if (assistantResponse.usage != null) {
-                    logger.info("本次请求消耗token量: 输入: {} 输出: {}",
-                            assistantResponse.usage.prompt_tokens,
-                            assistantResponse.usage.completion_tokens);
-                    switch (assistantResponse.choices[0].finish_reason) {
-                        case "tool_calls", "function_call":
-                            var tool_calls = new HashMap<Tool_call, String>();
-                            for (Tool_call tool_call : assistantResponse.choices[0].message.tool_calls) {
-                                Map<String, String> args = gson.fromJson(tool_call.function.arguments, HashMap.class);
-                                logger.info("发起工具调用: {} ({}/{})", tool_call.function.name, reqNum, 5);
-                                String tool_resp = assistant.deepSeekTools.get(tool_call.function.name).function.cf.function(args);
-                                if (tool_resp != null) {
-                                    tool_calls.put(tool_call, tool_resp);
+                try {
+                    AssistantResponse assistantResponse = gson.fromJson(rawContent, AssistantResponse.class);
+                    if (assistantResponse.usage != null) {
+                        logger.info("本次请求消耗token量: 输入: {} 输出: {}",
+                                assistantResponse.usage.prompt_tokens,
+                                assistantResponse.usage.completion_tokens);
+                        switch (assistantResponse.choices[0].finish_reason) {
+                            case "tool_calls", "function_call":
+                                var tool_calls = new HashMap<Tool_call, String>();
+                                for (Tool_call tool_call : assistantResponse.choices[0].message.tool_calls) {
+                                    Map<String, String> args = gson.fromJson(tool_call.function.arguments, HashMap.class);
+                                    logger.info("发起工具调用: {} ({}/{})", tool_call.function.name, reqNum, 5);
+                                    String tool_resp = assistant.deepSeekTools.get(tool_call.function.name).function.cf.function(args);
+                                    if (tool_resp != null) {
+                                        tool_calls.put(tool_call, tool_resp);
+                                    }
                                 }
-                            }
-                            if (tool_calls.isEmpty()) { // 如果调用的函数都返回了 null 则默认为模型不需要知道调用的结果，直接继续
+                                if (tool_calls.isEmpty()) { // 如果调用的函数都返回了 null 则默认为模型不需要知道调用的结果，直接继续
+                                    messageList.addMessage("assistant", assistantResponse.choices[0].message.content);
+                                    if (assistantResponse.choices[0].message.content.isEmpty())
+                                        return request(messageList, assistant, reqNum); // 但是我还是怕有憨批模型调用了函数但是一声不吭
+                                    return assistantResponse;
+                                } else {
+                                    messageList.addToolRequest(assistantResponse.choices[0].message.content, tool_calls.keySet().toArray(new Tool_call[0]));
+                                    for (Map.Entry<Tool_call, String> entry : tool_calls.entrySet()) {
+                                        messageList.addToolResponse(entry.getValue(), entry.getKey().id);
+                                    }
+                                    return request(messageList, assistant, reqNum);
+                                }
+                            case "stop":
                                 messageList.addMessage("assistant", assistantResponse.choices[0].message.content);
-                                if (assistantResponse.choices[0].message.content.isEmpty())
-                                    return request(messageList, assistant, reqNum); // 但是我还是怕有憨批模型调用了函数但是一声不吭
+                                messageList.clean();
                                 return assistantResponse;
-                            } else {
-                                messageList.addToolRequest(assistantResponse.choices[0].message.content, tool_calls.keySet().toArray(new Tool_call[0]));
-                                for (Map.Entry<Tool_call, String> entry : tool_calls.entrySet()) {
-                                    messageList.addToolResponse(entry.getValue(), entry.getKey().id);
-                                }
-                                return request(messageList, assistant, reqNum);
-                            }
-                        case "stop":
-                            messageList.addMessage("assistant", assistantResponse.choices[0].message.content);
-                            messageList.clean();
-                            return assistantResponse;
+                        }
+                        return null;
                     }
-                    return null;
+                } catch (JsonSyntaxException e) {
+                    logger.error("DeepSeek API 返回了意料之外的响应", e);
                 }
             }
             var dsError = gson.fromJson(rawContent, DSError.class);
