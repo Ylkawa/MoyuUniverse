@@ -77,6 +77,7 @@ public class MessageChannelManager {
             mcm.sender.id = mc.accountId;
             // 应该没别的必须的参数了，留空算了
 
+            messageHistory.computeIfAbsent(mcm.sessionId, k -> new MessageList());
             messageHistory.get(sessionId).add(mcm);
         }
     }
