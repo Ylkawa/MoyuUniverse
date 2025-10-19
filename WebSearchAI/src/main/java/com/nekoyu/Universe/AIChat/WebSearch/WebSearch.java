@@ -4,6 +4,8 @@ import com.google.gson.Gson;
 import com.google.gson.JsonSyntaxException;
 import com.nekoyu.Universe.AIChat.AIChat;
 import com.nekoyu.Universe.AIChat.AIChatPlugin;
+import com.nekoyu.Universe.AIChat.WebSearch.BiliBiliAPI.Client;
+import com.nekoyu.Universe.AIChat.WebSearch.BiliBiliAPI.VideoInfo;
 import com.nekoyu.Universe.AIChat.WebSearch.GoogleWebSearchAPI.SearchResponse;
 import com.nekoyu.Universe.DeepSeekAdapter.DeepSeekTool;
 import okhttp3.HttpUrl;
@@ -18,6 +20,8 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.Proxy;
 import java.util.HashMap;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 
 public class WebSearch extends AIChatPlugin {
@@ -72,7 +76,9 @@ public class WebSearch extends AIChatPlugin {
         registerTool("WebSearch", dst);
 
         DeepSeekTool visitUrl = new DeepSeekTool("访问网页",
-                "获取部分受支持的网页中的信息（内容会被精简）",
+                """
+                        获取部分受支持的网页中的信息（内容会被精简）仅支持哔哩哔哩视频
+                        例: https://www.bilibili.com/video/BV1SC4y1J7De""",
                 args -> visitUrl(args.get("网址")),
                 new HashMap<>(){{put("网址", new DeepSeekTool.Function.Parameters.Property("目标访问网址"));}},
                 new String[]{"网址"});
@@ -121,6 +127,73 @@ public class WebSearch extends AIChatPlugin {
     }
 
     private String visitUrl(String url) {
+        Matcher domain = Pattern.compile("^https?://([^/]+)(?:/.*)?$").matcher(url);
+        if (domain.find()) {
+            switch (domain.group(1)) {
+                case "www.bilibili.com":
+                    Pattern pattern = Pattern.compile("https?://www\\.bilibili\\.com/video/(BV\\w+)(?:\\?.*)?");
+                    Matcher matcher = pattern.matcher(url);
+
+                    if (matcher.find()) {
+                        String bv = matcher.group(1);  // 获取第一个捕获组
+                        try {
+                            VideoInfo info = Client.getVideoInfo(bv);
+                            StringBuilder sb = new StringBuilder();
+                            switch (info.code) {
+                                case 0:
+                                    sb.append("「").append(bv).append("」").append("的信息:\n");
+                                    sb.append("作者: ").append(info.data.owner.name).append(" (UID:").append(info.data.owner.mid).append(")");
+                                    sb.append("标题: ").append(info.data.title).append("\n");
+                                    sb.append("简介: ").append(info.data.desc).append("\n");
+                                    sb.append("数据(播放量/点赞/投币/收藏/转发/弹幕/评论): ")
+                                            .append(info.data.stat.view).append("/")
+                                            .append(info.data.stat.like).append("/")
+                                            .append(info.data.stat.coin).append("/")
+                                            .append(info.data.stat.favorite).append("/")
+                                            .append(info.data.stat.share).append("/")
+                                            .append(info.data.stat.danmaku).append("/")
+                                            .append(info.data.stat.reply).append("/")
+                                            .append("\n");
+                                    if (info.data.stat.his_rank != 0) {
+                                        sb.append("历史最高排名: ").append(info.data.stat.his_rank).append("\n");
+                                    }
+                                    if (info.data.stat.now_rank != 0) {
+                                        sb.append("当前排名: ").append(info.data.stat.now_rank).append("\n");
+                                    }
+                                    if (!info.data.argue_info.argue_msg.isBlank()) {
+                                        sb.append("争议信息: ").append(info.data.argue_info.argue_msg).append("\n");
+                                    }
+                                    if (info.data.honor_reply.honor != null) {
+                                        sb.append("稿件荣誉: ");
+                                        for (var honor : info.data.honor_reply.honor) {
+                                            sb.append(honor.desc).append(" ");
+                                        }
+                                        sb.append("\n");
+                                    }
+                                case -400:
+                                    return bv+"请求错误";
+                                case -403:
+                                    return bv+"权限不足";
+                                case -404:
+                                    return bv+"不存在";
+                                case 62002:
+                                    return bv+"不可见";
+                                case 62004:
+                                    return bv+"审核中";
+                                case 62012:
+                                    return bv+"仅UP主自己可见";
+                                default:
+                                    return bv+"未知响应码"+info.code;
+                            }
+                        } catch (IOException e) {
+                            return "请求失败" + e.getMessage();
+                        }
+                    } else {
+                        return "不支持的链接类型";
+                    }
+            }
+        }
+        // 匹配B站视频的情况
         return "未知原因导致访问失败";
     }
 }

@@ -78,6 +78,7 @@ public class DeepSeekChannel {
                                     Map<String, String> args = gson.fromJson(tool_call.function.arguments, HashMap.class);
                                     logger.info("发起工具调用: {} ({}/{})", tool_call.function.name, reqNum, 5);
                                     String tool_resp = assistant.deepSeekTools.get(tool_call.function.name).function.cf.function(args);
+                                    logger.debug("工具返回内容: {}", tool_resp);
                                     if (tool_resp != null) {
                                         tool_calls.put(tool_call, tool_resp);
                                     }
