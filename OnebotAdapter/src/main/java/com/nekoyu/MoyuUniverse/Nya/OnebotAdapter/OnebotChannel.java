@@ -317,6 +317,7 @@ public class OnebotChannel extends MessageChannel {
 
             @Override
             public void onClose(int i, String s, boolean b) {
+                if (i != -1) logger.warn("{} 断开连接", ID);
                 Executors.newSingleThreadScheduledExecutor().schedule(() -> reload(), 10, TimeUnit.SECONDS);
             }
 
@@ -378,7 +379,6 @@ public class OnebotChannel extends MessageChannel {
 
     private void reload() {
         load();
-        logger.info("{} 已重载", ID);
     }
 
     /**
