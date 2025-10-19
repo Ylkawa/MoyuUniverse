@@ -170,6 +170,7 @@ public class WebSearch extends AIChatPlugin {
                                         }
                                         sb.append("\n");
                                     }
+                                    return sb.toString();
                                 case -400:
                                     return bv+"请求错误";
                                 case -403:
