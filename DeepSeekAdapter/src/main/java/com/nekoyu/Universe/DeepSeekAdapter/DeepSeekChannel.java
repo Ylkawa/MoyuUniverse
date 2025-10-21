@@ -42,6 +42,7 @@ public class DeepSeekChannel {
     }
 
     private AssistantResponse request(MessageList messageList, Assistant assistant, int reqNum) throws IOException, DSException {
+        messageList.clean();
         reqNum++;
         if (reqNum >= 5) {
             throw new OutOfRequestLimit("超出调用次数限制");
@@ -77,8 +78,14 @@ public class DeepSeekChannel {
                                 for (Tool_call tool_call : assistantResponse.choices[0].message.tool_calls) {
                                     Map<String, String> args = gson.fromJson(tool_call.function.arguments, HashMap.class);
                                     logger.info("发起工具调用: {} ({}/{})", tool_call.function.name, reqNum, 5);
-                                    String tool_resp = assistant.deepSeekTools.get(tool_call.function.name).function.cf.function(args);
-                                    logger.debug("工具返回内容: {}", tool_resp);
+                                    String tool_resp;
+                                    try {
+                                        tool_resp = assistant.deepSeekTools.get(tool_call.function.name).function.cf.function(args);
+                                        logger.debug("工具返回内容: {}", tool_resp);
+                                    } catch (Exception e) {
+                                        tool_resp = "工具执行出错 "+e.getMessage();
+                                        logger.error("工具运行出错: {}", e.getMessage());
+                                    }
                                     if (tool_resp != null) {
                                         tool_calls.put(tool_call, tool_resp);
                                     }

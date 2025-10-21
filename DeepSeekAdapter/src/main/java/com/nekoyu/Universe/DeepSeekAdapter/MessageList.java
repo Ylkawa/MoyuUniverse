@@ -91,7 +91,7 @@ public class MessageList {
         }
 
         // 如果有工具响应内容，就加一条新的 user 普通消息
-        if (toolContent.length() > 0) {
+        if (!toolContent.isEmpty()) {
             var newMsg = new StringMessage();
             newMsg.role = "user";
             newMsg.content = "【Tool】\n" + toolContent.toString().trim();
