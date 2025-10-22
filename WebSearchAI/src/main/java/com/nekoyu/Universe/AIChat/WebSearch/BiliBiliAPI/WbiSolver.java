@@ -92,21 +92,12 @@ public class WbiSolver {
     }
 
     public static void main(String[] args) {
-        TreeMap<String, Object> rawArgs = new TreeMap<>();
-        rawArgs.put("foo", "114");
-        rawArgs.put("bar", "514");
-        rawArgs.put("zab", 1919810);
-
-        System.out.println(getFinalReqArgs(rawArgs));
-
-
-
         TreeMap<String, Object> getUserInfo = new TreeMap<>();
         for (String arg : "platform=web&web_location=1550101&dm_img_list=[]&dm_img_str=V2ViR0wgMS4wIChPcGVuR0wgRVMgMi4wIENocm9taXVtKQ&dm_cover_img_str=QU5HTEUgKEludGVsLCBJbnRlbChSKSBVSEQgR3JhcGhpY3MgKDB4MDAwMEE3OEIpIERpcmVjdDNEMTEgdnNfNV8wIHBzXzVfMCwgRDNEMTEpR29vZ2xlIEluYy4gKEludGVsKQ&dm_img_inter=%7B%22ds%22:[],%22wh%22:[5533,5981,85],%22of%22:[202,404,202]%7D".split("&")) {
             String[] n = arg.split("=");
             getUserInfo.put(n[0], n[1]);
         }
-        getUserInfo.put("mid", 497423225);
+        getUserInfo.put("mid", 396162635);
         String url = "https://api.bilibili.com/x/space/wbi/acc/info?" + getFinalReqArgs(getUserInfo);
         System.out.println(url);
         Request req = new Request.Builder()
@@ -127,7 +118,7 @@ public class WbiSolver {
         try (Response resp = client.newCall(req).execute()) {
             String string = resp.body().string();
             UserInfo ui = gson.fromJson(string, UserInfo.class);
-            System.out.println(ui);
+            System.out.println(string);
             System.out.println(ui.data.name);
         } catch (IOException e) {
             throw new RuntimeException(e);

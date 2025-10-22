@@ -5,6 +5,7 @@ import com.google.gson.JsonSyntaxException;
 import com.nekoyu.Universe.AIChat.AIChat;
 import com.nekoyu.Universe.AIChat.AIChatPlugin;
 import com.nekoyu.Universe.AIChat.WebSearch.BiliBiliAPI.Client;
+import com.nekoyu.Universe.AIChat.WebSearch.BiliBiliAPI.UserInfo;
 import com.nekoyu.Universe.AIChat.WebSearch.BiliBiliAPI.VideoInfo;
 import com.nekoyu.Universe.AIChat.WebSearch.GoogleWebSearchAPI.SearchResponse;
 import com.nekoyu.Universe.DeepSeekAdapter.DeepSeekTool;
@@ -71,16 +72,20 @@ public class WebSearch extends AIChatPlugin {
         DeepSeekTool dst = new DeepSeekTool("Google搜索",
                 "使用Google的API在全网搜索内容，仅当用户要求或者要回答的内容具有时效性时使用",
                 args -> search(args.get("搜索词")),
-                new HashMap<>(){{put("搜索词", new DeepSeekTool.Function.Parameters.Property("搜索词"));}},
+                new HashMap<>() {{
+                    put("搜索词", new DeepSeekTool.Function.Parameters.Property("搜索词"));
+                }},
                 new String[]{"搜索词"});
         registerTool("WebSearch", dst);
 
         DeepSeekTool visitUrl = new DeepSeekTool("访问网页",
                 """
-                        获取部分受支持的网页中的信息（内容会被精简）仅支持哔哩哔哩视频
-                        例: https://www.bilibili.com/video/BV1SC4y1J7De""",
+                        获取部分受支持的网页中的信息（内容会被精简）仅支持哔哩哔哩视频和用户空间
+                        例: https://www.bilibili.com/video/BV1SC4y1J7De , https://space.bilibili.com/497423225""",
                 args -> visitUrl(args.get("网址")),
-                new HashMap<>(){{put("网址", new DeepSeekTool.Function.Parameters.Property("目标访问网址"));}},
+                new HashMap<>() {{
+                    put("网址", new DeepSeekTool.Function.Parameters.Property("目标访问网址"));
+                }},
                 new String[]{"网址"});
         registerTool("VisitURL", visitUrl);
     }
@@ -116,13 +121,13 @@ public class WebSearch extends AIChatPlugin {
                     } else return "未搜索到结果";
                 } catch (JsonSyntaxException e) {
                     logger.error("Google API返回意料之外的结果", e);
-                    return "搜索发生错误: "+e.getMessage();
+                    return "搜索发生错误: " + e.getMessage();
                 }
             } else {
-                return "搜索失败，状态码: "+response.code();
+                return "搜索失败，状态码: " + response.code();
             }
         } catch (IOException e) {
-            return "搜索异常: "+e.getMessage();
+            return "搜索异常: " + e.getMessage();
         }
     }
 
@@ -130,7 +135,7 @@ public class WebSearch extends AIChatPlugin {
         Matcher domain = Pattern.compile("^https?://([^/]+)(?:/.*)?$").matcher(url);
         if (domain.find()) {
             switch (domain.group(1)) {
-                case "www.bilibili.com":
+                case "www.bilibili.com" -> {
                     Pattern pattern = Pattern.compile("https?://www\\.bilibili\\.com/video/(BV\\w+)(?:\\?.*)?");
                     Matcher matcher = pattern.matcher(url);
 
@@ -172,19 +177,19 @@ public class WebSearch extends AIChatPlugin {
                                     }
                                     return sb.toString();
                                 case -400:
-                                    return bv+"请求错误";
+                                    return bv + "请求错误";
                                 case -403:
-                                    return bv+"权限不足";
+                                    return bv + "权限不足";
                                 case -404:
-                                    return bv+"不存在";
+                                    return bv + "不存在";
                                 case 62002:
-                                    return bv+"不可见";
+                                    return bv + "不可见";
                                 case 62004:
-                                    return bv+"审核中";
+                                    return bv + "审核中";
                                 case 62012:
-                                    return bv+"仅UP主自己可见";
+                                    return bv + "仅UP主自己可见";
                                 default:
-                                    return bv+"未知响应码"+info.code;
+                                    return bv + "未知响应码" + info.code;
                             }
                         } catch (IOException e) {
                             return "请求失败" + e.getMessage();
@@ -192,6 +197,33 @@ public class WebSearch extends AIChatPlugin {
                     } else {
                         return "不支持的链接类型";
                     }
+                }
+                case "space.bilibili.com" -> {
+                    Matcher matcher = Pattern.compile("^https?://space\\.bilibili\\.com/(\\d+)(?:[/?#].*)?$").matcher(url);
+                    if (matcher.find()) {
+                        String uid = matcher.group(1);
+                        try {
+                            UserInfo ui = Client.getUserInfo(uid);
+                            StringBuilder respBuilder = new StringBuilder();
+                            respBuilder.append(ui.data.name).append("(").append(ui.data.mid).append(")").append("的信息:");
+                            respBuilder.append("\nLv.").append(ui.data.level).append(" (0~6)");
+                            if (ui.data.vip.type == 2) respBuilder.append(ui.data.vip.label.text);
+                            respBuilder.append("\n个性签名: ").append(ui.data.sign);
+                            respBuilder.append("\n生日: ").append(ui.data.birthday);
+                            respBuilder.append("\n性别: ").append(ui.data.sex);
+                            respBuilder.append("\n账号等级(Lv.0~6): ").append(ui.data.level);
+                            if (ui.data.fans_medal != null && ui.data.fans_medal.show && !ui.data.fans_medal.wear) {
+                                respBuilder.append("\n佩戴的粉丝勋章: ").append(ui.data.fans_medal.medal.medal_name).append("(Lv.").append(ui.data.fans_medal.medal.level).append(")");
+                            }
+                            if (ui.data.live_room != null) {
+                                respBuilder.append("\n直播间(ID:").append(ui.data.live_room.roomid).append("): ").append(ui.data.live_room.title).append(" ").append(ui.data.live_room.watched_show.text_large);
+                            }
+                            return respBuilder.toString();
+                        } catch (IOException e) {
+                            return "未知错误: " + e.getMessage();
+                        }
+                    }
+                }
             }
         }
         // 匹配B站视频的情况
