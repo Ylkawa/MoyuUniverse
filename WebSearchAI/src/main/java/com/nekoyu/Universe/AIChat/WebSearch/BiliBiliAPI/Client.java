@@ -6,6 +6,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.math.BigInteger;
 import java.util.TreeMap;
 
 public class Client {
@@ -64,5 +65,27 @@ public class Client {
         logger.debug(string);
 
         return gson.fromJson(string, UserInfo.class);
+    }
+
+    public static DynamicList getUserDynamicList(String uid) {
+        Request req = new Request.Builder()
+                .url(
+                        HttpUrl.parse("https://api.bilibili.com/x/polymer/web-dynamic/desktop/v1/feed/space").newBuilder().addQueryParameter("host_mid", uid).build()
+                )
+                .build();
+        try (Response resp = client.newCall(req).execute()) {
+            return gson.fromJson(resp.body().string(), DynamicList.class);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    public static void main(String[] args) {
+        DynamicList dl = getUserDynamicList("497423225");
+        for (var item : dl.data.items) {
+            for (var d : item.modules) {
+                if (d.module_author != null) logger.info("");
+            }
+        }
     }
 }

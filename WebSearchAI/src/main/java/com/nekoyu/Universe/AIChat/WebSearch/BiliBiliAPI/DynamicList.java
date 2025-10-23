@@ -62,7 +62,7 @@ public class DynamicList {
                     public int pub_ts;
                     public Object relation;
                     public boolean show_follow;
-                    public UserInfo user;
+                    public User user;
 
                     public static class Decorate_card {
                         public String big_card_url;
@@ -102,44 +102,54 @@ public class DynamicList {
                             public String type;
                         }
                     }
+
+                    public static class User {
+                        public String face;
+                        public boolean face_nft;
+                        public long mid;
+                        public String name;
+                        public UserInfo.Data.Official official;
+                        public UserInfo.Data.Pendant pendant;
+                        public UserInfo.Data.Vip vip;
+                    }
                 }
 
                 public static class Module_dynamic {
                     public Dyn_draw dyn_draw;
 
                     public static class Dyn_draw {
-                        long id;
-                        Item[] items;
+                        public long id;
+                        public Item[] items;
 
                         public static class Items {
-                            int height;
-                            double size;
-                            String src;
-                            int width;
+                            public int height;
+                            public double size;
+                            public String src;
+                            public int width;
                         }
                     }
                 }
 
                 public static class Module_stat {
-                    Comment comment;
-                    Forward forward;
-                    Like like;
+                    public Comment comment;
+                    public Forward forward;
+                    public Like like;
 
                     public static class Comment {
-                        long comment_id;
-                        short comment_type;
-                        int count;
-                        short type;
+                        public long comment_id;
+                        public short comment_type;
+                        public int count;
+                        public short type;
                     }
 
                     public static class Forward {
-                        int count;
-                        short type;
+                        public int count;
+                        public short type;
                     }
 
                     public static class Like {
-                        int count;
-                        boolean like_state;
+                        public int count;
+                        public boolean like_state;
                     }
                 }
 
@@ -148,10 +158,10 @@ public class DynamicList {
                     public String text;
 
                     public static class Rich_text_node {
-                        String jump_url;
-                        String orig_text;
-                        String text;
-                        String type;
+                       public String jump_url;
+                       public String orig_text;
+                       public String text;
+                       public String type;
                     }
                 }
             }

@@ -224,6 +224,9 @@ public class WebSearch extends AIChatPlugin {
                         }
                     }
                 }
+                default -> {
+                    return "不支持的链接类型";
+                }
             }
         }
         // 匹配B站视频的情况

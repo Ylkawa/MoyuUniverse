@@ -149,13 +149,13 @@ public class UserInfo {
             }
         }
         public static class Pendant {
-            public int pid;
+            public long pid;
             public String name;
             public String image;
             public int expire;
             public String image_enhance;
             public String image_enhance_frame;
-            public int n_pid;
+            public long n_pid;
         }
         public static class Nameplate {
             public int nid;
