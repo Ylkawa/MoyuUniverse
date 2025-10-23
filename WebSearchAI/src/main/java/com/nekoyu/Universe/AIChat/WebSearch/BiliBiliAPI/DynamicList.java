@@ -116,6 +116,7 @@ public class DynamicList {
 
                 public static class Module_dynamic {
                     public Dyn_draw dyn_draw;
+                    public Dyn_archive dyn_archive;
 
                     public static class Dyn_draw {
                         public long id;
@@ -126,6 +127,38 @@ public class DynamicList {
                             public double size;
                             public String src;
                             public int width;
+                        }
+                    }
+
+                    public static class Dyn_archive {
+                        public long aid;
+                        public boolean autoplay;
+                        public Badge badge;
+                        public String bvid;
+                        public String cover;
+                        public Object desc;
+                        public String duration_text;
+                        public Object epid;
+                        public Open_player_params open_player_params;
+                        public Stat stat;
+                        public String title;
+                        public short type;
+
+                        public static class Badge {
+                            public String bg_color; // CSS
+                            public String color; // CSS
+                            public String text;
+                        }
+
+                        public static class Open_player_params {
+                            public String bvid;
+                            public String type;
+                        }
+
+                        public static class Stat {
+                            public String danmaku;
+                            public String like;
+                            public String play;
                         }
                     }
                 }

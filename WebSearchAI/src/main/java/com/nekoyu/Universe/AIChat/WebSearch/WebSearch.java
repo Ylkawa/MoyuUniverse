@@ -5,6 +5,7 @@ import com.google.gson.JsonSyntaxException;
 import com.nekoyu.Universe.AIChat.AIChat;
 import com.nekoyu.Universe.AIChat.AIChatPlugin;
 import com.nekoyu.Universe.AIChat.WebSearch.BiliBiliAPI.Client;
+import com.nekoyu.Universe.AIChat.WebSearch.BiliBiliAPI.DynamicList;
 import com.nekoyu.Universe.AIChat.WebSearch.BiliBiliAPI.UserInfo;
 import com.nekoyu.Universe.AIChat.WebSearch.BiliBiliAPI.VideoInfo;
 import com.nekoyu.Universe.AIChat.WebSearch.GoogleWebSearchAPI.SearchResponse;
@@ -204,6 +205,7 @@ public class WebSearch extends AIChatPlugin {
                         String uid = matcher.group(1);
                         try {
                             UserInfo ui = Client.getUserInfo(uid);
+                            DynamicList dl = Client.getUserDynamicList(uid);
                             StringBuilder respBuilder = new StringBuilder();
                             respBuilder.append(ui.data.name).append("(").append(ui.data.mid).append(")").append("的信息:");
                             respBuilder.append("\nLv.").append(ui.data.level).append(" (0~6)");
@@ -218,9 +220,46 @@ public class WebSearch extends AIChatPlugin {
                             if (ui.data.live_room != null) {
                                 respBuilder.append("\n直播间(ID:").append(ui.data.live_room.roomid).append("): ").append(ui.data.live_room.title).append(" ").append(ui.data.live_room.watched_show.text_large);
                             }
+                            if (dl.data != null) { // 添加动态信息
+                                respBuilder.append("\n动态: ");
+                                int times = 0;
+                                for (var item : dl.data.items) {
+                                    times++;
+                                    switch (item.type) {
+                                        case "DYNAMIC_TYPE_AV" -> {
+                                            if (times == 10) break;
+                                            respBuilder.append("\n{");
+                                            for (var module : item.modules) {
+                                                switch (module.module_type) {
+                                                    case "MODULE_TYPE_AUTHOR" -> {
+                                                        var author = module.module_author;
+                                                        respBuilder.append("\n").append(author.pub_text);
+                                                    }
+                                                    case "MODULE_TYPE_DYNAMIC" -> {
+                                                        var dynamic = module.module_dynamic;
+                                                        respBuilder.append("\n标题: ").append(dynamic.dyn_archive.title);
+                                                        respBuilder.append("\n简介: ").append(dynamic.dyn_archive.desc);
+                                                        respBuilder.append("\n时长: ").append(dynamic.dyn_archive.duration_text);
+                                                        respBuilder.append("\n点赞/弹幕/播放量(视频): ").append(dynamic.dyn_archive.stat.like).append("/").append(dynamic.dyn_archive.stat.danmaku).append("/").append(dynamic.dyn_archive.stat.play);
+                                                        respBuilder.append("\nBVID: ").append(dynamic.dyn_archive.bvid);
+                                                    }
+                                                    case "MODULE_TYPE_STAT" -> {
+                                                        var stat = module.module_stat;
+                                                        respBuilder.append("\n\n点赞/评论/转发(动态): ").append(stat.like).append("/").append(stat.comment).append("/").append(stat.forward);
+                                                    }
+                                                }
+                                            }
+                                            respBuilder.append("\n}");
+                                        }
+                                        default -> times--;
+                                    }
+                                }
+                            }
                             return respBuilder.toString();
                         } catch (IOException e) {
                             return "未知错误: " + e.getMessage();
+                        } catch (NullPointerException e) {
+                            return "获取信息失败!";
                         }
                     }
                 }

@@ -84,7 +84,7 @@ public class Client {
         DynamicList dl = getUserDynamicList("497423225");
         for (var item : dl.data.items) {
             for (var d : item.modules) {
-                if (d.module_author != null) logger.info("");
+                if (d.module_author != null) logger.info(d.module_author.user.name);
             }
         }
     }
