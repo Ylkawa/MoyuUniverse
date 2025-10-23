@@ -1,0 +1,160 @@
+package com.nekoyu.Universe.AIChat.WebSearch.BiliBiliAPI;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+
+public class DynamicList {
+    public int code;
+    public String message;
+    public int ttl; // 恒为 1
+    public Data data;
+
+    public static class Data {
+        public boolean has_more;
+        public ArrayList<Item> items;
+        public String offset;
+        public String update_baseline;
+        public int update_num;
+
+        public static class Item {
+            public Basic basic;
+            public String id_str;
+            public ArrayList<Modules> modules;
+            public String type;
+            public boolean visible;
+            public Object orig;
+
+            public static class Basic {
+                public String comment_id_str;
+                public int comment_type;
+                public Like_icon like_icon;
+                public String rid_str;
+
+                /**
+                 * 这个类应该没用
+                 */
+                public static class Like_icon {
+                    public String action_url; // ""
+                    public String end_url; // ""
+                    public int id; // 0
+                    public String start_url; // ""
+                }
+            }
+
+            public static class Modules {
+                public Module_author module_author;
+                public Module_dynamic module_dynamic;
+                // public Module_more module_more;
+                public Module_stat module_stat;
+                // public Module_interaction module_interaction;
+                // public Module_fold module_fold;
+                // public Module_dispute module_dispute;
+                // public Module_tag module_tag;
+                public Module_desc module_desc;
+                public String module_type;
+
+                public static class Module_author {
+                    public Decorate_card decorate_card;
+                    public boolean is_top;
+                    public More more;
+                    public String pub_text;
+                    public int pub_ts;
+                    public Object relation;
+                    public boolean show_follow;
+                    public UserInfo user;
+
+                    public static class Decorate_card {
+                        public String big_card_url;
+                        public short card_type;
+                        public String card_type_name;
+                        public String card_url;
+                        public Fan fan;
+                        public long id;
+                        public String image_enhance;
+                        public long item_id;
+                        public String jump_url;
+                        public String name;
+
+                        public static class Fan {
+                            public String color;
+                            public Color_format color_format;
+                            public short is_fan;
+                            public String name;
+                            public int num_desc;
+                            public int number;
+
+                            public static class Color_format {
+                                public String[] colors;
+                                public String end_point;
+                                public int[] gradients;
+                                public String start_point;
+                            }
+                        }
+                    }
+
+                    public static class More {
+                        public Three_point_items[] three_point_items;
+
+                        public static class Three_point_items {
+                            public String label;
+                            public Map<String, Object> params;
+                            public String type;
+                        }
+                    }
+                }
+
+                public static class Module_dynamic {
+                    public Dyn_draw dyn_draw;
+
+                    public static class Dyn_draw {
+                        long id;
+                        Item[] items;
+
+                        public static class Items {
+                            int height;
+                            double size;
+                            String src;
+                            int width;
+                        }
+                    }
+                }
+
+                public static class Module_stat {
+                    Comment comment;
+                    Forward forward;
+                    Like like;
+
+                    public static class Comment {
+                        long comment_id;
+                        short comment_type;
+                        int count;
+                        short type;
+                    }
+
+                    public static class Forward {
+                        int count;
+                        short type;
+                    }
+
+                    public static class Like {
+                        int count;
+                        boolean like_state;
+                    }
+                }
+
+                public static class Module_desc {
+                    public Rich_text_node[] rich_text_nodes;
+                    public String text;
+
+                    public static class Rich_text_node {
+                        String jump_url;
+                        String orig_text;
+                        String text;
+                        String type;
+                    }
+                }
+            }
+        }
+    }
+}
