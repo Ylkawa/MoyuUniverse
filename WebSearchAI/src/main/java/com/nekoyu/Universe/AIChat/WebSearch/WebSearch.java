@@ -235,10 +235,10 @@ public class WebSearch extends AIChatPlugin {
                                 respBuilder.append("\n动态: ");
                                 int times = 0;
                                 for (var item : dl.data.items) {
+                                    if (times == 10) break;
                                     times++;
                                     switch (item.type) {
                                         case "DYNAMIC_TYPE_AV" -> {
-                                            if (times == 10) break;
                                             respBuilder.append("\n{");
                                             for (var module : item.modules) {
                                                 switch (module.module_type) {
@@ -256,7 +256,7 @@ public class WebSearch extends AIChatPlugin {
                                                     }
                                                     case "MODULE_TYPE_STAT" -> {
                                                         var stat = module.module_stat;
-                                                        respBuilder.append("\n\n点赞/评论/转发(动态): ").append(stat.like).append("/").append(stat.comment).append("/").append(stat.forward);
+                                                        respBuilder.append("\n\n点赞/评论/转发(动态): ").append(stat.like.count).append("/").append(stat.comment.count).append("/").append(stat.forward.count);
                                                     }
                                                 }
                                             }
