@@ -4,10 +4,7 @@ import com.google.gson.Gson;
 import com.google.gson.JsonSyntaxException;
 import com.nekoyu.Universe.AIChat.AIChat;
 import com.nekoyu.Universe.AIChat.AIChatPlugin;
-import com.nekoyu.Universe.AIChat.WebSearch.BiliBiliAPI.Client;
-import com.nekoyu.Universe.AIChat.WebSearch.BiliBiliAPI.DynamicList;
-import com.nekoyu.Universe.AIChat.WebSearch.BiliBiliAPI.UserInfo;
-import com.nekoyu.Universe.AIChat.WebSearch.BiliBiliAPI.VideoInfo;
+import com.nekoyu.Universe.AIChat.WebSearch.BiliBiliAPI.*;
 import com.nekoyu.Universe.AIChat.WebSearch.GoogleWebSearchAPI.SearchResponse;
 import com.nekoyu.Universe.DeepSeekAdapter.DeepSeekTool;
 import okhttp3.HttpUrl;
@@ -144,6 +141,7 @@ public class WebSearch extends AIChatPlugin {
                         String bv = matcher.group(1);  // 获取第一个捕获组
                         try {
                             VideoInfo info = Client.getVideoInfo(bv);
+                            CommentList cl = Client.getVideoCommentList(bv);
                             StringBuilder sb = new StringBuilder();
                             switch (info.code) {
                                 case 0:
@@ -175,6 +173,13 @@ public class WebSearch extends AIChatPlugin {
                                             sb.append(honor.desc).append(" ");
                                         }
                                         sb.append("\n");
+                                    }
+                                    sb.append("\n\n评论区");
+                                    short i = 0;
+                                    for (var reply : cl.data.replies) {
+                                        if (i >= 5) break;
+                                        sb.append("\n").append(reply.member.uname).append("(").append(reply.member.sex).append(", Lv.").append(reply.member.level_info.current_level).append(", ").append(reply.reply_control.location).append(", ").append(reply.reply_control.time_desc).append("): ").append(reply.content.message);
+                                        i++;
                                     }
                                     return sb.toString();
                                 case -400:
@@ -218,7 +223,13 @@ public class WebSearch extends AIChatPlugin {
                                 respBuilder.append("\n佩戴的粉丝勋章: ").append(ui.data.fans_medal.medal.medal_name).append("(Lv.").append(ui.data.fans_medal.medal.level).append(")");
                             }
                             if (ui.data.live_room != null) {
-                                respBuilder.append("\n直播间(ID:").append(ui.data.live_room.roomid).append("): ").append(ui.data.live_room.title).append(" ").append(ui.data.live_room.watched_show.text_large);
+                                respBuilder.append("\n");
+                                if (ui.data.live_room.liveStatus == 0) {
+                                    respBuilder.append("(未在直播)");
+                                } else if (ui.data.live_room.liveStatus == 1) {
+                                    respBuilder.append("(直播中)");
+                                }
+                                respBuilder.append("直播间(ID:").append(ui.data.live_room.roomid).append("): ").append(ui.data.live_room.title).append(" ").append(ui.data.live_room.watched_show.text_large);
                             }
                             if (dl.data != null) { // 添加动态信息
                                 respBuilder.append("\n动态: ");
@@ -255,6 +266,7 @@ public class WebSearch extends AIChatPlugin {
                                     }
                                 }
                             }
+                            logger.debug(respBuilder.toString());
                             return respBuilder.toString();
                         } catch (IOException e) {
                             return "未知错误: " + e.getMessage();
