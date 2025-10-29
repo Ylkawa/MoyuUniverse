@@ -3,6 +3,7 @@ package com.nekoyu.Universe.AIChat.WebSearch.GoogleWebSearchAPI;
 import java.util.List;
 import java.util.Map;
 
+@SuppressWarnings("unused")
 public class SearchResponse {
 
     public String kind;
@@ -97,7 +98,7 @@ public class SearchResponse {
         public Image image;
         public List<Label> labels;
 
-        public class Image {
+        public static class Image {
             public String contextLink;
             public int height;
             public int width;
@@ -107,7 +108,7 @@ public class SearchResponse {
             public int thumbnailWidth;
         }
 
-        public class Label {
+        public static class Label {
             public String name;
             public String displayName;
             public String label_with_op;
