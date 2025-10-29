@@ -113,11 +113,10 @@ public class MinecraftConnectVelocity {
 
         // 连接保活
         velocity.getScheduler().buildTask(this, () -> {
-                    // 这里是你要循环执行的代码
-                    if (wsClient.isClosed()){
+                    if (wsClient.isClosed()) {
                         newWebsocketClient();
                         wsClient.connect();
-                    } else {
+                    } else if (wsClient.isOpen()) {
                         var statusUpload = new UniverseChannelMessage();
                         statusUpload.tag = "Minecraft-Connect";
                         statusUpload.message = "StatusUpload";
@@ -130,7 +129,7 @@ public class MinecraftConnectVelocity {
                                 })
                                 .toList());
                         wsClient.send(gson.toJson(statusUpload));
-                    }
+                    } else logger.error("WsClient出现意料之外的状态，既非open也非closed"); // 这应该不太可能吧，但是按照日志，被执行到else if里面去了
                 })
                 .delay(5, TimeUnit.SECONDS)
                 .repeat(5, TimeUnit.SECONDS)
