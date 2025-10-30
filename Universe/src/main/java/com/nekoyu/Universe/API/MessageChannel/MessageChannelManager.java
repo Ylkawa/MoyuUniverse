@@ -71,17 +71,18 @@ public class MessageChannelManager {
         } else {
             logger.info("{} 向会话 {} 发送消息: {}", mc.ID, sessionId, message);
             MCMessage mcm = new MCMessage();
-            mcm.id = mc.sendMessage(target[1], message); //将sessionId转换成局部形式传给MessageChannel处理，同时把聊天记录对象传过去
+            mcm.id = mc.sendMessage(target[1], message.strip()); //将sessionId转换成局部形式传给MessageChannel处理，同时把聊天记录对象传过去
             mcm.messageFields.add(new TextField(message));
             mcm.time = System.currentTimeMillis() / 1000;
             mcm.sender.id = mc.accountId;
             // 应该没别的必须的参数了，留空算了
 
-            messageHistory.computeIfAbsent(mcm.sessionId, k -> new MessageList());
+            if (messageHistory.get(sessionId) == null) messageHistory.put(sessionId, new MessageList());
             messageHistory.get(sessionId).add(mcm);
         }
     }
 
+    /** 严重警告！！可能返回null */
     public MessageList getMessageHistory(String sessionId) {
         return messageHistory.get(sessionId);
     }

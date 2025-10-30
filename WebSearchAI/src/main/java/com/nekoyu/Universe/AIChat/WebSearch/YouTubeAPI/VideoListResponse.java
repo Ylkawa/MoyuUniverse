@@ -4,66 +4,66 @@ import com.google.gson.annotations.SerializedName;
 
 @SuppressWarnings("unused")
 public class VideoListResponse {
-    String kind;
-    String etag;
-    Item[] items;
-    PageInfo pageInfo;
+    public String kind;
+    public String etag;
+    public Item[] items;
+    public PageInfo pageInfo;
 
     public static class Item {
-        String kind;
-        String etag;
-        String id;
-        Snippet snippet;
-        ContentDetails contentDetails;
-        Statistics statistics;
+        public String kind;
+        public String etag;
+        public String id;
+        public Snippet snippet;
+        public ContentDetails contentDetails;
+        public Statistics statistics;
 
         public static class Snippet {
-            String publishedAt;
-            String channelId;
-            String title;
-            String description;
-            Thumbnails thumbnails;
-            String channelTitle;
-            String[] tags;
-            String categoryId;
-            String liveBroadcastContent;
-            String defaultLanguage;
-            Localized localized;
-            String defaultAudioLanguage;
+            public String publishedAt;
+            public String channelId;
+            public String title;
+            public String description;
+            public Thumbnails thumbnails;
+            public String channelTitle;
+            public String[] tags;
+            public String categoryId;
+            public String liveBroadcastContent;
+            public String defaultLanguage;
+            public Localized localized;
+            public String defaultAudioLanguage;
 
             public static class Thumbnails {
                 @SerializedName("default")
-                Set default_;
-                Set medium;
-                Set high;
-                Set standard;
-                Set maxres;
+                public Set default_;
+                public Set medium;
+                public Set high;
+                public Set standard;
+                public Set maxres;
 
                 public static class Set {
-                    String url;
-                    String width;
-                    String height;
+                    public String url;
+                    public String width;
+                    public String height;
                 }
             }
             public static class Localized {
-                String title;
-                String description;
+                public String title;
+                public String description;
             }
         }
         public static class ContentDetails {
-            String duration;
-            String dimension;
-            String definition;
-            String caption;
-            boolean licensedContent;
-            Object contentRating;
-            String projection;
+            public String duration;
+            public String dimension;
+            public String definition;
+            public String caption;
+            public boolean licensedContent;
+            public Object contentRating;
+            public String projection;
         }
         public static class Statistics {
-            String viewCount;
-            String likeCount;
-            String favoriteCount;
-            String commentCount;
+            public String viewCount;
+            public String likeCount;
+            public String favoriteCount;
+            public String commentCount;
         }
     }
 

@@ -6,6 +6,7 @@ import com.nekoyu.Universe.AIChat.AIChat;
 import com.nekoyu.Universe.AIChat.AIChatPlugin;
 import com.nekoyu.Universe.AIChat.WebSearch.BiliBiliAPI.*;
 import com.nekoyu.Universe.AIChat.WebSearch.GoogleWebSearchAPI.SearchResponse;
+import com.nekoyu.Universe.AIChat.WebSearch.YouTubeAPI.VideoListResponse;
 import com.nekoyu.Universe.DeepSeekAdapter.DeepSeekTool;
 import okhttp3.HttpUrl;
 import okhttp3.OkHttpClient;
@@ -27,6 +28,7 @@ public class WebSearch extends AIChatPlugin {
     OkHttpClient client;
     Config config;
     Gson gson = new Gson();
+    com.nekoyu.Universe.AIChat.WebSearch.YouTubeAPI.Client ytbClient = null;
     boolean able = true;
 
     public WebSearch(AIChat aiChat) {
@@ -53,6 +55,8 @@ public class WebSearch extends AIChatPlugin {
                     able = false;
                 }
             }
+            if (config.EnableYouTubeAPI) ytbClient = new com.nekoyu.Universe.AIChat.WebSearch.YouTubeAPI.Client(config.GoogleAPIKey);
+            ytbClient.setProxy(proxy);
         } catch (FileNotFoundException e) {
             config = new Config();
             try (FileWriter fw = new FileWriter("./config/AIChat/Plugins/WebSearch/config.json")) {
@@ -78,8 +82,8 @@ public class WebSearch extends AIChatPlugin {
 
         DeepSeekTool visitUrl = new DeepSeekTool("访问网页",
                 """
-                        获取部分受支持的网页中的信息（内容会被精简）仅支持哔哩哔哩视频和用户空间
-                        例: https://www.bilibili.com/video/BV1SC4y1J7De , https://space.bilibili.com/497423225""",
+                        获取部分受支持的网页中的信息（内容会被精简）仅支持哔哩哔哩视频和用户空间、YouTube视频
+                        例: https://www.bilibili.com/video/BV1SC4y1J7De , https://space.bilibili.com/497423225 , https://www.youtube.com/watch?v=EkREmibZp3E""",
                 args -> visitUrl(args.get("网址")),
                 new HashMap<>() {{
                     put("网址", new DeepSeekTool.Function.Parameters.Property("目标访问网址"));
@@ -92,7 +96,7 @@ public class WebSearch extends AIChatPlugin {
         // 构建请求
         HttpUrl url = HttpUrl.parse("https://www.googleapis.com/customsearch/v1")
                 .newBuilder()
-                .addQueryParameter("key", config.SearchAPIKey)
+                .addQueryParameter("key", config.GoogleAPIKey)
                 .addQueryParameter("cx", config.SearchEngineID)
                 .addQueryParameter("q", content)
                 .build();
@@ -272,6 +276,24 @@ public class WebSearch extends AIChatPlugin {
                             return "未知错误: " + e.getMessage();
                         } catch (NullPointerException e) {
                             return "获取信息失败!";
+                        }
+                    }
+                }
+                case "www.youtube.com" -> {
+                    if (ytbClient == null) return "YouTube访问能力未激活";
+                    Matcher matcher = Pattern.compile("(?:v=)([A-Za-z0-9_-]{11})").matcher(url);
+                    if (matcher.find()) {
+                        try {
+                            VideoListResponse vlr = ytbClient.getVideoListResponse(matcher.group(1));
+                            if (vlr.items.length == 0) return matcher.group(1) + " 不是有效的YouTube视频";
+                            StringBuilder respBuilder = new StringBuilder();
+                            respBuilder.append("[YouTube视频信息]");
+                            var video = vlr.items[0];
+                            respBuilder.append("\n").append(video.snippet.title).append(" @ ").append(video.snippet.channelTitle).append(" (").append(video.snippet.channelId).append(")");
+                            respBuilder.append("\n").append(video.snippet.description);
+                            return respBuilder.toString();
+                        } catch (IOException e) {
+                            return "调用API时出错" + e.getMessage();
                         }
                     }
                 }
