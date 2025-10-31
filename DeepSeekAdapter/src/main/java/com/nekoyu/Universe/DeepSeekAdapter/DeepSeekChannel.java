@@ -50,7 +50,7 @@ public class DeepSeekChannel {
         var ar = new AssistantRequest();
         ar.model = assistant.model;
         ar.messages = messageList.getMessageList().toArray(new Message[0]);
-        if (!assistant.deepSeekTools.isEmpty()) ar.tools = assistant.deepSeekTools.values().toArray(new DeepSeekTool[0]);
+        if (!assistant.deepSeekTools.isEmpty() && reqNum < 4) ar.tools = assistant.deepSeekTools.values().toArray(new DeepSeekTool[0]);
 
         // API请求 - 构建请求
         String json = gson.toJson(ar);

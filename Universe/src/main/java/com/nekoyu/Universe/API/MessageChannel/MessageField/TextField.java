@@ -6,6 +6,7 @@ public class TextField extends MsgField{
     public TextField(String text) {
         super.type = "text";
         this.text = text;
+        super.isSolved = true;
     }
 
     public String getAsString() {

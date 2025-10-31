@@ -8,6 +8,7 @@ public class AtField extends MsgField {
     public AtField(Account target) {
         super.type = "at";
         this.target = target;
+        super.isSolved = true;
     }
 
     public String getAsString() {
