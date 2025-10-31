@@ -6,6 +6,7 @@ import com.nekoyu.Universe.AIChat.AIChat;
 import com.nekoyu.Universe.AIChat.AIChatPlugin;
 import com.nekoyu.Universe.AIChat.WebSearch.BiliBiliAPI.*;
 import com.nekoyu.Universe.AIChat.WebSearch.GoogleWebSearchAPI.SearchResponse;
+import com.nekoyu.Universe.AIChat.WebSearch.YouTubeAPI.CommentThreadListResponse;
 import com.nekoyu.Universe.AIChat.WebSearch.YouTubeAPI.VideoListResponse;
 import com.nekoyu.Universe.DeepSeekAdapter.DeepSeekTool;
 import okhttp3.HttpUrl;
@@ -281,16 +282,35 @@ public class WebSearch extends AIChatPlugin {
                 }
                 case "www.youtube.com" -> {
                     if (ytbClient == null) return "YouTube访问能力未激活";
-                    Matcher matcher = Pattern.compile("(?:v=)([A-Za-z0-9_-]{11})").matcher(url);
+                    Matcher matcher = Pattern.compile("v=([A-Za-z0-9_-]{11})").matcher(url);
                     if (matcher.find()) {
                         try {
-                            VideoListResponse vlr = ytbClient.getVideoListResponse(matcher.group(1));
-                            if (vlr.items.length == 0) return matcher.group(1) + " 不是有效的YouTube视频";
+                            String videoId = matcher.group(1);
+                            VideoListResponse vlr = ytbClient.getVideoListResponse(videoId);
+                            if (vlr.items.length == 0) return videoId + " 不是有效的YouTube视频";
                             StringBuilder respBuilder = new StringBuilder();
-                            respBuilder.append("[YouTube视频信息]");
+                            respBuilder.append("[YouTube视频信息] {");
                             var video = vlr.items[0];
                             respBuilder.append("\n").append(video.snippet.title).append(" @ ").append(video.snippet.channelTitle).append(" (").append(video.snippet.channelId).append(")");
                             respBuilder.append("\n").append(video.snippet.description);
+                            respBuilder.append("\n播放/点赞/评论").append(video.statistics.viewCount).append("/").append(video.statistics.likeCount).append("/").append(video.statistics.commentCount);
+                            try {
+                                CommentThreadListResponse cTLR = ytbClient.getCommentThreadListResponse(videoId);
+                                respBuilder.append("\n\n评论区: ");
+                                int times = 0;
+                                for (var item : cTLR.items) {
+                                    if (times == 5) break;
+                                    respBuilder.append(item.snippet.topLevelComment.snippet.publishedAt);
+                                    respBuilder.append(" ");
+                                    respBuilder.append(item.snippet.topLevelComment.snippet.authorDisplayName);
+                                    respBuilder.append(": ");
+                                    respBuilder.append(item.snippet.topLevelComment.snippet.textOriginal);
+                                    times++;
+                                }
+                            } catch (IOException e) {
+                                respBuilder.append("\n\n无法获取评论区信息");
+                            }
+                            respBuilder.append("\n}");
                             return respBuilder.toString();
                         } catch (IOException e) {
                             return "调用API时出错" + e.getMessage();

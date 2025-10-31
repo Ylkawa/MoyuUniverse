@@ -3,11 +3,8 @@ package com.nekoyu.Universe.AIChat.WebSearch.YouTubeAPI;
 import com.google.gson.annotations.SerializedName;
 
 @SuppressWarnings("unused")
-public class VideoListResponse {
-    public String kind;
-    public String etag;
+public class VideoListResponse extends Response {
     public Item[] items;
-    public PageInfo pageInfo;
 
     public static class Item {
         public String kind;
@@ -65,10 +62,5 @@ public class VideoListResponse {
             public String favoriteCount;
             public String commentCount;
         }
-    }
-
-    public static class PageInfo {
-        int totalResults;
-        int resultsPerPage;
     }
 }
