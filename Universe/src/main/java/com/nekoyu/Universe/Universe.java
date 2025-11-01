@@ -1,7 +1,7 @@
 package com.nekoyu.Universe;
 
 import com.nekoyu.Universe.API.MessageChannel.MessageChannelManager;
-import com.nekoyu.Universe.API.MessageChannel.PictureSolver;
+import com.nekoyu.Universe.API.MessageChannel.Solver;
 import com.nekoyu.Universe.API.UniverseChannel;
 import com.nekoyu.Universe.LawsLoader.LawsManager;
 import org.apache.logging.log4j.Level;
@@ -22,7 +22,8 @@ public class Universe {
     static public MessageChannelManager MessageChannelManager = new MessageChannelManager();
     static public UniverseChannel UniverseChannel = null;
     static public Map<String, Object> Providers = new HashMap<>();
-    static public PictureSolver pictureSolver = null;
+    static public Solver pictureSolver = null;
+    static public Solver voiceSolver = null;
 
     public static void main(String[] args) {
 

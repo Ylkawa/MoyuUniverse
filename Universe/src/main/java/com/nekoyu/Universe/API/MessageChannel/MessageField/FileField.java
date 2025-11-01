@@ -13,6 +13,7 @@ import java.net.URL;
 import java.util.UUID;
 
 public class FileField extends MsgField {
+    String description;
     private static final Cleaner cleaner = Cleaner.create();
     private File file = null;
     public URL url;

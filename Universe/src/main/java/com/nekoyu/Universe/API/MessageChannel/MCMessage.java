@@ -51,6 +51,7 @@ public class MCMessage {
                         solvedPic++;
                     }
                 }
+                case "voice" -> msgField.solve();
             }
         }
         boolean continueFlag = false;

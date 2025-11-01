@@ -1,6 +1,10 @@
 package com.nekoyu.Universe.API.MessageChannel.MessageField;
 
+import com.nekoyu.Universe.Universe;
+
+import java.io.IOException;
 import java.net.URL;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public class VoiceField extends FileField {
     public VoiceField(URL url) {
@@ -8,7 +12,24 @@ public class VoiceField extends FileField {
         super.type = "voice";
     }
 
+    @Override
+    public void solve() {
+        if (isSolved) return;
+        isSolved = true;
+        if (Universe.voiceSolver == null) return;
+        try {
+            description = Universe.voiceSolver.getDescription(url);
+        } catch (IOException ignored) {}
+    }
+
+    @Override
+    public void solve(AtomicBoolean flag) {
+        solve();
+        flag.set(true);
+    }
+
     public String getAsString() {
+        if (description != null) return description;
         return "[语音]";
     }
 }

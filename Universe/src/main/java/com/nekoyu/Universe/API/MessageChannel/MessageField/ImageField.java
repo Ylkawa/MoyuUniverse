@@ -26,7 +26,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public class ImageField extends FileField {
-    private String description;
     private static final Logger logger = LoggerFactory.getLogger(ImageField.class);
 
     public ImageField(URL url) {
@@ -35,8 +34,17 @@ public class ImageField extends FileField {
         super.type = "image";
     }
 
+    /**
+     * 跟无参的没什么区别，但是提供一个异步同步的选择
+     * */
     @Override
     public void solve(AtomicBoolean flag) {
+        solve();
+        flag.set(true);
+    }
+
+    @Override
+    public void solve() {
         if (isSolved) return;
         StringBuilder descriptionBuilder = new StringBuilder().append("[图片, \n");
         try {
@@ -112,7 +120,6 @@ public class ImageField extends FileField {
         descriptionBuilder.append("\n]");
         description = descriptionBuilder.toString();
         isSolved = true;
-        flag.set(true);
     }
 
     public String getAsString() {

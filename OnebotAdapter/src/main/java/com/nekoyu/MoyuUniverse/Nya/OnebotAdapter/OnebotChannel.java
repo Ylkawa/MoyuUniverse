@@ -149,9 +149,9 @@ public class OnebotChannel extends MessageChannel {
                                         case "record":
                                             msg.append("[语音]");
                                             try {
-                                                mcm.messageFields.add(new VoiceField(new URL(ms.data.get("file"))));
+                                                mcm.messageFields.add(new VoiceField(new URL(ms.data.get("url"))));
                                             } catch (MalformedURLException e) {
-                                                logger.error("无法以 {} 创建URL对象", ms.data.get("file"), e);
+                                                logger.error("无法以 {} 创建URL对象", ms.data.get("url"), e);
                                                 mcm.messageFields.add(new TextField("[语音]"));
                                             }
                                             break;
