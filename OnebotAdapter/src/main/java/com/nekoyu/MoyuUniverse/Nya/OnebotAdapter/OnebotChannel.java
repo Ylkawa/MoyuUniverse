@@ -323,7 +323,7 @@ public class OnebotChannel extends MessageChannel {
 
             @Override
             public void onError(Exception e) {
-                logger.error(e.getMessage());
+
             }
         };
         wsConnection.connect();

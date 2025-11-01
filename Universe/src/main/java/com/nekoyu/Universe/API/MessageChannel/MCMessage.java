@@ -1,10 +1,12 @@
 package com.nekoyu.Universe.API.MessageChannel;
 
-import com.nekoyu.Universe.API.MessageChannel.MessageField.ImageField;
 import com.nekoyu.Universe.API.MessageChannel.MessageField.MsgField;
 import com.nekoyu.Universe.Universe;
 
+import java.util.ArrayList;
 import java.util.LinkedList;
+import java.util.List;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public class MCMessage {
     public Account receiver;
@@ -30,15 +32,29 @@ public class MCMessage {
     public String solveAll() {
         var sb = new StringBuilder();
         int solvedPic = 0;
+        List<AtomicBoolean> flags = new ArrayList<>();
         // 逆序遍历
         for (int i = messageFields.size() - 1; i >= 0; i--) {
             MsgField msgField = messageFields.get(i);
             switch (msgField.type) {
                 case "image" -> {
                     if (!msgField.isSolved && solvedPic < 3) {
-                        msgField.solve(); // 这里做成堵塞式的了，影响性能，到时候要改成同时解析
+                        AtomicBoolean flag = new AtomicBoolean(false);
+                        flags.add(flag);
+                        new Thread(() -> msgField.solve(flag)).start(); // 这里做成堵塞式的了，影响性能，到时候要改成同时解析
                         solvedPic++;
                     }
+                }
+            }
+        }
+        boolean continueFlag = false;
+        while (!continueFlag) {
+            continueFlag = true;
+            for (AtomicBoolean flag : flags) {
+                if (!flag.get()) {
+                    continueFlag = false;
+                    Thread.yield();
+                    break;
                 }
             }
         }

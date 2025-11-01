@@ -23,6 +23,7 @@ import java.net.URL;
 import java.text.DecimalFormat;
 import java.text.SimpleDateFormat;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public class ImageField extends FileField {
     private String description;
@@ -35,7 +36,7 @@ public class ImageField extends FileField {
     }
 
     @Override
-    public void solve() {
+    public void solve(AtomicBoolean flag) {
         if (isSolved) return;
         StringBuilder descriptionBuilder = new StringBuilder().append("[图片, \n");
         try {
@@ -111,6 +112,7 @@ public class ImageField extends FileField {
         descriptionBuilder.append("\n]");
         description = descriptionBuilder.toString();
         isSolved = true;
+        flag.set(true);
     }
 
     public String getAsString() {
