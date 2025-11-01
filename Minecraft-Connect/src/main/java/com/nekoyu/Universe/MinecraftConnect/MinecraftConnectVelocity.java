@@ -113,7 +113,7 @@ public class MinecraftConnectVelocity {
 
         // 连接保活
         velocity.getScheduler().buildTask(this, () -> {
-                    if (wsClient.isClosed()) {
+                    if (wsClient.isClosed() || wsClient.isClosing()) {
                         newWebsocketClient();
                         wsClient.connect();
                     } else if (wsClient.isOpen()) {

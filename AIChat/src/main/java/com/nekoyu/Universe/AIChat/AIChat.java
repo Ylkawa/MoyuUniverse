@@ -25,8 +25,6 @@ public class AIChat extends Law {
     public static final Yaml yaml = new Yaml();
     Logger logger = LoggerFactory.getLogger(this.getClass());
     List<ConfigureProcessor> configs = new ArrayList<>();
-    Map<String, MessageList> messageLists = new HashMap<>();
-    ConfigureProcessor config;
     static Map<String, DeepSeekTool> deepSeekTools = new HashMap<>();
     List<AIChatPlugin> aiChatPlugins = new ArrayList<>();
     Config new_cfg;

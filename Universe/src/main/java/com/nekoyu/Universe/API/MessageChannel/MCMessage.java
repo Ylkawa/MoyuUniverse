@@ -41,7 +41,13 @@ public class MCMessage {
                     if (!msgField.isSolved && solvedPic < 3) {
                         AtomicBoolean flag = new AtomicBoolean(false);
                         flags.add(flag);
-                        new Thread(() -> msgField.solve(flag)).start(); // 这里做成堵塞式的了，影响性能，到时候要改成同时解析
+                        new Thread(() -> {
+                            try {
+                                msgField.solve(flag);
+                            } catch (Exception e) {
+                                flag.set(true);
+                            }
+                        }).start(); // 这里做成堵塞式的了，影响性能，到时候要改成同时解析
                         solvedPic++;
                     }
                 }

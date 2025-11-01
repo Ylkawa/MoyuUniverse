@@ -69,7 +69,7 @@ public class MessageChannelManager {
             // 不存在这个Channel，之后做异常处理
             logger.warn("不存在此Channel {}", target[0]);
         } else {
-            logger.info("{} 向会话 {} 发送消息: {}", mc.ID, sessionId, message);
+            logger.info("向会话 {} 发送消息: {}", sessionId, message);
             MCMessage mcm = new MCMessage();
             mcm.id = mc.sendMessage(target[1], message.strip()); //将sessionId转换成局部形式传给MessageChannel处理，同时把聊天记录对象传过去
             mcm.messageFields.add(new TextField(message));
