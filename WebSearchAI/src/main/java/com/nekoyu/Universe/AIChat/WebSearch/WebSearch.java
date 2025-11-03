@@ -138,8 +138,8 @@ public class WebSearch extends AIChatPlugin {
         Matcher domain = Pattern.compile("^https?://([^/]+)(?:/.*)?$").matcher(url);
         if (domain.find()) {
             switch (domain.group(1)) {
-                case "www.bilibili.com" -> {
-                    Pattern pattern = Pattern.compile("https?://www\\.bilibili\\.com/video/(BV\\w+)(?:\\?.*)?");
+                case "www.bilibili.com", "bilibili.com" -> {
+                    Pattern pattern = Pattern.compile("(BV\\w+)(?:\\?.*)?");
                     Matcher matcher = pattern.matcher(url);
 
                     if (matcher.find()) {
