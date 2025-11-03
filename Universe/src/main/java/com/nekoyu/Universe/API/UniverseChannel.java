@@ -4,7 +4,6 @@ import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.Multimap;
 import com.google.gson.Gson;
 import com.google.gson.JsonSyntaxException;
-import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
 import org.java_websocket.WebSocket;
@@ -13,9 +12,12 @@ import org.java_websocket.server.WebSocketServer;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.File;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.util.*;
 
 public class UniverseChannel {
@@ -29,6 +31,7 @@ public class UniverseChannel {
     private final Logger logger = LoggerFactory.getLogger(getClass());
     private final Map<String, WebSocket> clientList = new HashMap<>();
     private HttpServer httpServer = null;
+    private final Map<String, File> fileMounting = new HashMap<>();
 
     public void setToken(String token) {
         this.token = token;
@@ -120,6 +123,58 @@ public class UniverseChannel {
             os.write(response.getBytes());
             os.close();
         });
+        addFileMounting("MikuMikuMi", new File("./124679190_p0.jpg"));
+        httpServer.createContext("/Universe/", exchange -> {
+            String fn = exchange.getRequestURI().getPath().split("/", 3)[2];
+            if (fn.isBlank()) {
+                String response = """
+                        400 Bad Request
+                        Please serve file arg
+                        
+                        Miku the best
+                        """;
+                exchange.getResponseHeaders().set("Content-Type", "text/plain; charset=UTF-8");
+                exchange.sendResponseHeaders(400, 0);
+                try (OutputStream os = exchange.getResponseBody()) {
+                    os.write(response.getBytes());
+                }
+                return;
+            }
+            if (!fileMounting.containsKey(fn)) {
+                String response = """
+                        400 Bad Request
+                        Served file arg is invalid
+                        
+                        Miku Miku Mi チュ!
+                        """;
+                exchange.getResponseHeaders().set("Content-Type", "text/plain; charset=UTF-8");
+                exchange.sendResponseHeaders(400, response.getBytes().length);
+                try (OutputStream os = exchange.getResponseBody()) {
+                    os.write(response.getBytes(StandardCharsets.UTF_8));
+                }
+                return;
+            }
+            File file = fileMounting.get(fn);
+            if (!file.isFile()) {
+                String response = """
+                        500 Internal Server Error
+                        No such file
+                        """;
+                exchange.getResponseHeaders().set("Content-Type", "text/plain; charset=UTF-8");
+                exchange.sendResponseHeaders(500, 0);
+                try (OutputStream os = exchange.getResponseBody()) {
+                    os.write(response.getBytes(StandardCharsets.UTF_8));
+                }
+            }
+            exchange.sendResponseHeaders(200, file.length());
+            try (OutputStream os = exchange.getResponseBody()) {
+                os.write(Files.readAllBytes(file.toPath()));
+            }
+        });
+    }
+
+    public void addFileMounting(String mountPath, File file) {
+        fileMounting.put(mountPath, file);
     }
 
     public void registerListener(String tag, UniverseListener universeListener) {
@@ -127,9 +182,7 @@ public class UniverseChannel {
     }
 
     public void unRegisterListener(String tag, UniverseListener universeListener) {
-        //synchronized (listeners) {
         internalListeners.remove(tag, universeListener);
-        //}
     }
 
     public void broadcast(String tag, UniverseChannelMessage ucm) {
