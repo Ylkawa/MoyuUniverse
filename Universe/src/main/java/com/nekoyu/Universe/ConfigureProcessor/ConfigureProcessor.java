@@ -14,6 +14,7 @@ import java.util.Map;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
+@Deprecated
 public class ConfigureProcessor {
     File configureFile = null;
     Map configure;
