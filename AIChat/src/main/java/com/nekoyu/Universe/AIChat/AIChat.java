@@ -3,14 +3,11 @@ package com.nekoyu.Universe.AIChat;
 import com.google.gson.Gson;
 import com.nekoyu.Universe.AIChat.Event.RequestEvent;
 import com.nekoyu.Universe.API.PlaceHolder;
-import com.nekoyu.Universe.ConfigureProcessor.CFGFileSyntaxException;
-import com.nekoyu.Universe.ConfigureProcessor.ConfigureProcessor;
 import com.nekoyu.Universe.DeepSeekAdapter.*;
 import com.nekoyu.Universe.LawsLoader.Law;
 import com.nekoyu.Universe.Universe;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.yaml.snakeyaml.Yaml;
 
 import java.io.*;
 import java.lang.reflect.InvocationTargetException;
@@ -22,9 +19,9 @@ import java.util.jar.JarFile;
 import java.util.zip.ZipEntry;
 
 public class AIChat extends Law {
-    public static final Yaml yaml = new Yaml();
+    public static final Gson gson = new Gson();
     Logger logger = LoggerFactory.getLogger(this.getClass());
-    List<ConfigureProcessor> configs = new ArrayList<>();
+    List<SessionConfig> configs = new ArrayList<>();
     static Map<String, DeepSeekTool> deepSeekTools = new HashMap<>();
     List<AIChatPlugin> aiChatPlugins = new ArrayList<>();
     Config new_cfg;
@@ -42,13 +39,13 @@ public class AIChat extends Law {
 
         // 从这里开始重写
         try {
-            new_cfg = new Gson().fromJson(new FileReader("./config/AIChat/config.json"), Config.class);
+            new_cfg = gson.fromJson(new FileReader("./config/AIChat/config.json"), Config.class);
         } catch (FileNotFoundException e) {
             // 没找到配置文件，所以新建一个配置文件
             new_cfg = new Config();
             new_cfg.Prompt = ""; // 默认的System_prompt，这里留白了没写
             try (FileWriter fw = new FileWriter("./config/AIChat/config.json")) {
-                fw.write(new Gson().toJson(new_cfg)); //写入
+                fw.write(gson.toJson(new_cfg)); //写入
             } catch (IOException ex) {
                 throw new RuntimeException(ex);
             }
@@ -124,52 +121,36 @@ public class AIChat extends Law {
 
     private void loadSessionCfg(File configDic) {
         for (File file : configDic.listFiles()) {
-             if (file.isFile() && file.getName().endsWith(".yml")) {
-                 ConfigureProcessor cfg = new ConfigureProcessor(file, true);
-                 try {
-                     cfg.read();
-                     cfg.requireNode("SessionId", "[a-zA-Z0-9]+:[a-zA-Z0-9/]+", "");
-                     cfg.requireNode("Prompt", "[\\s\\S]+", "");
-                     cfg.requireNode("Provider", "[\\s\\S]+", "");
-                     cfg.requireNode("Trigger", "^auto$|^every$|^keyword$");
-                     cfg.requireNode("Model", "[\\s\\S]+", "deepseek-chat");
-                     if (cfg.getNode("Trigger").toString().equals("keyword")) {
-                         cfg.requireNode("Keyword", "[\\s\\S]+", "");
-                     }
-                     int checkFor = cfg.checkFor();
-                     if (checkFor == 0) {
-                         configs.add(cfg);
-                         logger.info("载入配置文件 {} ", file.getName());
-                     } else {
-                         logger.warn("{} 中仍然有 {} 个错误，将不会被加载", file.getName(), checkFor);
-                     }
-                 } catch (IOException e) {
-                     throw new RuntimeException(e);
-                 } catch (CFGFileSyntaxException e) {
-                     logger.warn("{} 的格式错误，无法加载", file.getName());
-                 }
-             } else if (file.isDirectory()) {
-                 loadSessionCfg(file);
-             }
+            if (file.getName().toLowerCase().endsWith(".json")) try (FileReader fr = new FileReader(file)) {
+                SessionConfig sc = gson.fromJson(fr, SessionConfig.class);
+                configs.add(sc);
+                logger.info("载入配置文件 {} ", file.getName());
+            } catch (FileNotFoundException e) {
+                throw new RuntimeException(e);
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            } else if (file.isDirectory()) {
+                loadSessionCfg(file);
+            }
         }
     }
 
     @Override
     public void run() {
         SimpleDateFormat sdf = new SimpleDateFormat("[yyyy-MM-dd HH:mm:ss]");
-        for (ConfigureProcessor cfg : configs) {
+        for (SessionConfig cfg : configs) {
             MessageList ml = new MessageList();
-            Universe.MessageChannelManager.listenToSession(cfg.getNode("SessionId").toString(), mcm -> {
+            Universe.MessageChannelManager.listenToSession(cfg.SessionId, mcm -> {
                 アンテナ39 newMsg = new アンテナ39(mcm);
                 newMsg.role = "user";
                 ml.addMessage(newMsg);
                 ml.clean();
-                if (cfg.getNode("Trigger").toString().equals("every") || mcm.messageString.contains(cfg.getNode("Keyword").toString()) || mcm.level >= 2) {
-                    Object provider = Universe.Providers.get(cfg.getNode("Provider").toString());
+                if (cfg.Trigger.equals("every") || mcm.messageString.contains(cfg.Keyword) || mcm.level >= 2) {
+                    Object provider = Universe.Providers.get(cfg.Provider);
                     if (provider instanceof DeepSeekChannel dsc) {
-                        Assistant assistant = dsc.getAssistant(cfg.getNode("Model").toString());
-                        if (cfg.getNode("Tools") instanceof List) {
-                            for (String tool : (List<String>) cfg.getNode("Tools")) {
+                        Assistant assistant = dsc.getAssistant(cfg.Model);
+                        if (cfg.Tools != null) {
+                            for (String tool : cfg.Tools) {
                                 if (deepSeekTools.get(tool) != null) assistant.addTool(deepSeekTools.get(tool));
                             } // 为assistant添加指定的tools // 如果不存在这个tool就不添加
                         }
@@ -182,10 +163,10 @@ public class AIChat extends Law {
                         }
                         StringBuilder prompt = new StringBuilder();
                         prompt.append("当前时间: ").append(sdf.format(new Date(System.currentTimeMillis()))).append("\n");
-                        prompt.append("当前所处会话: ").append(cfg.getNode("SessionId")).append("\n");
+                        prompt.append("当前所处会话: ").append(cfg.SessionId).append("\n");
                         prompt.append("你的账号: ").append(mcm.receiver.getId()).append("\n");
                         prompt.append(new_cfg.Prompt).append("\n");
-                        prompt.append(cfg.getNode("Prompt").toString());
+                        prompt.append(cfg.Prompt);
                         ml.setSystemPrompt(PlaceHolder.replace(prompt.toString(), reqEv.placeholders));
                         // 把还没转换好的MCMessage转换成String
                         for (Message message : ml.getMessageList()) {
@@ -211,7 +192,7 @@ public class AIChat extends Law {
                             throw new RuntimeException(e);
                         }
                     } else {
-                        logger.warn("定义的AI服务适配器 {} 无效", cfg.getNode("Provider").toString());
+                        logger.warn("定义的AI服务适配器 {} 无效", cfg.Provider);
                     }
                 }
             });
