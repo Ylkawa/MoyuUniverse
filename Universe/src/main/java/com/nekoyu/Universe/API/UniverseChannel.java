@@ -170,6 +170,7 @@ public class UniverseChannel {
             try (OutputStream os = exchange.getResponseBody()) {
                 os.write(Files.readAllBytes(file.toPath()));
             }
+            logger.info("{} ==> {}", file.getAbsolutePath(), exchange.getRemoteAddress());
         });
     }
 
