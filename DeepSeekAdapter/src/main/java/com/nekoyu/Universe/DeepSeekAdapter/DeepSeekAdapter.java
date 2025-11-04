@@ -1,8 +1,6 @@
 package com.nekoyu.Universe.DeepSeekAdapter;
 
 import com.google.gson.Gson;
-import com.nekoyu.Universe.ConfigureProcessor.CFGFileSyntaxException;
-import com.nekoyu.Universe.ConfigureProcessor.ConfigureProcessor;
 import com.nekoyu.Universe.DeepSeekAdapter.ContentPiece.ImageUrlPiece;
 import com.nekoyu.Universe.DeepSeekAdapter.ContentPiece.TextPiece;
 import com.nekoyu.Universe.LawsLoader.Law;
@@ -21,49 +19,7 @@ public class DeepSeekAdapter extends Law {
         File configDic = new File("./config/DeepSeekAdapter/");
         if (!configDic.exists()) configDic.mkdir();
         for (File file : Objects.requireNonNull(configDic.listFiles())) {
-            if (file.getName().endsWith(".yml")) {
-                logger.warn("Configure Processor 管理配置文件的模式已经弃用，请迁移配置文件! -- {}", file.getName());
-                ConfigureProcessor cp = new ConfigureProcessor(file, true);
-                cp.requireNode("id", "\\w+");
-                cp.requireNode("base_url", "(https?)://[-A-Za-z0-9+&@#/%?=~_|!:,.;]+[-A-Za-z0-9+&@#/%=~_|]", "https://api.deepseek.com");
-                cp.requireNode("api_key", "[-\\w]+");
-                try {
-                    cp.read();
-                } catch (CFGFileSyntaxException e) {
-                    return false;
-                } catch (IOException e) {
-                    throw new RuntimeException(e);
-                }
-                int checkFor = cp.checkFor();
-                if (checkFor == 0) {
-                    DeepSeekChannel dsc = new DeepSeekChannel(cp.getNode("id").toString(), cp.getNode("base_url").toString(), cp.getNode("api_key").toString());
-                    Universe.Providers.put(dsc.id, dsc);
-                    if (cp.getNode("PictureSolver") != null) {
-                        Universe.pictureSolver = url -> {
-                            logger.info("尝试解析图片 {}", url.toString());
-                            var assistant = dsc.getAssistant(cp.getNode("PictureSolver").toString());
-                            var ml = new MessageList();
-                            var msg = new ArrayMessage();
-                            msg.role = "user";
-                            msg.content.add(new ImageUrlPiece(url.toString()));
-                            msg.content.add(new TextPiece("请概括此图片的内容"));
-                            ml.addMessage(msg);
-                            try {
-                                return assistant.request(ml).choices[0].message.content;
-                            } catch (DSException e) {
-                                logger.error(e.getMessage(), e);
-                                logger.error(e.rawResponse);
-                                throw e;
-                            } catch (IOException e) {
-                                throw new RuntimeException(e);
-                            }
-                        };
-                    }
-                    logger.info("已载入 DeepSeek 适配器 {}", dsc.id);
-                } else {
-                    logger.warn("配置文件 {} 仍存在 {} 个错误，将不会被加载", file.getName(), checkFor);
-                }
-            } else if (file.getName().endsWith(".json")) try (FileReader fr = new FileReader(file)) {
+            if (file.getName().endsWith(".json")) try (FileReader fr = new FileReader(file)) {
                 Config config = gson.fromJson(fr, Config.class);
                 DeepSeekChannel dsc = new DeepSeekChannel(config.ProviderId, config.Base_Url, config.API_Key);
                 if (config.Picture_Solver != null) {
@@ -87,6 +43,7 @@ public class DeepSeekAdapter extends Law {
                         }
                     };
                 }
+                Universe.Providers.put(config.ProviderId, dsc);
                 logger.info("已载入 DeepSeek 适配器 {}", dsc.id);
             } catch (IOException e) {
                 throw new RuntimeException(e);
