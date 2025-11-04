@@ -65,19 +65,19 @@ public class OnebotChannel extends MessageChannel {
 
         final int[] messageId = {-1};
 
-        syncAction(obr, response -> {
-            JsonObject jsonObject = response.data.getAsJsonObject();
-            messageId[0] = jsonObject.get("message_id").getAsInt();
-        });
+        synchronized (messageId) {
+            syncAction(obr, response -> {
+                synchronized (messageId) { // 同步块嵌套在一起
+                    JsonObject jsonObject = response.data.getAsJsonObject();
+                    messageId[0] = jsonObject.get("message_id").getAsInt();
+                    messageId.notifyAll();
+                }
+            });
 
-        int loopTimes = 0;
-        while (messageId[0] == -1 && loopTimes < 10) {
-            loopTimes++;
             try {
-                Thread.sleep(500);
+                messageId.wait(); // 在同一把锁上等待
             } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                break;
+                throw new RuntimeException(e);
             }
         }
 
