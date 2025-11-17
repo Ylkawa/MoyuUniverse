@@ -192,7 +192,7 @@ public class UniverseChannel {
         }
     }
 
-    public Collection<WebSocket> listConnections() {
+    public Collection<WebSocket> listWebSocketConnections() {
         return wsServer.getConnections();
     }
 
