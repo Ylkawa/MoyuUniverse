@@ -158,6 +158,7 @@ public class AIChat extends Law {
                         // 设置 System Prompt
                         // 先让插件处理事件 插件提供局部的PlaceHolder
                         var reqEv = new RequestEvent();
+                        reqEv.messageList = ml;
                         for (var plug : aiChatPlugins) {
                             plug.onRequest(reqEv);
                         }
@@ -187,7 +188,11 @@ public class AIChat extends Law {
                         re.messageList = ml;
                         try {
                             var response = assistant.request(ml);
-                            mcm.reply(response.choices[0].message.content);
+                            String[] split = response.choices[0].message.content.split("\n\n");
+                            for (var spl : split) {
+                                mcm.reply(spl);
+                                Thread.sleep(spl.length() * 5L + 500);
+                            } // 简单做了一下消息分段发送的逻辑，之后可以结合流式输出做成边输出边发送，生成一段发送一段，只不过现在还觉得这样子提升能有多大，毕竟生成内容也不多
                         } catch (Exception e) {
                             throw new RuntimeException(e);
                         }
