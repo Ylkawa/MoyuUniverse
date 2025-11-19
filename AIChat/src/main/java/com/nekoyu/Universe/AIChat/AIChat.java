@@ -172,7 +172,14 @@ public class AIChat extends Law {
                         // 把还没转换好的MCMessage转换成String
                         for (Message message : ml.getMessageList()) {
                             if (!(message instanceof アンテナ39 antena39)) continue;
-                            new Thread(() -> antena39.content = antena39.mcMessage.solveAll()).start();
+                            new Thread(() -> {
+                                StringBuilder content = new StringBuilder();
+                                content.append(sdf.format(new Date(mcm.time * 1000))); // [时间]
+                                content.append("[").append(mcm.id).append("]"); // [时间] [消息id]
+                                content.append(mcm.sender.getNickname()).append("(").append(mcm.sender.getId()).append(")").append(mcm.sender.getSex()); // [时间] [消息id] [昵称](用户QQ号)性别
+                                content.append(": ").append(antena39.mcMessage.solveAll()); // [时间] [消息id] [昵称](用户QQ号)性别: [消息内容]
+                                antena39.content = content.toString();
+                            }).start();
                         }
                         boolean continueFlag = false;
                         while (!continueFlag) {
