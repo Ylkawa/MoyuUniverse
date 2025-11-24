@@ -6,7 +6,7 @@ public class DeepSeekTool {
     public String type;
     public Function function = new Function();
 
-    public class Function {
+    public static class Function {
         public String name;
         public String description;
         public Parameters parameters;

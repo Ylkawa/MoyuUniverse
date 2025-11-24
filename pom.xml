@@ -19,6 +19,7 @@
         <module>AIChat-Memory</module>
         <module>AliyunWebhook</module>
         <module>WebSearchAI</module>
+        <module>openaiadapter</module>
     </modules>
 
     <properties>

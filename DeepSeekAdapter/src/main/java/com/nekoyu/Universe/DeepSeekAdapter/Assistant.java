@@ -6,7 +6,7 @@ import java.util.Map;
 
 public class Assistant {
     private DeepSeekChannel dsc;
-    public Map<String, DeepSeekTool> deepSeekTools = new HashMap();
+    public Map<String, DeepSeekTool> deepSeekTools = new HashMap<>();
     public String prompt = "";
     public String model;
 

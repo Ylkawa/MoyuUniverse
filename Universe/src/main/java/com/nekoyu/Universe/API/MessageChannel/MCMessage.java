@@ -3,9 +3,7 @@ package com.nekoyu.Universe.API.MessageChannel;
 import com.nekoyu.Universe.API.MessageChannel.MessageField.MsgField;
 import com.nekoyu.Universe.Universe;
 
-import java.util.ArrayList;
-import java.util.LinkedList;
-import java.util.List;
+import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public class MCMessage {
@@ -17,6 +15,9 @@ public class MCMessage {
     public int id;
     public LinkedList<MsgField> messageFields;
     public int level;
+    public Map<String, Object> metainfo = new HashMap<>();
+    /** if send by universe */
+    public boolean universe = false;
 
     public MCMessage() {
         sender = new Account();
@@ -73,5 +74,59 @@ public class MCMessage {
 
     public void reply(String message) {
         Universe.MessageChannelManager.sendMessage(sessionId, message);
+    }
+
+    public Object getMetainfo(String key) {
+        return metainfo.get(key);
+    }
+
+    public void putMetainfo(String key, Object value) {
+        metainfo.put(key, value);
+    }
+
+    public static Builder Builder() {
+        return new Builder();
+    }
+    public static class Builder {
+        MCMessage msg;
+        public Builder add(MsgField msgField) {
+            msg.messageFields.add(msgField);
+            return this;
+        }
+        public Builder receiverAccount(Account account) {
+            msg.receiver = account;
+            return this;
+        }
+        public Builder senderAccount(Account account) {
+            msg.sender = account;
+            return this;
+        }
+        public Builder sessionId(String sessionId) {
+            msg.sessionId = sessionId;
+            return this;
+        }
+        public Builder time(long time) {
+            msg.time = time;
+            return this;
+        }
+        public Builder id(int id) {
+            msg.id = id;
+            return this;
+        }
+        public Builder level(int level) {
+            msg.level = level;
+            return this;
+        }
+        public Builder universe(boolean universe) {
+            msg.universe = universe;
+            return this;
+        }
+        public Builder metainfo(String key, Object value) {
+            msg.metainfo.put(key, value);
+            return this;
+        }
+        public MCMessage build() {
+            return msg;
+        }
     }
 }

@@ -3,21 +3,14 @@ package com.nekoyu.Universe.API.MessageChannel;
 import java.util.ArrayList;
 import java.util.List;
 
-public class MessageList {
-    public List<MCMessage> messages = new ArrayList<>();
-
-    public void add(MCMessage message) {
-        messages.add(message);
-        clean(30);
-    }
-
+public class MessageList extends ArrayList<MCMessage> {
     public void clean(int maxSize) {
-        if (messages.size() <= maxSize) {
+        if (size() <= maxSize) {
             return; // 如果消息数量未超过限制，无需清理
         }
 
         // 计算需要删除的消息数量
-        int removeCount = messages.size() - maxSize;
-        messages.subList(0, removeCount).clear();
+        int removeCount = size() - maxSize;
+        subList(0, removeCount).clear();
     }
 }

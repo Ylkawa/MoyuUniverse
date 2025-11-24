@@ -36,7 +36,9 @@ public class MessageChannelManager {
         if (mcm.sessionId != null && !mcm.sessionId.isEmpty()) {
             logger.info("接收到来自会话 {} 的消息 {} ({}): {}", mcm.sessionId, mcm.sender.nickname, mcm.sender.id, mcm.messageString);
             messageHistory.computeIfAbsent(mcm.sessionId, k -> new MessageList());
-            messageHistory.get(mcm.sessionId).add(mcm);
+            MessageList messageList = messageHistory.get(mcm.sessionId);
+            messageList.add(mcm);
+            messageList.clean(20);
 
             for (MessageChannelListener mcl : sessionListeners.get(mcm.sessionId)) {
                 mcl.onMessage(mcm);
@@ -75,14 +77,23 @@ public class MessageChannelManager {
             mcm.messageFields.add(new TextField(message));
             mcm.time = System.currentTimeMillis() / 1000;
             mcm.sender.id = mc.accountId;
+            mcm.universe = true;
             // 应该没别的必须的参数了，留空算了
 
-            if (messageHistory.get(sessionId) == null) messageHistory.put(sessionId, new MessageList());
-            messageHistory.get(sessionId).add(mcm);
+            MessageList messageList = messageHistory.get(sessionId);
+            if (messageList == null) {
+                messageList = new MessageList();
+                messageHistory.put(sessionId, messageList);
+            }
+            messageList.add(mcm);
+            messageList.clean(20);
         }
     }
 
-    /** 严重警告！！可能返回null */
+    /**
+     * 严重警告！！可能返回null
+     * 返回的消息最大长度为20
+     * */
     public MessageList getMessageHistory(String sessionId) {
         return messageHistory.get(sessionId);
     }
