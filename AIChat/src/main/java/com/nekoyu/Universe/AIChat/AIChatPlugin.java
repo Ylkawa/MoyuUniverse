@@ -1,7 +1,7 @@
 package com.nekoyu.Universe.AIChat;
 
 import com.nekoyu.Universe.AIChat.Event.RequestEvent;
-import com.nekoyu.Universe.DeepSeekAdapter.DeepSeekTool;
+import com.nekoyu.Universe.API.Providers.LLMProvider.LLMFunction;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -26,7 +26,7 @@ public abstract class AIChatPlugin {
         return file;
     }
 
-    public void registerTool(String toolName, DeepSeekTool tool) {
-        AIChat.registerTool(toolName, tool);
+    public void registerFunction(String toolName, LLMFunction tool) {
+        AIChat.registerFunction(toolName, tool);
     }
 }

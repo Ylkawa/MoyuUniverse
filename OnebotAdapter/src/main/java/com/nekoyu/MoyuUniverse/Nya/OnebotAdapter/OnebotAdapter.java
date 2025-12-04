@@ -4,7 +4,6 @@ import com.google.gson.Gson;
 import com.nekoyu.Universe.ConfigureProcessor.CFGFileSyntaxException;
 import com.nekoyu.Universe.ConfigureProcessor.ConfigureProcessor;
 import com.nekoyu.Universe.LawsLoader.Law;
-import org.apache.logging.log4j.core.util.FileUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

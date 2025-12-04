@@ -4,6 +4,7 @@ import com.nekoyu.Universe.API.MessageChannel.MessageField.MsgField;
 import com.nekoyu.Universe.Universe;
 
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public class MCMessage {
@@ -73,7 +74,7 @@ public class MCMessage {
     }
 
     public void reply(String message) {
-        Universe.MessageChannelManager.sendMessage(sessionId, message);
+        CompletableFuture.runAsync(() -> Universe.MessageChannelManager.sendMessage(sessionId, message));
     }
 
     public Object getMetainfo(String key) {
@@ -88,7 +89,7 @@ public class MCMessage {
         return new Builder();
     }
     public static class Builder {
-        MCMessage msg;
+        MCMessage msg = new MCMessage();
         public Builder add(MsgField msgField) {
             msg.messageFields.add(msgField);
             return this;

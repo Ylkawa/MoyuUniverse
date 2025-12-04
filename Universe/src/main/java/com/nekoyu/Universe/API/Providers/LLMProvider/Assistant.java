@@ -19,6 +19,11 @@ public class Assistant {
         this.provider = provider;
     }
 
+    public Assistant(LLMProvider provider, String model) {
+        this.provider = provider;
+        this.model = model;
+    }
+
     public CompletionsResponse completions(MessageList messageList, LLMProvider.BufferCallback bufferCallback) throws IOException {
         if (systemPrompt != null) messageList.add(0,
                 new MCMessage.Builder()
@@ -31,5 +36,9 @@ public class Assistant {
 
     public void addTool(LLMFunction tool) {
         tools.put(tool.name, tool);
+    }
+
+    public void setSystemPrompt(String systemPrompt) {
+        this.systemPrompt = systemPrompt;
     }
 }

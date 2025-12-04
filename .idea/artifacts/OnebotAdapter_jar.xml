@@ -4,7 +4,7 @@
     <root id="archive" name="OnebotAdapter.jar">
       <element id="module-output" name="OnebotAdapter" />
       <element id="directory" name="config-template">
-        <element id="file-copy" path="$PROJECT_DIR$/OnebotAdapter/src/main/resources/Onebot.yml" />
+        <element id="file-copy" path="$PROJECT_DIR$/OnebotAdapter/src/main/resources/Onebot.json" />
       </element>
       <element id="file-copy" path="$PROJECT_DIR$/OnebotAdapter/src/main/resources/law.yml" />
     </root>

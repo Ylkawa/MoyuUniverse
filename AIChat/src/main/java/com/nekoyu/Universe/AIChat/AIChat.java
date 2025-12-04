@@ -2,7 +2,13 @@ package com.nekoyu.Universe.AIChat;
 
 import com.google.gson.Gson;
 import com.nekoyu.Universe.AIChat.Event.RequestEvent;
+import com.nekoyu.Universe.API.MessageChannel.MCMessage;
+import com.nekoyu.Universe.API.MessageChannel.MessageField.TextField;
+import com.nekoyu.Universe.API.MessageChannel.MessageList;
 import com.nekoyu.Universe.API.PlaceHolder;
+import com.nekoyu.Universe.API.Providers.LLMProvider.Assistant;
+import com.nekoyu.Universe.API.Providers.LLMProvider.LLMFunction;
+import com.nekoyu.Universe.API.Providers.LLMProvider.LLMProvider;
 import com.nekoyu.Universe.DeepSeekAdapter.*;
 import com.nekoyu.Universe.LawsLoader.Law;
 import com.nekoyu.Universe.Universe;
@@ -15,6 +21,11 @@ import java.net.URL;
 import java.net.URLClassLoader;
 import java.text.SimpleDateFormat;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.jar.JarFile;
 import java.util.zip.ZipEntry;
 
@@ -22,7 +33,7 @@ public class AIChat extends Law {
     public static final Gson gson = new Gson();
     Logger logger = LoggerFactory.getLogger(this.getClass());
     List<SessionConfig> configs = new ArrayList<>();
-    static Map<String, DeepSeekTool> deepSeekTools = new HashMap<>();
+    static Map<String, LLMFunction> llmFunctions = new HashMap<>();
     List<AIChatPlugin> aiChatPlugins = new ArrayList<>();
     Config new_cfg;
 
@@ -50,19 +61,6 @@ public class AIChat extends Law {
                 throw new RuntimeException(ex);
             }
         }
-
-        // LoadBuiltInDeepSeekFunction
-        var get_weather = new DeepSeekTool("get_weather", "get weather", args -> "气温26度", new HashMap<>(), new String[]{});
-        deepSeekTools.put("get_weather", get_weather);
-        var add_memory = new DeepSeekTool("add_memory", "Add a new info into memory", new DeepSeekTool.CallbackFunction() {
-            @Override
-            public String function(Map<String, String> args) {
-                return null;
-            }
-        }, new HashMap<>(){{
-            put("memory_content", new DeepSeekTool.Function.Parameters.Property("记忆的内容"));
-        }}, new String[]{"memory_content"});
-        deepSeekTools.put("add_memory", add_memory);
 
         File toolsDic = new File("./data/AIChat/Plugins/");
         if (toolsDic.isDirectory()) {
@@ -139,22 +137,19 @@ public class AIChat extends Law {
     public void run() {
         SimpleDateFormat sdf = new SimpleDateFormat("[yyyy-MM-dd HH:mm:ss]");
         for (SessionConfig cfg : configs) {
-            MessageList ml = new MessageList();
             Universe.MessageChannelManager.listenToSession(cfg.SessionId, mcm -> {
-                アンテナ39 newMsg = new アンテナ39(mcm);
-                newMsg.role = "user";
-                ml.addMessage(newMsg);
-                ml.clean();
                 if (cfg.Trigger.equals("every") || mcm.messageString.contains(cfg.Keyword) || mcm.level >= 2) {
                     Object provider = Universe.Providers.get(cfg.Provider);
-                    if (provider instanceof DeepSeekChannel dsc) {
-                        Assistant assistant = dsc.getAssistant(cfg.Model);
+                    if (provider instanceof LLMProvider lp) {
+                        Assistant assistant = lp.newAssistant(cfg.Model);
                         if (cfg.Tools != null) {
                             for (String tool : cfg.Tools) {
-                                if (deepSeekTools.get(tool) != null) assistant.addTool(deepSeekTools.get(tool));
+                                if (llmFunctions.get(tool) != null) assistant.addTool(llmFunctions.get(tool));
                             } // 为assistant添加指定的tools // 如果不存在这个tool就不添加
                         }
                         // 决定让AI发言
+                        // TODO: 这里需要重写一个维护消息记录的结构
+                        MessageList ml = Universe.MessageChannelManager.getMessageHistory(cfg.SessionId);
                         // 设置 System Prompt
                         // 先让插件处理事件 插件提供局部的PlaceHolder
                         var reqEv = new RequestEvent();
@@ -168,43 +163,53 @@ public class AIChat extends Law {
                         prompt.append("你的账号: ").append(mcm.receiver.getId()).append("\n");
                         prompt.append(new_cfg.Prompt).append("\n");
                         prompt.append(cfg.Prompt);
-                        ml.setSystemPrompt(PlaceHolder.replace(prompt.toString(), reqEv.placeholders));
+                        assistant.setSystemPrompt(PlaceHolder.replace(prompt.toString(), reqEv.placeholders));
                         // 把还没转换好的MCMessage转换成String
-                        for (Message message : ml.getMessageList()) {
-                            if (!(message instanceof アンテナ39 antena39)) continue;
-                            new Thread(() -> {
-                                StringBuilder content = new StringBuilder();
-                                content.append(sdf.format(new Date(mcm.time * 1000))); // [时间]
-                                content.append("[").append(mcm.id).append("]"); // [时间] [消息id]
-                                content.append(mcm.sender.getNickname()).append("(").append(mcm.sender.getId()).append(")").append(mcm.sender.getSex()); // [时间] [消息id] [昵称](用户QQ号)性别
-                                content.append(": ").append(antena39.mcMessage.solveAll()); // [时间] [消息id] [昵称](用户QQ号)性别: [消息内容]
-                                antena39.content = content.toString();
-                            }).start();
+                        MessageList openaiMl = new MessageList();
+                        ExecutorService executor = Executors.newFixedThreadPool(5);
+                        for (MCMessage msg : ml) {
+                            MCMessage openaiMsg = new MCMessage();
+                            openaiMl.add(openaiMsg);
+                            executor.submit(() -> {
+                                String content = sdf.format(new Date(mcm.time * 1000)) + // [时间]
+                                        "[" + mcm.id + "]" + // [时间] [消息id]
+                                        mcm.sender.getNickname() + "(" + mcm.sender.getId() + ")" + mcm.sender.getSex() + // [时间] [消息id] [昵称](用户QQ号)性别
+                                        ": " + msg.solveAll(); // [时间] [消息id] [昵称](用户QQ号)性别: [消息内容]
+                                openaiMsg.messageFields.add(new TextField(content));
+                            });
                         }
-                        boolean continueFlag = false;
-                        while (!continueFlag) {
-                            Thread.yield();
-                            continueFlag = true;
-                            for (Message message : ml.getMessageList()) {
-                                if (message instanceof アンテナ39 antena39) {
-                                    if (antena39.content == null) continueFlag = false;
-                                }
-                            }
-                        }
-                        RequestEvent re = new RequestEvent();
-                        re.messageList = ml;
+                        executor.shutdown();
                         try {
-                            var response = assistant.request(ml);
-                            String[] split = response.choices[0].message.content.split("\n\n");
-                            for (var spl : split) {
-                                mcm.reply(spl);
-                                Thread.sleep(spl.length() * 5L + 500);
-                            } // 简单做了一下消息分段发送的逻辑，之后可以结合流式输出做成边输出边发送，生成一段发送一段，只不过现在还觉得这样子提升能有多大，毕竟生成内容也不多
-                        } catch (Exception e) {
-                            throw new RuntimeException(e);
+                            if (executor.awaitTermination(60, TimeUnit.SECONDS)) {
+                                RequestEvent re = new RequestEvent();
+                                re.messageList = ml;
+                                try {
+                                    StringBuilder sb = new StringBuilder();
+                                    assistant.completions(openaiMl, (LLMProvider.BufferCallback) outputs -> {
+                                        String[] split = outputs.split("\n\n", 2);
+                                        if (split.length > 1) {
+                                            sb.append(split[0]);
+                                            mcm.reply(sb.toString());
+                                            sb.setLength(0);
+                                            sb.append(split[1]);
+                                        } else {
+                                            sb.append(split[0]);
+                                        }
+                                    });
+                                    mcm.reply(sb.toString());
+                                } catch (Exception e) {
+                                    e.printStackTrace();
+                                }
+                            } else {
+                                logger.error("消息解析超时");
+                            }
+                        } catch (InterruptedException e) {
+                            logger.error(e.getMessage(), e);
+                            return;
                         }
                     } else {
-                        logger.warn("定义的AI服务适配器 {} 无效", cfg.Provider);
+                        if (provider == null) logger.warn("无此适配器 {}", cfg.Provider);
+                        else logger.warn("定义的AI服务适配器 {} 无效", cfg.Provider);
                     }
                 }
             });
@@ -218,7 +223,7 @@ public class AIChat extends Law {
         }
     }
 
-    public static void registerTool(String toolName, DeepSeekTool tool) {
-        deepSeekTools.put(toolName, tool);
+    public static void registerFunction(String toolName, LLMFunction tool) {
+        llmFunctions.put(toolName, tool);
     }
 }

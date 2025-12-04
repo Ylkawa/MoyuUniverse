@@ -8,6 +8,7 @@ import com.nekoyu.Universe.AIChat.WebSearch.BiliBiliAPI.*;
 import com.nekoyu.Universe.AIChat.WebSearch.GoogleWebSearchAPI.SearchResponse;
 import com.nekoyu.Universe.AIChat.WebSearch.YouTubeAPI.CommentThreadListResponse;
 import com.nekoyu.Universe.AIChat.WebSearch.YouTubeAPI.VideoListResponse;
+import com.nekoyu.Universe.API.Providers.LLMProvider.LLMFunction;
 import com.nekoyu.Universe.DeepSeekAdapter.DeepSeekTool;
 import okhttp3.HttpUrl;
 import okhttp3.OkHttpClient;
@@ -72,25 +73,22 @@ public class WebSearch extends AIChatPlugin {
                 .proxy(proxy)
                 .build();
 
-        DeepSeekTool dst = new DeepSeekTool("Google搜索",
+        var dst = new LLMFunction("Google搜索",
                 "使用Google的API在全网搜索内容，仅当用户要求或者要回答的内容具有时效性时使用",
-                args -> search(args.get("搜索词")),
-                new HashMap<>() {{
-                    put("搜索词", new DeepSeekTool.Function.Parameters.Property("搜索词"));
-                }},
-                new String[]{"搜索词"});
-        registerTool("WebSearch", dst);
+                new LLMFunction.Parameters("object", new String[]{"搜索词"}, new String[]{"搜索词"}),
+                args -> search(args.get("搜索词"))
+        );
+        registerFunction("WebSearch", dst);
 
-        DeepSeekTool visitUrl = new DeepSeekTool("访问网页",
+
+
+        LLMFunction visitUrl = new LLMFunction("访问网页",
                 """
                         获取部分受支持的网页中的信息（内容会被精简）仅支持哔哩哔哩视频和用户空间、YouTube视频
                         例: https://www.bilibili.com/video/BV1SC4y1J7De , https://space.bilibili.com/497423225 , https://www.youtube.com/watch?v=EkREmibZp3E""",
-                args -> visitUrl(args.get("网址")),
-                new HashMap<>() {{
-                    put("网址", new DeepSeekTool.Function.Parameters.Property("目标访问网址"));
-                }},
-                new String[]{"网址"});
-        registerTool("VisitURL", visitUrl);
+                new LLMFunction.Parameters("object", new String[]{"URL"}, new String[]{"URL"}),
+                args -> visitUrl(args.get("URL")));
+        registerFunction("VisitURL", visitUrl);
     }
 
     private String search(String content) {

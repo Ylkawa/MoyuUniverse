@@ -1,0 +1,3 @@
+name: OpenAIAdapter
+main: com.nekoyu.universe.openaiadapter.OpenAIAdapter
+version: 1.0

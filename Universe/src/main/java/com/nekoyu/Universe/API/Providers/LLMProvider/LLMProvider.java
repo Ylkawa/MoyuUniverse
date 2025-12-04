@@ -28,4 +28,8 @@ public abstract class LLMProvider extends Provider {
     public Assistant newAssistant() {
         return new Assistant(this);
     }
+
+    public Assistant newAssistant(String model) {
+        return new Assistant(this, model);
+    }
 }

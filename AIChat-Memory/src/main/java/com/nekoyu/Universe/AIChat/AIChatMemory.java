@@ -49,6 +49,9 @@ public class AIChatMemory extends AIChatPlugin {
             throw new RuntimeException(e);
         }
         if (ready) try (var sqlConn = DriverManager.getConnection(config.getProperty("URL"), config.getProperty("Username"), config.getProperty("Password"))) {
+            try (var stmt = sqlConn.createStatement()) {
+                stmt.executeUpdate("CREATE Table IF NOT EXIST");
+            }
             logger.info("数据库可用，组件已激活");
         } catch (SQLException e) {
             ready = false;

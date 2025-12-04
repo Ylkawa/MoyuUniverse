@@ -68,7 +68,7 @@ public class MessageChannelManager {
         String[] target = sessionId.split(":");
         MessageChannel mc = getChannel(target[0]);
         if (mc == null) {
-            // 不存在这个Channel，之后做异常处理
+            // TODO: 不存在这个Channel，之后做异常处理
             logger.warn("不存在此Channel {}", target[0]);
         } else {
             logger.info("向会话 {} 发送消息: {}", sessionId, message);

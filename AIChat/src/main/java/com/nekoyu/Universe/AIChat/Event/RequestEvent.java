@@ -1,6 +1,6 @@
 package com.nekoyu.Universe.AIChat.Event;
 
-import com.nekoyu.Universe.DeepSeekAdapter.MessageList;
+import com.nekoyu.Universe.API.MessageChannel.MessageList;
 
 import java.util.HashMap;
 import java.util.Map;

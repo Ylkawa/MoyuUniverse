@@ -6,6 +6,10 @@ public class Tool_call {
     public String type;
     public Function function;
 
+    public Tool_call() {
+        function = new Function();
+    }
+
     public static class Function {
         public String name;
         public String arguments;
