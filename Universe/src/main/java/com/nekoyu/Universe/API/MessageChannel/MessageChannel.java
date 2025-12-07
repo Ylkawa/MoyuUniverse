@@ -7,6 +7,7 @@ public abstract class MessageChannel {
     public String type;
     public final String ID;
     public String accountId;
+    public String nickname;
 
     abstract public MessageSession getSession(String sessionId);
     abstract public void load();

@@ -31,10 +31,8 @@ public class OnebotChannel extends MessageChannel {
     boolean isReady = true;
     Logger logger = LoggerFactory.getLogger(this.getClass());
     URI uri;
-    Gson gson = new Gson();
     String token;
     Map<String, Callback> syncActions = new HashMap<>();
-    String nickname = null;
 
     public OnebotChannel(String id) {
         super(id);
@@ -63,25 +61,10 @@ public class OnebotChannel extends MessageChannel {
         obr.params.put(msgType + "_id", id);
         obr.params.put("message", message);
 
-        final int[] messageId = {-1};
+        // 按道理这里得返回消息ID，有抽风的情况就先取消了
+        action(obr);
 
-        synchronized (messageId) {
-            syncAction(obr, response -> {
-                synchronized (messageId) { // 同步块嵌套在一起
-                    JsonObject jsonObject = response.data.getAsJsonObject();
-                    messageId[0] = jsonObject.get("message_id").getAsInt();
-                    messageId.notifyAll();
-                }
-            });
-
-            try {
-                messageId.wait(); // 在同一把锁上等待
-            } catch (InterruptedException e) {
-                throw new RuntimeException(e);
-            }
-        }
-
-        return messageId[0];
+        return -1;
     }
 
     @Override

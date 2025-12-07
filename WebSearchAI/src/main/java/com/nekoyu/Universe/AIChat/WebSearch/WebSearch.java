@@ -204,7 +204,7 @@ public class WebSearch extends AIChatPlugin {
                             return "请求失败" + e.getMessage();
                         }
                     } else {
-                        return "不支持的链接类型";
+                        return "不支持此链接类型，请停止访问此链接";
                     }
                 }
                 case "space.bilibili.com" -> {

@@ -1,6 +1,7 @@
 package com.nekoyu.universe.openaiadapter;
 
 import com.google.gson.Gson;
+import com.google.gson.JsonSyntaxException;
 import com.nekoyu.Universe.API.MessageChannel.MCMessage;
 import com.nekoyu.Universe.API.MessageChannel.MessageField.MsgField;
 import com.nekoyu.Universe.API.MessageChannel.MessageList;
@@ -169,7 +170,14 @@ public class OpenAIChannel extends LLMProvider {
                                 ArrayMessage toolMsg = new ArrayMessage();
                                 toolMsg.role = "tool";
                                 toolMsg.tool_call_id = tool_call.id;
-                                toolMsg.content.add(new TextPiece(llmFunction.callback.callback(gson.fromJson(tool_call.function.arguments, HashMap.class))));
+                                HashMap args;
+                                try {
+                                    args = gson.fromJson(tool_call.function.arguments, HashMap.class);
+                                } catch (JsonSyntaxException e) {
+                                    tool_call.function.arguments.replaceAll("\\\\", "");
+                                    args = gson.fromJson(tool_call.function.arguments, HashMap.class);
+                                }
+                                toolMsg.content.add(new TextPiece(llmFunction.callback.callback(args)));
                                 completionsRequest.messages.add(toolMsg);
                             }
                             return completions(completionsRequest, llmFunctions, bufferCallback, timeout-1, responding);

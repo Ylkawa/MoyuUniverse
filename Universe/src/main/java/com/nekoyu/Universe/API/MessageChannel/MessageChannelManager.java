@@ -77,6 +77,7 @@ public class MessageChannelManager {
             mcm.messageFields.add(new TextField(message));
             mcm.time = System.currentTimeMillis() / 1000;
             mcm.sender.id = mc.accountId;
+            mcm.sender.nickname = mc.nickname;
             mcm.universe = true;
             // 应该没别的必须的参数了，留空算了
 

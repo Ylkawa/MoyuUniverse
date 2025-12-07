@@ -19,6 +19,7 @@ import java.io.*;
 import java.lang.reflect.InvocationTargetException;
 import java.net.URL;
 import java.net.URLClassLoader;
+import java.nio.charset.StandardCharsets;
 import java.text.SimpleDateFormat;
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
@@ -49,9 +50,10 @@ public class AIChat extends Law {
         loadSessionCfg(sessionCFGDic);
 
         // 从这里开始重写
-        try {
-            new_cfg = gson.fromJson(new FileReader("./config/AIChat/config.json"), Config.class);
-        } catch (FileNotFoundException e) {
+        try (Reader reader = new InputStreamReader(
+                new FileInputStream("./config/AIChat/config.json"), StandardCharsets.UTF_8)) {
+            new_cfg = gson.fromJson(reader, Config.class);
+        } catch (IOException e) {
             // 没找到配置文件，所以新建一个配置文件
             new_cfg = new Config();
             new_cfg.Prompt = ""; // 默认的System_prompt，这里留白了没写
@@ -119,8 +121,8 @@ public class AIChat extends Law {
 
     private void loadSessionCfg(File configDic) {
         for (File file : configDic.listFiles()) {
-            if (file.getName().toLowerCase().endsWith(".json")) try (FileReader fr = new FileReader(file)) {
-                SessionConfig sc = gson.fromJson(fr, SessionConfig.class);
+            if (file.getName().toLowerCase().endsWith(".json")) try (InputStreamReader isr = new InputStreamReader(new FileInputStream(file), StandardCharsets.UTF_8)) {
+                SessionConfig sc = gson.fromJson(isr, SessionConfig.class);
                 configs.add(sc);
                 logger.info("载入配置文件 {} ", file.getName());
             } catch (FileNotFoundException e) {
@@ -148,7 +150,6 @@ public class AIChat extends Law {
                             } // 为assistant添加指定的tools // 如果不存在这个tool就不添加
                         }
                         // 决定让AI发言
-                        // TODO: 这里需要重写一个维护消息记录的结构
                         MessageList ml = Universe.MessageChannelManager.getMessageHistory(cfg.SessionId);
                         // 设置 System Prompt
                         // 先让插件处理事件 插件提供局部的PlaceHolder
@@ -165,38 +166,83 @@ public class AIChat extends Law {
                         prompt.append(cfg.Prompt);
                         assistant.setSystemPrompt(PlaceHolder.replace(prompt.toString(), reqEv.placeholders));
                         // 把还没转换好的MCMessage转换成String
-                        MessageList openaiMl = new MessageList();
+                        // todo:here 这里需要根据 mcm.receiver 是否等于 msg.sender 为openai message list 中的mcm指定role；需要把相邻的assistant message使用\n\n拼接成同一条
+//                        int key = 0; // 从第0条开始读取
+//                        MCMessage mcMessage = ml.get(key);
+//                        if (mcMessage.sender.equals(mcm.receiver)) {
+//                            StringBuilder assistantMsg = new StringBuilder();
+//                            do {
+//                                assistantMsg.append(mcMessage.solveAll());
+//                                key++;
+//                            } while ((mcMessage = ml.get(key)).sender.equals(mcm.receiver));
+//                        } else {
+//
+//                        }
+
+                        // 以下为旧逻辑
                         ExecutorService executor = Executors.newFixedThreadPool(5);
-                        for (MCMessage msg : ml) {
-                            MCMessage openaiMsg = new MCMessage();
-                            openaiMl.add(openaiMsg);
+                        String[][] solve = new String[ml.size()][3];
+                        for (int i = 0; i < ml.size(); i++) {
+                            int loopNum = i;
                             executor.submit(() -> {
-                                String content = sdf.format(new Date(mcm.time * 1000)) + // [时间]
-                                        "[" + mcm.id + "]" + // [时间] [消息id]
-                                        mcm.sender.getNickname() + "(" + mcm.sender.getId() + ")" + mcm.sender.getSex() + // [时间] [消息id] [昵称](用户QQ号)性别
-                                        ": " + msg.solveAll(); // [时间] [消息id] [昵称](用户QQ号)性别: [消息内容]
-                                openaiMsg.messageFields.add(new TextField(content));
+                                MCMessage msg = ml.get(loopNum);
+                                if (msg.sender.getId().equals(mcm.receiver.getId())) solve[loopNum][0] = "assistant";
+                                else solve[loopNum][0] = "user";
+                                solve[loopNum][1] = msg.solveAll();
+                                solve[loopNum][2] =  // prefix
+                                        sdf.format(new Date(msg.time * 1000)) + // [时间]
+                                        "[" + msg.id + "]" + // [时间] [消息id]
+                                        msg.sender.getNickname() + "(" + msg.sender.getId() + ")" + msg.sender.getSex() + // [时间] [消息id] [昵称](用户QQ号)性别
+                                        ": "; // [时间] [消息id] [昵称](用户QQ号)性别: [消息内容]
                             });
                         }
                         executor.shutdown();
+                        // 以上为旧逻辑
                         try {
                             if (executor.awaitTermination(60, TimeUnit.SECONDS)) {
                                 RequestEvent re = new RequestEvent();
                                 re.messageList = ml;
                                 try {
-                                    StringBuilder sb = new StringBuilder();
-                                    assistant.completions(openaiMl, (LLMProvider.BufferCallback) outputs -> {
-                                        String[] split = outputs.split("\n\n", 2);
-                                        if (split.length > 1) {
-                                            sb.append(split[0]);
-                                            mcm.reply(sb.toString());
-                                            sb.setLength(0);
-                                            sb.append(split[1]);
+                                    // 构建 OpenAI Adapter ML
+                                    MessageList openaiMl = new MessageList();
+                                    int key = 0;
+                                    for (int i = 0; i < solve.length; i++) {
+                                        if (solve[i][0].equals("assistant")) {
+                                            StringBuilder content = new StringBuilder();
+                                            boolean first = true;
+                                            do {
+                                                if (!first) content.append("\n\n");
+                                                content.append(solve[i][1]);
+                                                i++;
+                                                first = false;
+                                            } while (solve[i] != null && solve[i][0].equals("assistant"));
+                                            i--;
+                                            MCMessage msg = new MCMessage();
+                                            msg.putMetainfo("role", "assistant");
+                                            msg.messageFields.add(new TextField(content.toString()));
+                                            openaiMl.add(msg);
                                         } else {
-                                            sb.append(split[0]);
+                                            MCMessage msg = new MCMessage();
+                                            msg.putMetainfo("role", "user");
+                                            msg.messageFields.add(new TextField(solve[i][2] + solve[i][1]));
+                                            openaiMl.add(msg);
+                                        }
+                                    }
+
+                                    // 接收响应 tokens
+                                    StringBuilder respTokens = new StringBuilder();
+                                    assistant.completions(openaiMl, (LLMProvider.BufferCallback) outputs -> {
+                                        String[] split = outputs.split("\n\n", 2); // 每一次接收够一段就回复一次消息
+                                        if (split.length > 1) {
+                                            respTokens.append(split[0]);
+                                            mcm.reply(respTokens.toString());
+                                            respTokens.setLength(0);
+                                            respTokens.append(split[1]);
+                                        } else {
+                                            respTokens.append(split[0]);
                                         }
                                     });
-                                    mcm.reply(sb.toString());
+                                    mcm.reply(respTokens.toString());
                                 } catch (Exception e) {
                                     e.printStackTrace();
                                 }

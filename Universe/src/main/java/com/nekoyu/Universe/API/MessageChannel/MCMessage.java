@@ -74,7 +74,7 @@ public class MCMessage {
     }
 
     public void reply(String message) {
-        CompletableFuture.runAsync(() -> Universe.MessageChannelManager.sendMessage(sessionId, message));
+        Universe.MessageChannelManager.sendMessage(sessionId, message);
     }
 
     public Object getMetainfo(String key) {
