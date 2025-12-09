@@ -173,11 +173,16 @@ public class OpenAIChannel extends LLMProvider {
                                 HashMap args;
                                 try {
                                     args = gson.fromJson(tool_call.function.arguments, HashMap.class);
+                                    toolMsg.content.add(new TextPiece(llmFunction.callback.callback(args)));
                                 } catch (JsonSyntaxException e) {
                                     tool_call.function.arguments.replaceAll("\\\\", "");
-                                    args = gson.fromJson(tool_call.function.arguments, HashMap.class);
+                                    try {
+                                        args = gson.fromJson(tool_call.function.arguments, HashMap.class);
+                                        toolMsg.content.add(new TextPiece(llmFunction.callback.callback(args)));
+                                    } catch (JsonSyntaxException ex) { // 我真没话说，deepseek写的function calling的arguments，一次一套格式，json都不是，还把结构标识符转义掉了
+                                        toolMsg.content.add(new TextPiece(ex.getMessage()));
+                                    }
                                 }
-                                toolMsg.content.add(new TextPiece(llmFunction.callback.callback(args)));
                                 completionsRequest.messages.add(toolMsg);
                             }
                             return completions(completionsRequest, llmFunctions, bufferCallback, timeout-1, responding);
