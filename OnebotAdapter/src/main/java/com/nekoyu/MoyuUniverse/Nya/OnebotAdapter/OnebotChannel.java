@@ -27,6 +27,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class OnebotChannel extends MessageChannel {
     WebSocketClient wsConnection;
@@ -36,6 +37,7 @@ public class OnebotChannel extends MessageChannel {
     URI uri;
     String token;
     Map<String, Callback> syncActions = new HashMap<>();
+    Map<String, Account> userAccounts = new HashMap<>();
 
     public OnebotChannel(String id) {
         super(id);
@@ -77,10 +79,23 @@ public class OnebotChannel extends MessageChannel {
                 logger.info("{} 连接成功", ID);
 
                 syncRequest(new OBRequest("get_login_info"), response -> {
+                    OBResponse friendListReq = request(new OBRequest("get_friend_list"));
+                    AtomicInteger friendCount = new AtomicInteger();
+                    friendListReq.data.getAsJsonArray().forEach(friend -> {
+                        JsonObject friendObj = friend.getAsJsonObject();
+                        Account account = new Account();
+                        account.setSex(friendObj.get("sex").getAsString());
+                        account.setId(friendObj.get("user_id").getAsString());
+                        account.setNickname(friendObj.get("nickname").getAsString());
+                        friendCount.getAndIncrement();
+                        userAccounts.put(account.getId(), account);
+                    });
+                    OBResponse groupListReq = request(new OBRequest("get_group_list"));
+                    int groupCount = groupListReq.data.getAsJsonArray().size();
                     JsonObject responseData = response.data.getAsJsonObject();
                     nickname = responseData.get("nickname").getAsString();
                     accountId = responseData.get("user_id").getAsString();
-                    logger.info("{} 登录的 QQ号 为 {} ({})", ID, nickname, accountId);
+                    logger.info("{} 登录的 QQ号 为 {} ({}), {} 个好友  {} 个群聊", ID, nickname, accountId, friendCount.get(), groupCount);
                 });
             }
 
@@ -403,5 +418,29 @@ public class OnebotChannel extends MessageChannel {
 
     private interface Callback {
         void callback(OBResponse response);
+    }
+
+    @Override
+    public Account getAccount(String sessionId) {
+        String[] acc = sessionId.split("/", 2);
+        if (!acc[0].equals("private") && !acc[0].equals("user")) {
+            throw new UnsupportedAction("Only support user account");
+        }
+        Account account = userAccounts.get(acc[1]);
+        if (account == null) {
+            OBRequest obr = new OBRequest();
+            obr.action = "get_stranger_info";
+            obr.params.put("user_id", acc[1]);
+            OBResponse resp = request(obr);
+            if (resp.status.equals("failed")) throw new UnsupportedAction("Request Failed");
+            int age = resp.data.getAsJsonObject().get("age").getAsInt();
+            account = new Account();
+            account.setNickname(resp.data.getAsJsonObject().get("nickname").getAsString());
+            account.setId(acc[1]);
+            account.setPlatform("QQ");
+            account.setSex(resp.data.getAsJsonObject().get("sex").getAsString());
+            userAccounts.put(acc[1], account);
+        }
+        return account;
     }
 }

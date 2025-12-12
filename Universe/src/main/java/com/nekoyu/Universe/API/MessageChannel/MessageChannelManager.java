@@ -98,4 +98,9 @@ public class MessageChannelManager {
     public MessageList getMessageHistory(String sessionId) {
         return messageHistory.get(sessionId);
     }
+
+    public Account getAccount(String sessionId) {
+        String[] split = sessionId.split(":", 2);
+        return getChannel(split[0]).getAccount(split[1]);
+    }
 }

@@ -14,6 +14,7 @@ public abstract class MessageChannel {
     abstract public void stop();
     abstract public int sendMessage(String sessionId, String message);
     abstract public void setSessionName(String sessionId, String name) throws UnsupportedAction;
+    abstract public Account getAccount(String sessionId);
 
     protected void broadcastMessage(String sessionId, MCMessage message) {
         message.sessionId = ID + ":" + sessionId;
