@@ -22,12 +22,6 @@ public class VoiceField extends FileField {
         } catch (IOException ignored) {}
     }
 
-    @Override
-    public void solve(AtomicBoolean flag) {
-        solve();
-        flag.set(true);
-    }
-
     public String getAsString() {
         if (description != null) return description;
         return "[语音]";

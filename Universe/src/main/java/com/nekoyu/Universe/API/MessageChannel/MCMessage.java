@@ -5,6 +5,8 @@ import com.nekoyu.Universe.Universe;
 
 import java.util.*;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public class MCMessage {
@@ -34,39 +36,25 @@ public class MCMessage {
     public String solveAll() {
         var sb = new StringBuilder();
         int solvedPic = 0;
-        List<AtomicBoolean> flags = new ArrayList<>();
+        ExecutorService executor = Executors.newCachedThreadPool();
         // 逆序遍历
         for (int i = messageFields.size() - 1; i >= 0; i--) {
             MsgField msgField = messageFields.get(i);
             switch (msgField.type) {
                 case "image" -> {
                     if (!msgField.isSolved && solvedPic < 3) {
-                        AtomicBoolean flag = new AtomicBoolean(false);
-                        flags.add(flag);
-                        new Thread(() -> {
+                        executor.execute(() -> {
                             try {
-                                msgField.solve(flag);
-                            } catch (Exception e) {
-                                flag.set(true);
-                            }
-                        }).start(); // 这里做成堵塞式的了，影响性能，到时候要改成同时解析
+                                msgField.solve();
+                            } catch (Exception ignored) {}
+                        });
                         solvedPic++;
                     }
                 }
                 case "voice" -> msgField.solve();
             }
         }
-        boolean continueFlag = false;
-        while (!continueFlag) {
-            continueFlag = true;
-            for (AtomicBoolean flag : flags) {
-                if (!flag.get()) {
-                    continueFlag = false;
-                    Thread.yield();
-                    break;
-                }
-            }
-        }
+        executor.shutdown();
         for (MsgField msgField: messageFields) {
             sb.append(msgField.getAsString());
         }

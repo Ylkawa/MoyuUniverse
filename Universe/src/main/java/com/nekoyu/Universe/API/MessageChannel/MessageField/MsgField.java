@@ -6,8 +6,7 @@ public abstract class MsgField {
     public String type;
     public boolean isSolved = false;
 
-    public void solve() {};
-    public void solve(AtomicBoolean flag) {}
+    public void solve() {}
     /**
      * 以文本形式呈现本段的内容
      * 为大语言模型应用设计的功能

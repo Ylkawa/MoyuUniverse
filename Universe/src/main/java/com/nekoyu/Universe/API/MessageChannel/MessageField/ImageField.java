@@ -34,15 +34,6 @@ public class ImageField extends FileField {
         super.type = "image";
     }
 
-    /**
-     * 跟无参的没什么区别，但是提供一个异步同步的选择
-     * */
-    @Override
-    public void solve(AtomicBoolean flag) {
-        solve();
-        flag.set(true);
-    }
-
     @Override
     public void solve() {
         if (isSolved) return;
