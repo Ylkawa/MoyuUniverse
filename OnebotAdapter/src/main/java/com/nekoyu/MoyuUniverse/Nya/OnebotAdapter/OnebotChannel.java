@@ -31,7 +31,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 public class OnebotChannel extends MessageChannel {
     WebSocketClient wsConnection;
-    ExecutorService executor = Executors.newCachedThreadPool();
+    ExecutorService onMsgEx = Executors.newCachedThreadPool();
+    ExecutorService callbackEx = Executors.newCachedThreadPool();
     boolean isReady = true;
     Logger logger = LoggerFactory.getLogger(this.getClass());
     URI uri;
@@ -101,10 +102,11 @@ public class OnebotChannel extends MessageChannel {
 
             @Override
             public void onMessage(String s) {
-                executor.submit(() -> {
+                logger.debug(s);
+                Gson gson = new Gson();
+                JsonElement content = gson.fromJson(s, JsonElement.class);
+                onMsgEx.submit(() -> {
                     try {
-                        Gson gson = new Gson();
-                        JsonElement content = gson.fromJson(s, JsonElement.class);
                         if (content.getAsJsonObject().get("post_type") != null) {
                             switch (content.getAsJsonObject().get("post_type").getAsString()) {
                                 case "message":
@@ -125,16 +127,16 @@ public class OnebotChannel extends MessageChannel {
                                     StringBuilder msg = new StringBuilder();
                                     for (MessageSegment ms : message.message) {
                                         switch (ms.type) {
-                                            case "text":
+                                            case "text" -> {
                                                 msg.append(ms.data.get("text"));
                                                 mcm.messageFields.add(new TextField(ms.data.get("text")));
-                                                break;
-                                            case "face":
+                                            }
+                                            case "face" -> {
                                                 msg.append("[QQ表情]");
                                                 mcm.messageFields.add(new TextField("[QQ表情]"));
-                                                break;
+                                            }
                                             // 暂时没看到有能和emoji一一对应的表格，先不管
-                                            case "image":
+                                            case "image" -> {
                                                 msg.append("[图片]");
                                                 try {
                                                     var imageField = new ImageField(new URL(ms.data.get("url")));
@@ -143,9 +145,9 @@ public class OnebotChannel extends MessageChannel {
                                                     logger.error("无法以 {} 创建URL对象", ms.data.get("file"), e);
                                                     mcm.messageFields.add(new TextField("[图片]"));
                                                 }
-                                                break;
+                                            }
                                             // 放不进去文本，先这样
-                                            case "record":
+                                            case "record" -> {
                                                 msg.append("[语音]");
                                                 try {
                                                     mcm.messageFields.add(new VoiceField(new URL(ms.data.get("url"))));
@@ -153,8 +155,8 @@ public class OnebotChannel extends MessageChannel {
                                                     logger.error("无法以 {} 创建URL对象", ms.data.get("url"), e);
                                                     mcm.messageFields.add(new TextField("[语音]"));
                                                 }
-                                                break;
-                                            case "video":
+                                            }
+                                            case "video" -> {
                                                 msg.append("[视频]");
                                                 try {
                                                     mcm.messageFields.add(new VideoField(new URL(ms.data.get("url"))));
@@ -163,35 +165,33 @@ public class OnebotChannel extends MessageChannel {
                                                     mcm.messageFields.add(new TextField("[视频]"));
                                                     // 这里发生过报错，疑似是视频消息里面，file字段本身就不是URL
                                                 }
-                                                break;
-                                            case "at":
+                                            }
+                                            case "at" -> {
                                                 msg.append("[@qq:user/").append(ms.data.get("qq")).append("]");
-                                                var account = new Account();
-                                                account.setPlatform("QQ");
-                                                account.setId(ms.data.get("qq"));
+                                                var account = getAccount(ms.data.get("qq"));
                                                 mcm.messageFields.add(new AtField(account));
-                                                break;
-                                            case "rps":
+                                            }
+                                            case "rps" -> {
                                                 msg.append("[猜拳魔法表情]");
                                                 mcm.messageFields.add(new MetaField("[猜拳魔法表情]"));
-                                                break;
-                                            case "dice":
+                                            }
+                                            case "dice" -> {
                                                 msg.append("[掷骰子魔法表情]");
                                                 mcm.messageFields.add(new MetaField("[掷骰子魔法表情]"));
-                                                break;
-                                            case "shake":
+                                            }
+                                            case "shake" -> {
                                                 msg.append("[窗口抖动]");
                                                 mcm.messageFields.add(new MetaField("[窗口抖动]"));
-                                                break;
-                                            case "poke":
+                                            }
+                                            case "poke" -> {
                                                 msg.append("[戳一戳]");
                                                 mcm.messageFields.add(new MetaField("[戳一戳]"));
-                                                break;
-                                            case "anonymous":
+                                            }
+                                            case "anonymous" -> {
                                                 msg.append("(匿名消息)");
                                                 mcm.messageFields.add(new MetaField("(匿名消息)"));
-                                                break;
-                                            case "share":
+                                            }
+                                            case "share" -> {
                                                 msg.append("[分享链接, ").append(ms.data.get("title")).append(" : ").append(ms.data.get("url")).append(" ]");
                                                 try {
                                                     mcm.messageFields.add(new ShareUriField(ms.data.get("title"), new URI(ms.data.get("url"))));
@@ -199,8 +199,8 @@ public class OnebotChannel extends MessageChannel {
                                                     logger.error("无法以 {} 创建URL对象", ms.data.get("file"), e);
                                                     mcm.messageFields.add(new TextField("[分享链接]"));
                                                 }
-                                                break;
-                                            case "contact":
+                                            }
+                                            case "contact" -> {
                                                 switch (ms.data.get("type")) {
                                                     case "qq":
                                                         msg.append("[分享QQ群, ");
@@ -212,14 +212,14 @@ public class OnebotChannel extends MessageChannel {
                                                         break;
                                                 }
                                                 msg.append(ms.data.get("id")).append("]");
-                                                break;
-                                            case "location":
+                                            }
+                                            case "location" -> {
                                                 msg.append("[分享一处位置, ").append("纬度").append(ms.data.get("lat")).append(", 经度").append(ms.data.get("lon"));
                                                 mcm.messageFields.add(new LocationField(Double.parseDouble(ms.data.get("lat")), Double.parseDouble(ms.data.get("lon"))));
-                                                break;
-                                            case "music": // 音乐分享，普通的卡片要和自定义的卡片分开讨论
+                                            }
+                                            case "music" -> {
                                                 switch (ms.data.get("type")) {
-                                                    case "163":
+                                                    case "163" -> {
                                                         msg.append("[网易云音乐, ").append(ms.data.get("id")).append("]");
                                                         try {
                                                             mcm.messageFields.add(new ShareUriField("网易云音乐分享", new URI("https://music.163.com/#/song?id=" + ms.data.get("id"))));
@@ -227,8 +227,8 @@ public class OnebotChannel extends MessageChannel {
                                                             logger.error("无法以 {} 创建URL对象", ms.data.get("file"), e);
                                                             mcm.messageFields.add(new TextField("[网易云音乐分享]"));
                                                         }
-                                                        break;
-                                                    case "qq":
+                                                    }
+                                                    case "qq" -> {
                                                         msg.append("[QQ音乐, ").append(ms.data.get("id")).append("]");
                                                         try {
                                                             mcm.messageFields.add(new ShareUriField("QQ音乐分享", new URI("https://y.qq.com/n/ryqq/songDetail/" + ms.data.get("id"))));
@@ -236,12 +236,12 @@ public class OnebotChannel extends MessageChannel {
                                                             logger.error("无法以 {} 创建URL对象", ms.data.get("file"), e);
                                                             mcm.messageFields.add(new TextField("[QQ音乐分享]"));
                                                         }
-                                                        break;
-                                                    case "xm":
+                                                    }
+                                                    case "xm" -> {
                                                         msg.append("[虾米音乐, ").append(ms.data.get("id")).append("]");
                                                         mcm.messageFields.add(new TextField("[虾米音乐分享]"));
-                                                        break;
-                                                    case "custom":
+                                                    }
+                                                    case "custom" -> {
                                                         msg.append("[音乐分享, ").append(ms.data.get("title")).append(", ").append(ms.data.get("url"));
                                                         try {
                                                             mcm.messageFields.add(new ShareUriField("音乐分享", new URI(ms.data.get("url"))));
@@ -249,30 +249,30 @@ public class OnebotChannel extends MessageChannel {
                                                             logger.error("无法以 {} 创建URL对象", ms.data.get("file"), e);
                                                             mcm.messageFields.add(new TextField("音乐分享"));
                                                         }
-                                                        break;
+                                                    }
                                                 }
-                                                break;
-                                            case "reply":
+                                            }
+                                            case "reply" -> {
                                                 msg.append("[回复消息 ").append(ms.data.get("id")).append("]");
                                                 mcm.messageFields.add(new MetaField("回复消息" + ms.data.get("id")));
-                                                break;
-                                            case "forward":
+                                            }
+                                            case "forward" -> {
                                                 msg.append("[合并转发, ").append(ms.data.get("id")).append("]");
                                                 mcm.messageFields.add(new MetaField("[合并转发]"));
-                                                break;
-                                            case "node":
+                                            }
+                                            case "node" -> {
                                                 msg.append("[合并转发节点, ").append(ms.data.get("id")).append("]");
                                                 mcm.messageFields.add(new MetaField("[合并转发节点]"));
-                                                break;
+                                            }
                                             // 合并转发自定义节点 没做
-                                            case "xml":
+                                            case "xml" -> {
                                                 msg.append("[XML消息]");
                                                 mcm.messageFields.add(new MetaField("[XML消息]"));
-                                                break;
-                                            case "json":
+                                            }
+                                            case "json" -> {
                                                 msg.append("[JSON消息]");
                                                 mcm.messageFields.add(new MetaField("[JSON消息]"));
-                                                break;
+                                            }
                                         }
                                     }
                                     mcm.messageString = msg.toString();
@@ -302,17 +302,19 @@ public class OnebotChannel extends MessageChannel {
                                     return;
                             }
                         }
-                        if (content.getAsJsonObject().get("echo") != null) {
-                            OBResponse response = gson.fromJson(content, OBResponse.class);
-                            if (!response.echo.isEmpty()) {
-                                syncActions.get(response.echo).callback(response);
-                                syncActions.remove(response.echo);
-                            }
-                        }
                     } catch (JsonSyntaxException ignored) {
 
                     }
                 });
+                if (content.getAsJsonObject().get("echo") != null) {
+                    OBResponse response = gson.fromJson(content, OBResponse.class);
+                    if (!response.echo.isEmpty()) {
+                        callbackEx.submit(() -> {
+                            syncActions.get(response.echo).callback(response);
+                            syncActions.remove(response.echo);
+                        });
+                    }
+                }
             }
 
             @Override
@@ -433,7 +435,6 @@ public class OnebotChannel extends MessageChannel {
             obr.params.put("user_id", acc[1]);
             OBResponse resp = request(obr);
             if (resp.status.equals("failed")) throw new UnsupportedAction("Request Failed");
-            int age = resp.data.getAsJsonObject().get("age").getAsInt();
             account = new Account();
             account.setNickname(resp.data.getAsJsonObject().get("nickname").getAsString());
             account.setId(acc[1]);

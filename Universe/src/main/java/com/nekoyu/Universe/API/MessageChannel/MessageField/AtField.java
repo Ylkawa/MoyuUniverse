@@ -12,6 +12,6 @@ public class AtField extends MsgField {
     }
 
     public String getAsString() {
-        return "@"+target.getId();
+        return "@"+target.getNickname();
     }
 }
