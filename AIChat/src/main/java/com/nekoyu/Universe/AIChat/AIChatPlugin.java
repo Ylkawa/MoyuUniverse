@@ -15,8 +15,8 @@ public abstract class AIChatPlugin {
         this.aiChat = aiChat;
     } // 留一个空的构造函数备用
 
-    public void onEnable() {}
-    public void onDisable() {}
+    public abstract void onEnable();
+    public abstract void onDisable();
 
     public void onRequest(RequestEvent event) {}
 

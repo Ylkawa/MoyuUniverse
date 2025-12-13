@@ -73,7 +73,7 @@ public class WebSearch extends AIChatPlugin {
                 .proxy(proxy)
                 .build();
 
-        var dst = new LLMFunction("Google搜索",
+        var dst = new LLMFunction("GoogleSearch",
                 "使用Google的API在全网搜索内容，仅当用户要求或者要回答的内容具有时效性时使用",
                 new LLMFunction.Parameters("object", new String[]{"搜索词"}, new String[]{"搜索词"}),
                 args -> search(args.get("搜索词"))
@@ -89,6 +89,11 @@ public class WebSearch extends AIChatPlugin {
                 new LLMFunction.Parameters("object", new String[]{"URL"}, new String[]{"URL"}),
                 args -> visitUrl(args.get("URL")));
         registerFunction("VisitURL", visitUrl);
+    }
+
+    @Override
+    public void onDisable() {
+
     }
 
     private String search(String content) {

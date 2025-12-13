@@ -47,6 +47,34 @@ public class LLMFunction {
         }
     }
 
+    public static Builder Builder() {
+        return new Builder();
+    }
+
+    public static class Builder {
+        LLMFunction function = new LLMFunction();
+
+        public LLMFunction build() {
+            return function;
+        }
+        public Builder name(String name) {
+            function.name = name;
+            return this;
+        }
+        public Builder description(String description) {
+            function.description = description;
+            return this;
+        }
+        public Builder parameters(Parameters parameters) {
+            function.parameters = parameters;
+            return this;
+        }
+        public Builder callback(Callback callback) {
+            function.callback = callback;
+            return this;
+        }
+    }
+
     public interface Callback {
         String callback(HashMap<String, String> args);
     }

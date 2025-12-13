@@ -1,0 +1,9 @@
+<component name="ArtifactManager">
+  <artifact type="jar" name="LLMTool_DomainWhois:jar">
+    <output-path>$PROJECT_DIR$/out/artifacts/LLMTool_DomainWhois_jar</output-path>
+    <root id="archive" name="LLMTool_DomainWhois.jar">
+      <element id="module-output" name="LLMTool_DomainWhois" />
+      <element id="file-copy" path="$PROJECT_DIR$/LLMTool_DomainWhois/src/main/resources/plug.properties" />
+    </root>
+  </artifact>
+</component>

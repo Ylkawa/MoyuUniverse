@@ -60,6 +60,11 @@ public class AIChatMemory extends AIChatPlugin {
     }
 
     @Override
+    public void onDisable() {
+
+    }
+
+    @Override
     public void onRequest(RequestEvent event) {
         logger.info("处理请求");
     }

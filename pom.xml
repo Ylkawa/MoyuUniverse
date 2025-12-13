@@ -20,6 +20,7 @@
         <module>AliyunWebhook</module>
         <module>WebSearchAI</module>
         <module>openaiadapter</module>
+        <module>LLMTool_DomainWhois</module>
     </modules>
 
     <properties>
