@@ -7,6 +7,7 @@ import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public class MCMessage {
@@ -19,7 +20,9 @@ public class MCMessage {
     public LinkedList<MsgField> messageFields;
     public int level;
     public Map<String, Object> metainfo = new HashMap<>();
-    /** if send by universe */
+    /**
+     * if send by universe
+     */
     public boolean universe = false;
 
     public MCMessage() {
@@ -29,8 +32,13 @@ public class MCMessage {
         level = 0;
     }
 
+    public static Builder Builder() {
+        return new Builder();
+    }
+
     /**
      * 将本段所有段落全部整合到同一个字符串内
+     *
      * @return 此条消息内容（纯文本形式）
      */
     public String solveAll() {
@@ -46,7 +54,8 @@ public class MCMessage {
                         executor.execute(() -> {
                             try {
                                 msgField.solve();
-                            } catch (Exception ignored) {}
+                            } catch (Exception ignored) {
+                            }
                         });
                         solvedPic++;
                     }
@@ -55,10 +64,15 @@ public class MCMessage {
             }
         }
         executor.shutdown();
-        for (MsgField msgField: messageFields) {
-            sb.append(msgField.getAsString());
+        try {
+            executor.awaitTermination(60, TimeUnit.SECONDS);
+            for (MsgField msgField : messageFields) {
+                sb.append(msgField.getAsString());
+            }
+            return sb.toString();
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
         }
-        return sb.toString();
     }
 
     public void reply(String message) {
@@ -73,47 +87,54 @@ public class MCMessage {
         metainfo.put(key, value);
     }
 
-    public static Builder Builder() {
-        return new Builder();
-    }
     public static class Builder {
         MCMessage msg = new MCMessage();
+
         public Builder add(MsgField msgField) {
             msg.messageFields.add(msgField);
             return this;
         }
+
         public Builder receiverAccount(Account account) {
             msg.receiver = account;
             return this;
         }
+
         public Builder senderAccount(Account account) {
             msg.sender = account;
             return this;
         }
+
         public Builder sessionId(String sessionId) {
             msg.sessionId = sessionId;
             return this;
         }
+
         public Builder time(long time) {
             msg.time = time;
             return this;
         }
+
         public Builder id(int id) {
             msg.id = id;
             return this;
         }
+
         public Builder level(int level) {
             msg.level = level;
             return this;
         }
+
         public Builder universe(boolean universe) {
             msg.universe = universe;
             return this;
         }
+
         public Builder metainfo(String key, Object value) {
             msg.metainfo.put(key, value);
             return this;
         }
+
         public MCMessage build() {
             return msg;
         }
