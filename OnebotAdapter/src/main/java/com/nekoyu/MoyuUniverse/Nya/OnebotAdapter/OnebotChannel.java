@@ -168,7 +168,7 @@ public class OnebotChannel extends MessageChannel {
                                             }
                                             case "at" -> {
                                                 msg.append("[@qq:user/").append(ms.data.get("qq")).append("]");
-                                                var account = getAccount(ms.data.get("qq"));
+                                                var account = getAccount("user/" + ms.data.get("qq"));
                                                 mcm.messageFields.add(new AtField(account));
                                             }
                                             case "rps" -> {
@@ -426,6 +426,7 @@ public class OnebotChannel extends MessageChannel {
     public Account getAccount(String sessionId) {
         String[] acc = sessionId.split("/", 2);
         if (!acc[0].equals("private") && !acc[0].equals("user")) {
+            logger.error("getAccount() cannot handle {}", sessionId);
             throw new UnsupportedAction("Only support user account");
         }
         Account account = userAccounts.get(acc[1]);
