@@ -1,0 +1,9 @@
+<component name="ArtifactManager">
+  <artifact type="jar" name="openaiadapter:jar">
+    <output-path>$PROJECT_DIR$/out/artifacts/openaiadapter_jar</output-path>
+    <root id="archive" name="openaiadapter.jar">
+      <element id="module-output" name="openaiadapter" />
+      <element id="file-copy" path="$PROJECT_DIR$/openaiadapter/src/main/resources/law.yml" />
+    </root>
+  </artifact>
+</component>

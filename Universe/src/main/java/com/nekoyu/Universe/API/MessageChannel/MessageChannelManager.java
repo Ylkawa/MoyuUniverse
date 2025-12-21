@@ -24,14 +24,16 @@ public class MessageChannelManager {
     }
 
     public void listenToSession(String sessionId, MessageChannelListener mcl) {
-        if (sessionId.equals("*")){
+        if (sessionId.equals("*")) {
             listenersToAll.add(mcl);
         } else {
             sessionListeners.put(sessionId, mcl);
         }
     }
 
-    /** 处理接收到的消息 */
+    /**
+     * 处理接收到的消息
+     */
     public void onMessage(MessageChannel mc, MCMessage mcm) {
         if (mcm.sessionId != null && !mcm.sessionId.isEmpty()) {
             logger.info("接收到来自会话 {} 的消息 {} ({}): {}", mcm.sessionId, mcm.sender.nickname, mcm.sender.id, mcm.messageString);
@@ -49,7 +51,22 @@ public class MessageChannelManager {
         }
     }
 
-    /** 设置会话名称 */
+    /**
+     * 处理消息撤回的事件
+     */
+    public void onMessageRecall(String sessionId, long msgId) {
+        MessageList messageList = messageHistory.get(sessionId);
+        if (messageList != null) return;
+        MCMessage mcm = messageList.getMsg(msgId);
+        if (mcm == null) return;
+        else if (System.currentTimeMillis() / 1000 >= mcm.time + 5) {
+            mcm.isRecalled = true;
+        } else messageList.remove(mcm);
+    }
+
+    /**
+     * 设置会话名称
+     */
     public void setSessionName(String sessionId, String name) throws UnsupportedAction {
         String[] split = sessionId.split(":");
         MessageChannel mc = MessageChannels.get(split[0]);
@@ -57,7 +74,8 @@ public class MessageChannelManager {
         mc.setSessionName(split[1], name);
     }
 
-    /** 发送消息
+    /**
+     * 发送消息
      * sessionId 必须为全局sessionId
      */
     public void sendMessage(String sessionId, String message) {
@@ -94,7 +112,8 @@ public class MessageChannelManager {
     /**
      * 严重警告！！可能返回null
      * 返回的消息最大长度为20
-     * */
+     *
+     */
     public MessageList getMessageHistory(String sessionId) {
         return messageHistory.get(sessionId);
     }

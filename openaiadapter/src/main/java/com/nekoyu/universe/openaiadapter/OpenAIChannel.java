@@ -98,6 +98,7 @@ public class OpenAIChannel extends LLMProvider {
         }
 
         public CompletionsResponse completions(CompletionsRequest completionsRequest, Map<String, LLMFunction> llmFunctions, BufferCallback bufferCallback, int timeout, CompletionsResponse responding) throws IOException {
+            boolean outputted = false;
             logger.debug(gson.toJson(completionsRequest));
             if (timeout <= 1) { // 超时时，禁用所有tool，进行最后一次请求，避免死循环
                 completionsRequest.tools = new ArrayList<>();
@@ -123,6 +124,7 @@ public class OpenAIChannel extends LLMProvider {
                                 DataLine.Choice choice = dl.choices[0];
                                 if (choice.delta.content != null && !choice.delta.content.isBlank()) {
                                     bufferCallback.onCompletion(choice.delta.content);
+                                    outputted = true;
                                     responding.choices[0].message.content += choice.delta.content;
                                 }
                                 if (choice.delta.tool_calls != null) {
@@ -158,7 +160,10 @@ public class OpenAIChannel extends LLMProvider {
                             return responding;
                         }
                         case "tool_calls" -> {
-                            responding.choices[0].message.content += "\n\n\n";
+                            if (outputted) {
+                                responding.choices[0].message.content += "\n\n\n";
+                                bufferCallback.onCompletion("\n\n");
+                            }
                             Message msg = new Message();
                             completionsRequest.messages.add(msg);
                             msg.role = "assistant";

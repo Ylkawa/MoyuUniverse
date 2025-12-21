@@ -69,6 +69,10 @@ public class LLMFunction {
             function.parameters = parameters;
             return this;
         }
+        public Builder parameters(String[] parameters, String[] required) {
+            function.parameters = new Parameters("object", parameters, required);
+            return this;
+        }
         public Builder callback(Callback callback) {
             function.callback = callback;
             return this;

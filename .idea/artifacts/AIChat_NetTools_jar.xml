@@ -1,0 +1,9 @@
+<component name="ArtifactManager">
+  <artifact type="jar" name="AIChat-NetTools:jar">
+    <output-path>$PROJECT_DIR$/out/artifacts/AIChat_NetTools_jar</output-path>
+    <root id="archive" name="AIChat-NetTools.jar">
+      <element id="module-output" name="AIChat-NetTools" />
+      <element id="file-copy" path="$PROJECT_DIR$/AIChat-NetTools/src/main/resources/plug.properties" />
+    </root>
+  </artifact>
+</component>

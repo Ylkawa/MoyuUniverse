@@ -7,6 +7,9 @@ import com.google.gson.JsonSyntaxException;
 import com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.event.Message;
 import com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.event.MessageSegment;
 import com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.event.Meta_Event;
+import com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.event.Notice;
+import com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.event.Notices.FriendRecall;
+import com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.event.Notices.GroupRecall;
 import com.nekoyu.Universe.API.MessageChannel.*;
 import com.nekoyu.Universe.API.MessageChannel.MessageField.*;
 import com.nekoyu.Universe.API.MessageSession;
@@ -109,7 +112,7 @@ public class OnebotChannel extends MessageChannel {
                     try {
                         if (content.getAsJsonObject().get("post_type") != null) {
                             switch (content.getAsJsonObject().get("post_type").getAsString()) {
-                                case "message":
+                                case "message" -> {
                                     Message message = gson.fromJson(s, Message.class);
                                     MCMessage mcm = new MCMessage();
                                     // 标注消息的基本信息
@@ -294,12 +297,26 @@ public class OnebotChannel extends MessageChannel {
                                             break;
                                     }
                                     broadcastMessage(sessionId.toString(), mcm);
-                                    break;
-                                case "meta_event":
+                                }
+                                case "meta_event" -> {
                                     Meta_Event meta_event = gson.fromJson(s, Meta_Event.class);
-                                    break;
-                                default:
+                                }
+                                case "notice" -> {
+                                    Notice notice = gson.fromJson(s, Notice.class);
+                                    switch (notice.notice_type) {
+                                        case "group_recall" -> {
+                                            GroupRecall groupRecall = gson.fromJson(s, GroupRecall.class);
+                                            Universe.MessageChannelManager.onMessageRecall(ID + ":group/" + groupRecall.group_id, groupRecall.message_id);
+                                        }
+                                        case "friend_recall" -> {
+                                            FriendRecall friendRecall = gson.fromJson(s, FriendRecall.class);
+                                            Universe.MessageChannelManager.onMessageRecall(ID + ":private/" + friendRecall.user_id, friendRecall.message_id);
+                                        }
+                                    }
+                                }
+                                default -> {
                                     return;
+                                }
                             }
                         }
                     } catch (JsonSyntaxException ignored) {

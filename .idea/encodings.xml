@@ -3,6 +3,8 @@
   <component name="Encoding">
     <file url="file://$PROJECT_DIR$/AIChat-Memory/src/main/java" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/AIChat-Memory/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/AIChat-NetTools/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/AIChat-NetTools/src/main/resources" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/AIChat/src/main/java" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/AIChat/src/main/resources" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/AliyunWebhook/src/main/java" charset="UTF-8" />
@@ -13,8 +15,8 @@
     <file url="file://$PROJECT_DIR$/ColorGroupName/src/main/resources" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/DeepSeekAdapter/src/main/java" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/DeepSeekAdapter/src/main/resources" charset="UTF-8" />
-    <file url="file://$PROJECT_DIR$/LLMTool_DomainWhois/src/main/java" charset="UTF-8" />
-    <file url="file://$PROJECT_DIR$/LLMTool_DomainWhois/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/LLMTool_NetTools/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/LLMTool_NetTools/src/main/resources" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/Minecraft-Connect/src/main/java" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/Minecraft-Connect/src/main/resources" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/NetworkStatusMonitor/src/main/java" charset="UTF-8" />

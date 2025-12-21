@@ -13,4 +13,11 @@ public class MessageList extends ArrayList<MCMessage> {
         int removeCount = size() - maxSize;
         subList(0, removeCount).clear();
     }
+
+    public MCMessage getMsg(long msgId) {
+        for (MCMessage mcm : this) {
+            if (mcm.id == msgId) return mcm;
+        }
+        return null;
+    }
 }

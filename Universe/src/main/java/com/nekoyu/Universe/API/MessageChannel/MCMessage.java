@@ -4,11 +4,9 @@ import com.nekoyu.Universe.API.MessageChannel.MessageField.MsgField;
 import com.nekoyu.Universe.Universe;
 
 import java.util.*;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
 
 public class MCMessage {
     public Account receiver;
@@ -16,10 +14,11 @@ public class MCMessage {
     public String messageString;
     public String sessionId; // 这个sessionId应该是Global SessionId
     public long time;
-    public int id;
+    public long id;
     public LinkedList<MsgField> messageFields;
     public int level;
     public Map<String, Object> metainfo = new HashMap<>();
+    public boolean isRecalled = false;
     /**
      * if send by universe
      */

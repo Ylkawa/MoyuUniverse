@@ -1,29 +1,25 @@
 package com.nekoyu.universe.aichat;
 
-import com.google.gson.Gson;
 import com.nekoyu.Universe.AIChat.AIChat;
 import com.nekoyu.Universe.AIChat.AIChatPlugin;
 import com.nekoyu.Universe.API.Providers.LLMProvider.LLMFunction;
-import com.nekoyu.Universe.API.Providers.LLMProvider.RespBodies.LLMTool;
 import okhttp3.HttpUrl;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
 
 import java.io.IOException;
-import java.util.HashMap;
 
-public class Whois extends AIChatPlugin {
+public class NetTools extends AIChatPlugin {
     OkHttpClient client = new OkHttpClient();
-    Gson gson = new Gson();
 
-    public Whois(AIChat aiChat) {
+    public NetTools(AIChat aiChat) {
         super(aiChat);
     }
 
     @Override
     public void onEnable() {
-        LLMFunction function = LLMFunction.Builder()
+        AIChat.registerFunction("WhoisLookup", LLMFunction.Builder()
                 .name("WhoisLookup")
                 .description("查询某一个域名的whois信息")
                 .parameters(new LLMFunction.Parameters("object", new String[]{"Domain"}, new String[]{"Domain"}))
@@ -40,8 +36,29 @@ public class Whois extends AIChatPlugin {
                         return "查询失败: " + e.getMessage();
                     }
                 })
-                .build();
-        AIChat.registerFunction("WhoisLookup", function);
+                .build());
+
+        AIChat.registerFunction("DNSLookup", LLMFunction.Builder()
+                .name("DNSLookup")
+                .description("查询某一个域名的DNS信息, RR Type 用于指定要解析的记录种类，如A和AAAA，默认情况下仅解析A和AAAA")
+                .parameters(new String[]{"Domain", "RRType"}, new String[]{"Domain"})
+                .callback(args -> {
+                    String rr = args.get("RRType");
+                    if (rr != null) rr = "A";
+                    Request req = new Request.Builder()
+                            .url(HttpUrl.parse("https://223.5.5.5/resolve").newBuilder()
+                                    .addQueryParameter("name", args.get("Domain"))// 使用 阿里DNS
+                                    .addQueryParameter("type", rr)
+                                    .build())
+                            .build();
+                    try (Response response = client.newCall(req).execute()) {
+                        return response.body().string();
+                    } catch (IOException e) {
+                        return "查询失败: " + e.getMessage();
+                    }
+                })
+                .build()
+        );
     }
 
     @Override
