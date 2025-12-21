@@ -191,7 +191,7 @@ public class WebSearch extends AIChatPlugin {
                                             i++;
                                         }
                                     } else {
-                                        sb.append("无法获取评论区");
+                                        sb.append("\n\n无法获取评论区");
                                     }
                                     return sb.toString();
                                 case -400:
