@@ -182,12 +182,16 @@ public class WebSearch extends AIChatPlugin {
                                         }
                                         sb.append("\n");
                                     }
-                                    sb.append("\n\n评论区");
-                                    short i = 0;
-                                    for (var reply : cl.data.replies) {
-                                        if (i >= 5) break;
-                                        sb.append("\n").append(reply.member.uname).append("(").append(reply.member.sex).append(", Lv.").append(reply.member.level_info.current_level).append(", ").append(reply.reply_control.location).append(", ").append(reply.reply_control.time_desc).append("): ").append(reply.content.message);
-                                        i++;
+                                    if (cl.data.replies != null) {
+                                        sb.append("\n\n评论区");
+                                        short i = 0;
+                                        for (var reply : cl.data.replies) {
+                                            if (i >= 5) break;
+                                            sb.append("\n").append(reply.member.uname).append("(").append(reply.member.sex).append(", Lv.").append(reply.member.level_info.current_level).append(", ").append(reply.reply_control.location).append(", ").append(reply.reply_control.time_desc).append("): ").append(reply.content.message);
+                                            i++;
+                                        }
+                                    } else {
+                                        sb.append("无法获取评论区");
                                     }
                                     return sb.toString();
                                 case -400:
