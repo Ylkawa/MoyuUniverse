@@ -44,7 +44,7 @@ public class NetTools extends AIChatPlugin {
                 .parameters(new String[]{"Domain", "RRType"}, new String[]{"Domain"})
                 .callback(args -> {
                     String rr = args.get("RRType");
-                    if (rr != null) rr = "A";
+                    if (rr == null) rr = "A";
                     Request req = new Request.Builder()
                             .url(HttpUrl.parse("https://223.5.5.5/resolve").newBuilder()
                                     .addQueryParameter("name", args.get("Domain"))// 使用 阿里DNS
