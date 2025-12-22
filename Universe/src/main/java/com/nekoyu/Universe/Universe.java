@@ -110,6 +110,8 @@ public class Universe {
         LawsManager.loadLaws();
         LawsManager.prepareLaws();
         LawsManager.enableLaws();
+        logger.info("宇宙法则加载完毕.");
+        System.gc();
 
         //程序退出动作
         Runtime.getRuntime().addShutdownHook(new Thread(() -> { 

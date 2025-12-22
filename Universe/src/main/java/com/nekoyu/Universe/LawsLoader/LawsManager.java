@@ -10,6 +10,9 @@ import java.io.InputStream;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.util.*;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.jar.JarFile;
 import java.util.zip.ZipEntry;
 
@@ -164,10 +167,15 @@ public class LawsManager {
     }
 
     public void enableLaws() {
+        ExecutorService executor = Executors.newCachedThreadPool();
         for (var law : laws.values()) {
-            new Thread(() -> {
-                enableLaw(law);
-            }).start();
+            executor.submit(() -> enableLaw(law));
+        }
+        executor.shutdown();
+        try {
+            if (!executor.awaitTermination(120, TimeUnit.SECONDS)) logger.warn("加载超时，仍有部分法则未加载完成");
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
         }
     }
 
