@@ -93,14 +93,14 @@ public class LawsManager {
     }
 
     // 依赖检查/准备逻辑
-    private boolean checkDependenciesAndPrepare(Law law, boolean preparePhase) {
+    private boolean checkDependenciesAndPrepare(Law law) {
         if (law.Dependencies != null) {
             List<String> missing = new ArrayList<>();
             for (String dep : law.Dependencies) {
                 Law depLaw = laws.get(dep);
                 if (depLaw == null) {
                     missing.add(dep);
-                } else if (preparePhase && !depLaw.isPrepared) {
+                } else if (!depLaw.isPrepared) {
                     prepareLaw(depLaw);
                     if (!depLaw.isPrepared) return false;
                 }
@@ -108,7 +108,7 @@ public class LawsManager {
             if (!missing.isEmpty()) {
                 logger.error("由于缺失前置宇宙法则 {}，{} {}",
                         String.join(",", missing), law.ID,
-                        preparePhase ? "未就绪" : "无法运行");
+                        "未就绪");
                 return false;
             }
         }
@@ -124,7 +124,7 @@ public class LawsManager {
 
     private void prepareLaw(Law law) {
         if (law.isPrepared) return;
-        if (!checkDependenciesAndPrepare(law, true)) return;
+        if (!checkDependenciesAndPrepare(law)) return;
         law.ableToRun = law.prepare();
         law.isPrepared = true;
     }
