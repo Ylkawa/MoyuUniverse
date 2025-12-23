@@ -47,8 +47,8 @@ public class NetTools extends AIChatPlugin {
                     if (rr == null) rr = "A";
                     Request req = new Request.Builder()
                             .url(HttpUrl.parse("https://223.5.5.5/resolve").newBuilder()
-                                    .addQueryParameter("name", args.get("Domain"))// 使用 阿里DNS
-                                    .addQueryParameter("type", rr)
+                                    .addQueryParameter("name", args.get("Domain")) // 使用 阿里DNS
+                                    .addQueryParameter("type", rr.toUpperCase())
                                     .build())
                             .build();
                     try (Response response = client.newCall(req).execute()) {
