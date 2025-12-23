@@ -1,6 +1,5 @@
 package com.nekoyu.Universe.LawsLoader;
 
-import com.nekoyu.Universe.Universe;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yaml.snakeyaml.Yaml;
@@ -10,9 +9,6 @@ import java.io.InputStream;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.util.*;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
 import java.util.jar.JarFile;
 import java.util.zip.ZipEntry;
 
@@ -21,211 +17,169 @@ public class LawsManager {
     private final Logger logger = LoggerFactory.getLogger(getClass());
     private final Map<String, Law> laws = new HashMap<>();
     private final Map<String, LawCFG> lawCFGs = new HashMap<>();
-    private final Map<String, URLClassLoader> lawClassLoaders = new HashMap<>(); // <-- 保存每个 law 的 classloader
+    private final Map<String, URLClassLoader> lawClassLoaders = new HashMap<>();
 
     public void loadLaws() {
-        File[] jarFiles = Optional.ofNullable(new File("./laws/").listFiles(f -> f.getName().endsWith(".jar")))
-                .orElse(new File[0]);
-        Map<URL, LawCFG> urlToLawCFG = new HashMap<>();
+        // 读取所有 laws 目录下的 .jar 文件
+        File[] jarFiles = new File("./laws/").listFiles((dir, name) -> name.endsWith(".jar"));
+        if (jarFiles == null) jarFiles = new File[0];
 
-        // 1) 读取 law.yml（只读配置）
+        // 1) 从每个 JAR 包中读取 law.yml 配置
         for (File file : jarFiles) {
-            try (JarFile jarFile = new JarFile(file)) {
-                ZipEntry entry = jarFile.getEntry("law.yml");
+            try (JarFile jar = new JarFile(file)) {
+                ZipEntry entry = jar.getEntry("law.yml");
                 if (entry == null) {
                     logger.warn("{} 中没有 law.yml，跳过", file.getName());
                     continue;
                 }
-                try (InputStream in = jarFile.getInputStream(entry)) {
+                try (InputStream in = jar.getInputStream(entry)) {
                     LawCFG cfg = yaml.loadAs(in, LawCFG.class);
                     if (cfg == null || cfg.main == null || cfg.name == null) {
                         logger.warn("{} 的 law.yml 缺少 main/name，跳过", file.getName());
                         continue;
                     }
-                    URL jarUrl = file.toURI().toURL();
-                    cfg.url = jarUrl;
+                    cfg.url = file.toURI().toURL();
                     lawCFGs.put(cfg.name, cfg);
-                    urlToLawCFG.put(jarUrl, cfg);
                 }
             } catch (Exception e) {
                 logger.error("加载 {} 失败", file.getName(), e);
             }
         }
 
-        // 2) 检查依赖可用性
+        // 2) 检查依赖完整性
         for (LawCFG cfg : lawCFGs.values()) {
-            cfg.loadAble = cfg.dependencies == null || cfg.dependencies.stream().allMatch(lawCFGs::containsKey);
+            cfg.loadAble = (cfg.dependencies == null)
+                    || cfg.dependencies.stream().allMatch(lawCFGs::containsKey);
             if (!cfg.loadAble) {
                 logger.warn("法则 {} 缺失依赖 {}", cfg.name, cfg.dependencies);
             }
         }
 
-        // 3) 分组（按依赖合并）
-        List<List<URL>> groups = new ArrayList<>();
-        Map<String, List<URL>> regMap = new HashMap<>();
+        // 3) 加载每个法则及其依赖的类
         for (LawCFG cfg : lawCFGs.values()) {
-            if (!cfg.loaded && cfg.loadAble) {
-                List<URL> group = new ArrayList<>();
-                groupByDependencies(cfg, group, regMap, groups);
-            }
-        }
-
-        // 4) 为每个分组创建 URLClassLoader 并加载类 **(不要关闭 classloader)**，
-        //    并把 classloader 与组中每个 law 关联起来（以便后续运行线程使用）
-        for (List<URL> group : groups) {
-            logger.debug("准备加载分组: {}", group);
-            URL[] urls = group.toArray(new URL[0]);
-            URLClassLoader cl = new URLClassLoader(urls, getClass().getClassLoader()); // <-- 不要放到 try-with-resources
-
-            for (URL url : group) {
-                LawCFG cfg = urlToLawCFG.get(url);
-                if (cfg == null) continue;
-                ClassLoader previousCtx = Thread.currentThread().getContextClassLoader();
-                try {
-                    // 临时把当前线程的上下文类加载器切到插件的 classloader，
-                    // 这样插件初始化期间如果有 Class.forName(...)（不带 classloader 参数）也能找到类。
-                    Thread.currentThread().setContextClassLoader(cl);
-
-                    Class<?> clazz = Class.forName(cfg.main, true, cl); // 显式用 cl 加载主类
-                    Law law = (Law) clazz.getDeclaredConstructor().newInstance();
-                    law.ID = cfg.name;
-                    laws.put(cfg.name, law);
-
-                    // 保存该 law 使用的 classloader（用于启动它的线程）
-                    lawClassLoaders.put(cfg.name, cl);
-
-                    logger.info("成功加载法则: {}", cfg.name);
-                } catch (Exception e) {
-                    logger.error("加载法则 {} 失败", cfg.name, e);
-                } finally {
-                    Thread.currentThread().setContextClassLoader(previousCtx);
-                }
+            if (!cfg.loadAble) continue;
+            // 递归收集当前法则及其所有依赖的 JAR URL
+            Set<URL> urls = new HashSet<>();
+            gatherDependencyURLs(cfg, urls);
+            URL[] urlArray = urls.toArray(new URL[0]);
+            URLClassLoader cl = new URLClassLoader(urlArray, getClass().getClassLoader());
+            try {
+                // 切换上下文类加载器以保证 Class.forName 能找到类
+                Thread.currentThread().setContextClassLoader(cl);
+                Class<?> clazz = Class.forName(cfg.main, true, cl);
+                Law law = (Law) clazz.getDeclaredConstructor().newInstance();
+                law.ID = cfg.name;
+                laws.put(cfg.name, law);
+                lawClassLoaders.put(cfg.name, cl);
+                logger.info("成功加载法则: {}", cfg.name);
+            } catch (Exception e) {
+                logger.error("加载法则 {} 失败", cfg.name, e);
+            } finally {
+                // 恢复原始上下文类加载器（可选）
+                Thread.currentThread().setContextClassLoader(getClass().getClassLoader());
             }
         }
     }
 
-    private void groupByDependencies(LawCFG cfg, List<URL> list,
-                                     Map<String, List<URL>> reg, List<List<URL>> groups) {
-        if (cfg.loaded) return;
-        if (!groups.contains(list)) groups.add(list);
-        if (!list.contains(cfg.url)) list.add(cfg.url);
-        cfg.loaded = true;
-        reg.put(cfg.name, list);
-
+    // 递归收集法则及其依赖的 URL
+    private void gatherDependencyURLs(LawCFG cfg, Set<URL> set) {
+        if (cfg == null || set.contains(cfg.url)) return;
+        set.add(cfg.url);
         if (cfg.dependencies != null) {
             for (String dep : cfg.dependencies) {
-                LawCFG depCfg = lawCFGs.get(dep);
-                if (depCfg == null) continue;
-                groupByDependencies(depCfg, list, reg, groups);
-
-                List<URL> depList = reg.get(dep);
-                if (depList != null && depList != list) {
-                    depList.addAll(list);
-                    groups.remove(list);
-                    // 替换所有引用旧 list 的注册表项
-                    List<URL> finalList = list;
-                    reg.replaceAll((k, v) -> v == finalList ? depList : v);
-                    list = depList;
-                }
+                gatherDependencyURLs(lawCFGs.get(dep), set);
             }
         }
     }
 
-    // 依赖检查/准备/启动逻辑（与之前简化逻辑类似）
+    // 依赖检查/准备逻辑
     private boolean checkDependenciesAndPrepare(Law law, boolean preparePhase) {
-        if (law.Dependencies == null) return true;
-        List<String> missing = new ArrayList<>();
-        for (String dep : law.Dependencies) {
-            Law depLaw = laws.get(dep);
-            if (depLaw == null) {
-                missing.add(dep);
-            } else if (preparePhase && !depLaw.isPrepared) {
-                synchronized (depLaw) {
-                    if (!depLaw.isPrepared) prepareLaw(depLaw);
-                }
-            }
-        }
-        if (!missing.isEmpty()) {
-            Universe.logger.error("由于缺失前置宇宙法则 {}，{} {}", String.join(",", missing),
-                    law.ID, preparePhase ? "未就绪" : "无法运行");
-            return false;
-        }
-        return true;
-    }
-
-    public void prepareLaws() { laws.values().forEach(this::prepareLaw); }
-
-    private void prepareLaw(Law law) {
-        if (law.isPrepared) return;
-        if (!checkDependenciesAndPrepare(law, true)) return;
-        new Thread(() -> {
-            synchronized (law) {
-                law.ableToRun = law.prepare();
-                law.isPrepared = true;
-            }
-        }).start();
-    }
-
-    public void enableLaws() {
-        ExecutorService executor = Executors.newCachedThreadPool();
-        for (var law : laws.values()) {
-            executor.submit(() -> enableLaw(law));
-        }
-        executor.shutdown();
-        try {
-            if (!executor.awaitTermination(120, TimeUnit.SECONDS)) logger.warn("加载超时，仍有部分法则未加载完成");
-        } catch (InterruptedException e) {
-            throw new RuntimeException(e);
-        }
-    }
-
-    public void enableLaw(Law law) {
-        while (!law.isPrepared) {
-            Thread.yield();
-        }
-        if (!law.ableToRun) {
-            logger.warn("{} 报告未就绪，不会运行", law.ID);
-            return;
-        }
-        if (law.isRunning) return;
-
-        logger.info("启动 {} ...", law.ID);
-        // 启动前确保前置法则先启动
         if (law.Dependencies != null) {
             List<String> missing = new ArrayList<>();
             for (String dep : law.Dependencies) {
                 Law depLaw = laws.get(dep);
-                if (depLaw == null) missing.add(dep);
-                else enableLaw(depLaw);
+                if (depLaw == null) {
+                    missing.add(dep);
+                } else if (preparePhase && !depLaw.isPrepared) {
+                    prepareLaw(depLaw);
+                    if (!depLaw.isPrepared) return false;
+                }
             }
             if (!missing.isEmpty()) {
-                Universe.logger.error("由于缺失前置宇宙法则 {}，{} 无法运行", String.join(",", missing), law.ID);
-                return;
+                logger.error("由于缺失前置宇宙法则 {}，{} {}",
+                        String.join(",", missing), law.ID,
+                        preparePhase ? "未就绪" : "无法运行");
+                return false;
             }
         }
+        return true;
+    }
 
-        // 启动 law 的线程，并把对应的 classloader 设置为该线程的上下文类加载器
+    // 顺序调用各法则的 prepare
+    public void prepareLaws() {
+        for (Law law : laws.values()) {
+            prepareLaw(law);
+        }
+    }
+
+    private void prepareLaw(Law law) {
+        if (law.isPrepared) return;
+        if (!checkDependenciesAndPrepare(law, true)) return;
+        law.ableToRun = law.prepare();
+        law.isPrepared = true;
+    }
+
+    // 顺序启动各法则
+    public void enableLaws() {
+        for (Law law : laws.values()) {
+            enableLaw(law);
+        }
+    }
+
+    public void enableLaw(Law law) {
+        if (!law.isPrepared) prepareLaw(law);
+        if (!law.ableToRun) {
+            logger.warn("{} 报告未就绪，不会运行", law.ID);
+            return;
+        }
+        if (law.Dependencies != null) {
+            for (String dep : law.Dependencies) {
+                Law depLaw = laws.get(dep);
+                if (depLaw == null) {
+                    logger.error("由于缺失前置宇宙法则 {}，{} 无法运行", dep, law.ID);
+                    return;
+                }
+                if (!depLaw.isRunning) {
+                    enableLaw(depLaw);
+                }
+            }
+        }
+        if (law.isRunning) return;
+        logger.info("启动 {} ...", law.ID);
         URLClassLoader cl = lawClassLoaders.get(law.ID);
         Thread t = new Thread(new LawThread(law), "Law-" + law.ID);
-        if (cl != null) t.setContextClassLoader(cl); // <-- 关键：保证插件线程的 context loader
+        if (cl != null) t.setContextClassLoader(cl);
         t.start();
     }
 
-    public void stopLaws() { laws.values().forEach(this::stopLaw); }
-
-    private void stopLaw(Law law) {
-        if (law.isRunning) {
-            law.stop();
-            law.isRunning = false;
+    public void stopLaws() {
+        for (Law law : laws.values()) {
+            if (law.isRunning) {
+                law.stop();
+                law.isRunning = false;
+            }
         }
     }
 
-    // 可选：在程序关闭或卸载插件时调用，关闭所有 classloader（如果你需要释放文件句柄）
+    // 关闭所有 ClassLoader 并释放资源
     public void closeAllLoaders() {
-        // 注意：关闭 classloader 后，相关类将不可再加载。确保先 stopLaws()
-        new ArrayList<>(lawClassLoaders.values()).forEach(cl -> {
-            try { cl.close(); } catch (Exception e) { logger.warn("关闭 classloader 失败", e); }
-        });
+        for (URLClassLoader cl : new ArrayList<>(lawClassLoaders.values())) {
+            try {
+                cl.close();
+            } catch (Exception e) {
+                logger.warn("关闭 classloader 失败", e);
+            }
+        }
         lawClassLoaders.clear();
     }
 }
