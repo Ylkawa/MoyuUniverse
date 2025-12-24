@@ -26,8 +26,8 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * 末屿宇宙LLMProvider的OpenAI API兼容实现
- * 注意：此Adapter支持以堵塞式和流式逻辑，但是堵塞式请求并非原生请求，而是通过流式请求完成，因而仅支持可以流式请求的模型
+ * 末屿宇宙 LLMProvider 的 OpenAI API 兼容实现
+ * 注意：此 Adapter 支持以堵塞式和流式逻辑，但是堵塞式请求并非原生非流式请求，而是通过流式请求完成，因而仅支持可以流式请求的 API
  * Only supports streamed outputting and function calling models
  */
 public class OpenAIChannel extends LLMProvider {
@@ -38,7 +38,7 @@ public class OpenAIChannel extends LLMProvider {
     String apikey;
     String baseurl;
     String defaultModel;
-    String speciallyAdaptation = null;
+    String speciallyAdaptation = null; // 特调选项
 
     public OpenAIChannel() {
         client = new OkHttpClient.Builder()
@@ -58,7 +58,7 @@ public class OpenAIChannel extends LLMProvider {
         responding.usage.total_tokens = 0;
         responding.choices = new CompletionsResponse.Choice[]{new CompletionsResponse.Choice(){{message.content = "";}}};
         CompletionsRequest cr = new CompletionsRequest();
-        if ("dashscope".equals(speciallyAdaptation)) {
+        if ("dashscope".equals(speciallyAdaptation)) { // 对阿里云百炼进行特调
             cr.stream_options.put("include_usage", true);
         }
         if (model != null) cr.model = model;
