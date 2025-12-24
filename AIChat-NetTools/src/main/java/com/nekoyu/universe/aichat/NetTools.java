@@ -19,7 +19,7 @@ public class NetTools extends AIChatPlugin {
 
     @Override
     public void onEnable() {
-        AIChat.registerFunction("WhoisLookup", LLMFunction.Builder()
+        registerFunction(new String[]{"WhoisLookup", "NetTools"}, LLMFunction.Builder()
                 .name("WhoisLookup")
                 .description("查询某一个域名的 Whois 信息")
                 .parameters(new LLMFunction.Parameters("object", new String[]{"Domain"}, new String[]{"Domain"}))
@@ -38,7 +38,7 @@ public class NetTools extends AIChatPlugin {
                 })
                 .build());
 
-        AIChat.registerFunction("DNSLookup", LLMFunction.Builder()
+        registerFunction(new String[]{"DNSLookup", "NetTools"}, LLMFunction.Builder()
                 .name("DNSLookup")
                 .description("查询某一个域名的 DNS 信息, RR Type 用于指定要解析的记录种类，如 A 和 AAAA ，默认情况下仅解析 A")
                 .parameters(new String[]{"Domain", "RRType"}, new String[]{"Domain"})

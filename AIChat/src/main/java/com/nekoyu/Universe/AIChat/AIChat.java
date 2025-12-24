@@ -1,5 +1,7 @@
 package com.nekoyu.Universe.AIChat;
 
+import com.google.common.collect.ArrayListMultimap;
+import com.google.common.collect.Multimap;
 import com.google.gson.Gson;
 import com.nekoyu.Universe.AIChat.Event.RequestEvent;
 import com.nekoyu.Universe.API.MessageChannel.MCMessage;
@@ -34,7 +36,7 @@ public class AIChat extends Law {
     public static final Gson gson = new Gson();
     Logger logger = LoggerFactory.getLogger(this.getClass());
     List<SessionConfig> configs = new ArrayList<>();
-    static Map<String, LLMFunction> llmFunctions = new HashMap<>();
+    static Multimap<String, LLMFunction> llmFunctions = ArrayListMultimap.create();
     List<AIChatPlugin> aiChatPlugins = new ArrayList<>();
     Config new_cfg;
 
@@ -146,7 +148,11 @@ public class AIChat extends Law {
                         Assistant assistant = lp.newAssistant(cfg.Model);
                         if (cfg.Tools != null) {
                             for (String tool : cfg.Tools) {
-                                if (llmFunctions.get(tool) != null) assistant.addTool(llmFunctions.get(tool));
+                                if (llmFunctions.get(tool) != null) {
+                                    for (LLMFunction func : llmFunctions.get(tool)) {  // FIXME Tool 可能被重复添加而无保护
+                                        assistant.addTool(func);
+                                    }
+                                }
                             } // 为assistant添加指定的tools // 如果不存在这个tool就不添加
                         }
                         // 决定让AI发言

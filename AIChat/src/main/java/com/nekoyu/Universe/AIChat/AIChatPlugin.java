@@ -29,4 +29,10 @@ public abstract class AIChatPlugin {
     public void registerFunction(String toolName, LLMFunction tool) {
         AIChat.registerFunction(toolName, tool);
     }
+
+    public void registerFunction(String[] toolName, LLMFunction tool) {
+        for (String name : toolName) {
+            registerFunction(name, tool);
+        }
+    }
 }
