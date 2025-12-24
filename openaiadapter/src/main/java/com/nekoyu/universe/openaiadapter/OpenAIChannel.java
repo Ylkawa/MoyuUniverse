@@ -22,6 +22,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * 末屿宇宙LLMProvider的OpenAI API兼容实现
@@ -36,6 +38,7 @@ public class OpenAIChannel extends LLMProvider {
     String apikey;
     String baseurl;
     String defaultModel;
+    String speciallyAdaptation = null;
 
     public OpenAIChannel() {
         client = new OkHttpClient.Builder()
@@ -47,80 +50,87 @@ public class OpenAIChannel extends LLMProvider {
         tools = new ArrayList<>();
     }
 
-        @Override
-        public CompletionsResponse completions(String model, MessageList messageList, Map<String, LLMFunction> llmFunctions, BufferCallback bufferCallback) throws IOException {
-            CompletionsResponse responding = new CompletionsResponse(); // fake unstreamed response
-            responding.usage.completion_tokens = 0;
-            responding.usage.prompt_tokens = 0;
-            responding.usage.total_tokens = 0;
-            responding.choices = new CompletionsResponse.Choice[]{new CompletionsResponse.Choice(){{message.content = "";}}};
-            CompletionsRequest cr = new CompletionsRequest();
-            if (model != null) cr.model = model;
-            else cr.model = defaultModel;
-            // Add functions if exists
-            if (llmFunctions != null) for (LLMFunction function : llmFunctions.values()) {
-                var oaiTool = new LLMTool();
-                oaiTool.function = function;
-                oaiTool.type = "function";
-                cr.tools.add(oaiTool);
-            }
-            // Transfer Universe message list to OpenAI message list
-            for (MCMessage m : messageList) {
-                boolean fullyText = true;
-                for (MsgField field : m.messageFields) {
-                    if (!field.type.equals("text")) {
-                        fullyText = false;
-                        break;
-                    }
-                }
-                if (fullyText) {
-                    StringMessage message = new StringMessage();
-                    if (m.universe) {
-                        message.role = "assistant";
-                    } else if (m.getMetainfo("role") instanceof String role) {
-                        message.role = role;
-                    } else message.role = "user";
-                    message.content = m.solveAll();
-                    cr.messages.add(message);
-                } else {
-                    ArrayMessage message = new ArrayMessage();
-                    if (m.universe) {
-                        message.role = "assistant";
-                    } else if (m.getMetainfo("role") instanceof String role) {
-                        message.role = role;
-                    } else message.role = "user";
-                    message.content.add(new TextPiece(m.solveAll()));
-                    cr.messages.add(message);
-                }
-            }
-            cr.stream = true;
-            return completions(cr, llmFunctions, bufferCallback, 5, responding);
+    @Override
+    public CompletionsResponse completions(String model, MessageList messageList, Map<String, LLMFunction> llmFunctions, BufferCallback bufferCallback) throws IOException {
+        CompletionsResponse responding = new CompletionsResponse(); // fake unstreamed response
+        responding.usage.completion_tokens = 0;
+        responding.usage.prompt_tokens = 0;
+        responding.usage.total_tokens = 0;
+        responding.choices = new CompletionsResponse.Choice[]{new CompletionsResponse.Choice(){{message.content = "";}}};
+        CompletionsRequest cr = new CompletionsRequest();
+        if ("dashscope".equals(speciallyAdaptation)) {
+            cr.stream_options.put("include_usage", true);
         }
-
-        public CompletionsResponse completions(CompletionsRequest completionsRequest, Map<String, LLMFunction> llmFunctions, BufferCallback bufferCallback, int timeout, CompletionsResponse responding) throws IOException {
-            boolean outputted = false;
-            logger.debug(gson.toJson(completionsRequest));
-            if (timeout <= 1) { // 超时时，禁用所有tool，进行最后一次请求，避免死循环
-                completionsRequest.tools = new ArrayList<>();
+        if (model != null) cr.model = model;
+        else cr.model = defaultModel;
+        // Add functions if exists
+        if (llmFunctions != null) for (LLMFunction function : llmFunctions.values()) {
+            var oaiTool = new LLMTool();
+            oaiTool.function = function;
+            oaiTool.type = "function";
+            cr.tools.add(oaiTool);
+        }
+        // Transfer Universe message list to OpenAI message list
+        for (MCMessage m : messageList) {
+            boolean fullyText = true;
+            for (MsgField field : m.messageFields) {
+                if (!field.type.equals("text")) {
+                    fullyText = false;
+                    break;
+                }
             }
-            Request req = new Request.Builder()
-                    .url(baseurl + "/chat/completions")
-                    .addHeader("Authorization", "Bearer " + apikey)
-                    .post(RequestBody.create(gson.toJson(completionsRequest), MediaType.get("application/json; charset=utf-8")))
-                    .build();
-            // 这里得改成异步的，不然不够先进
-            try (Response response = client.newCall(req).execute()) {
-                if (response.isSuccessful()) {
-                    BufferedSource source = response.body().source();
-                    String line;
-                    Map<Integer, Tool_call> tool_calls = new HashMap<>();
-                    String finish_reason = "unfinished";
-                    while ((line = source.readUtf8Line()) != null) {
-                        if (line.startsWith("data: ")) {
-                            String json = line.substring(6).trim();
-                            logger.debug(json);
-                            if (json.startsWith("{")) {
-                                DataLine dl = gson.fromJson(json, DataLine.class);
+            if (fullyText) {
+                StringMessage message = new StringMessage();
+                if (m.universe) {
+                    message.role = "assistant";
+                } else if (m.getMetainfo("role") instanceof String role) {
+                    message.role = role;
+                } else message.role = "user";
+                message.content = m.solveAll();
+                cr.messages.add(message);
+            } else {
+                ArrayMessage message = new ArrayMessage();
+                if (m.universe) {
+                    message.role = "assistant";
+                } else if (m.getMetainfo("role") instanceof String role) {
+                    message.role = role;
+                } else message.role = "user";
+                message.content.add(new TextPiece(m.solveAll()));
+                cr.messages.add(message);
+            }
+        }
+        cr.stream = true;
+        CompletionsResponse completions = completions(cr, llmFunctions, bufferCallback, 5, responding);
+        if (completions.usage.total_tokens > 0)
+            logger.info("本次请求消耗 tokens: 输入 {}  输出 {}", completions.usage.prompt_tokens, completions.usage.completion_tokens); // 无言了，百炼的 API 默认不返回 usage
+        return completions;
+    }
+
+    public CompletionsResponse completions(CompletionsRequest completionsRequest, Map<String, LLMFunction> llmFunctions, BufferCallback bufferCallback, int timeout, CompletionsResponse responding) throws IOException {
+        boolean outputted = false;
+        logger.debug(gson.toJson(completionsRequest));
+        if (timeout <= 1) { // 超时时，禁用所有tool，进行最后一次请求，避免死循环
+            completionsRequest.tools = new ArrayList<>();
+        }
+        Request req = new Request.Builder()
+                .url(baseurl + "/chat/completions")
+                .addHeader("Authorization", "Bearer " + apikey)
+                .post(RequestBody.create(gson.toJson(completionsRequest), MediaType.get("application/json; charset=utf-8")))
+                .build();
+        // 这里得改成异步的，不然不够先进
+        try (Response response = client.newCall(req).execute()) {
+            if (response.isSuccessful()) {
+                BufferedSource source = response.body().source();
+                String line;
+                Map<Integer, Tool_call> tool_calls = new HashMap<>();
+                String finish_reason = "unfinished";
+                while ((line = source.readUtf8Line()) != null) {
+                    if (line.startsWith("data: ")) {
+                        String json = line.substring(6).trim();
+                        logger.debug(json);
+                        if (json.startsWith("{")) {
+                            DataLine dl = gson.fromJson(json, DataLine.class);
+                            if (dl.choices.length > 0) {
                                 DataLine.Choice choice = dl.choices[0];
                                 if (choice.delta.content != null && !choice.delta.content.isBlank()) {
                                     bufferCallback.onCompletion(choice.delta.content);
@@ -136,66 +146,78 @@ public class OpenAIChannel extends LLMProvider {
                                             loading.function.arguments = "";
                                         }
                                         if (tool_call.id != null && !tool_call.id.isBlank()) loading.id = tool_call.id;
-                                        if (tool_call.type != null && !tool_call.type.isBlank()) loading.type = tool_call.type;
+                                        if (tool_call.type != null && !tool_call.type.isBlank())
+                                            loading.type = tool_call.type;
                                         if (tool_call.function.name != null && !tool_call.function.name.isBlank())
                                             loading.function.name = tool_call.function.name;
-                                        if (tool_call.function.arguments != null) loading.function.arguments += tool_call.function.arguments;
+                                        if (tool_call.function.arguments != null)
+                                            loading.function.arguments += tool_call.function.arguments;
                                     }
                                 }
                                 if (choice.finish_reason != null) {
                                     finish_reason = choice.finish_reason;
                                     responding.choices[0].finish_reason = finish_reason;
                                 }
-                                if (dl.usage != null) {
-                                    responding.usage.total_tokens += dl.usage.total_tokens;
-                                    responding.usage.prompt_tokens += dl.usage.prompt_tokens;
-                                    responding.usage.completion_tokens += dl.usage.completion_tokens;
-                                }
+                            }
+                            if (dl.usage != null) {
+                                responding.usage.total_tokens += dl.usage.total_tokens;
+                                responding.usage.prompt_tokens += dl.usage.prompt_tokens;
+                                responding.usage.completion_tokens += dl.usage.completion_tokens;
                             }
                         }
                     }
-                    // 响应体接收完毕
-                    switch (finish_reason) {
-                        case "stop" -> {
-                            return responding;
+                }
+                // 响应体接收完毕
+                switch (finish_reason) {
+                    case "stop" -> {
+                        return responding;
+                    }
+                    case "tool_calls" -> {
+                        if (outputted) {
+                            responding.choices[0].message.content += "\n\n\n";
+                            bufferCallback.onCompletion("\n\n");
                         }
-                        case "tool_calls" -> {
-                            if (outputted) {
-                                responding.choices[0].message.content += "\n\n\n";
-                                bufferCallback.onCompletion("\n\n");
-                            }
-                            Message msg = new Message();
-                            completionsRequest.messages.add(msg);
-                            msg.role = "assistant";
-                            msg.tool_calls = tool_calls.values().toArray(new Tool_call[0]);
-                            for (Tool_call tool_call : msg.tool_calls) {
-                                if (tool_call.function.arguments.startsWith("\"")) tool_call.function.arguments = tool_call.function.arguments.substring(1, tool_call.function.arguments.length() - 1); // 不知道为什么DeepSeek喜欢在arg前后各加一个"，删了
-                                logger.debug(gson.toJson(tool_call));
-                                LLMFunction llmFunction = llmFunctions.get(tool_call.function.name);
-                                ArrayMessage toolMsg = new ArrayMessage();
-                                toolMsg.role = "tool";
-                                toolMsg.tool_call_id = tool_call.id;
-                                HashMap args;
+                        Message msg = new Message();
+                        completionsRequest.messages.add(msg);
+                        msg.role = "assistant";
+                        msg.tool_calls = tool_calls.values().toArray(new Tool_call[0]);
+                        for (Tool_call tool_call : msg.tool_calls) {
+                            if (tool_call.function.arguments.startsWith("\"")) tool_call.function.arguments = tool_call.function.arguments.substring(1, tool_call.function.arguments.length() - 1); // 不知道为什么DeepSeek喜欢在arg前后各加一个"，删了
+                            logger.debug(gson.toJson(tool_call));
+                            LLMFunction llmFunction = llmFunctions.get(tool_call.function.name);
+                            ArrayMessage toolMsg = new ArrayMessage();
+                            toolMsg.role = "tool";
+                            toolMsg.tool_call_id = tool_call.id;
+                            HashMap args;
+                            try {
+                                args = gson.fromJson(tool_call.function.arguments, HashMap.class);
+                                toolMsg.content.add(new TextPiece(llmFunction.callback.callback(args)));
+                            } catch (JsonSyntaxException e) {
+                                tool_call.function.arguments.replaceAll("\\\\", "");
                                 try {
                                     args = gson.fromJson(tool_call.function.arguments, HashMap.class);
                                     toolMsg.content.add(new TextPiece(llmFunction.callback.callback(args)));
-                                } catch (JsonSyntaxException e) {
-                                    tool_call.function.arguments.replaceAll("\\\\", "");
-                                    try {
-                                        args = gson.fromJson(tool_call.function.arguments, HashMap.class);
-                                        toolMsg.content.add(new TextPiece(llmFunction.callback.callback(args)));
-                                    } catch (JsonSyntaxException ex) { // 我真没话说，deepseek写的function calling的arguments，一次一套格式，json都不是，还把结构标识符转义掉了
-                                        toolMsg.content.add(new TextPiece(ex.getMessage()));
-                                    }
+                                } catch (JsonSyntaxException ex) { // 我真没话说，deepseek写的function calling的arguments，一次一套格式，json都不是，还把结构标识符转义掉了
+                                    toolMsg.content.add(new TextPiece(ex.getMessage()));
                                 }
-                                completionsRequest.messages.add(toolMsg);
                             }
-                            return completions(completionsRequest, llmFunctions, bufferCallback, timeout-1, responding);
+                            completionsRequest.messages.add(toolMsg);
                         }
-                        case "unfinished" -> throw new IOException("出现意外导致请求未完成");
+                        return completions(completionsRequest, llmFunctions, bufferCallback, timeout-1, responding);
                     }
-                } else throw new IOException("Unexpected code " + response); // 没成功就是抽风了，至于是服务器抽风，还是账号抽风，还是网络抽风，不想管
-            }
-            throw new IOException("Unknown error");
+                    case "unfinished" -> throw new IOException("出现意外导致请求未完成");
+                }
+            } else throw new IOException("Unexpected code " + response); // 没成功就是抽风了，至于是服务器抽风，还是账号抽风，还是网络抽风，不想管
         }
+        throw new IOException("Unknown error");
+    }
+
+    public void setBaseurl(String baseurl) {
+        this.baseurl = baseurl;
+        Pattern pattern = Pattern.compile("^https://[^/]+\\.aliyuncs\\.com(/.*)?$");
+        Matcher matcher = pattern.matcher(baseurl);
+        if (matcher.find()) {
+            speciallyAdaptation = "dashscope";
+        }
+    }
 }

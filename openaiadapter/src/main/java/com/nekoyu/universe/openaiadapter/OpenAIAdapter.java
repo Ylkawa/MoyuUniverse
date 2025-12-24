@@ -21,7 +21,7 @@ public class OpenAIAdapter extends Law {
                 Config cfg = gson.fromJson(fr, Config.class);
                 OpenAIChannel channel = new OpenAIChannel();
                 channel.apikey = cfg.APIKey;
-                channel.baseurl = cfg.BaseUrl;
+                channel.setBaseurl(cfg.BaseUrl);
                 channel.defaultModel = cfg.DefaultModel;
                 channel.logger = LoggerFactory.getLogger("OpenAI C - " + cfg.ProviderId);
                 Universe.Providers.put(cfg.ProviderId, channel);
