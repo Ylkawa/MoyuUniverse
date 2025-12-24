@@ -71,6 +71,7 @@ public class WebSearch extends AIChatPlugin {
         }
         client = new OkHttpClient.Builder()
                 .proxy(proxy)
+                .followRedirects(false) // 不这样设置，短链的重定向会直接跳过去，识别不到
                 .build();
 
         var dst = new LLMFunction("GoogleSearch",
@@ -152,7 +153,7 @@ public class WebSearch extends AIChatPlugin {
                             CommentList cl = Client.getVideoCommentList(bv);
                             StringBuilder sb = new StringBuilder();
                             switch (info.code) {
-                                case 0:
+                                case 0 -> {
                                     sb.append("「").append(bv).append("」").append("的信息:\n");
                                     sb.append("作者: ").append(info.data.owner.name).append(" (UID:").append(info.data.owner.mid).append(")");
                                     sb.append("标题: ").append(info.data.title).append("\n");
@@ -194,26 +195,53 @@ public class WebSearch extends AIChatPlugin {
                                         sb.append("\n\n无法获取评论区");
                                     }
                                     return sb.toString();
-                                case -400:
+                                }
+                                case -400 -> {
                                     return bv + "请求错误";
-                                case -403:
+                                }
+                                case -403 -> {
                                     return bv + "权限不足";
-                                case -404:
+                                }
+                                case -404 -> {
                                     return bv + "不存在";
-                                case 62002:
+                                }
+                                case 62002 -> {
                                     return bv + "不可见";
-                                case 62004:
+                                }
+                                case 62004 -> {
                                     return bv + "审核中";
-                                case 62012:
-                                    return bv + "仅UP主自己可见";
-                                default:
+                                }
+                                case 62012 -> {
+                                    return bv + "仅 UP主 自己可见";
+                                }
+                                default -> {
                                     return bv + "未知响应码" + info.code;
+                                }
                             }
                         } catch (IOException e) {
                             return "请求失败" + e.getMessage();
                         }
-                    } else {
-                        return "不支持此链接类型，请停止访问此链接";
+                    }
+                }
+                case "b23.tv" -> { // 处理短链
+                    logger.debug("检测到短链");
+                    try (Response resp = client.newCall(Client.packageReq(new Request.Builder())
+                                .url(url)
+                                .build()
+                        ).execute()
+                    ) {
+                        logger.debug(String.valueOf(resp.code()));
+                        if (resp.body() != null) {
+                            logger.debug(resp.body().string());
+                        }
+                        if (resp.code() == 302 || resp.code() == 301) {
+                            logger.debug("正在访问直链");
+                            String location = resp.header("Location");
+                            logger.debug(location);
+                            return visitUrl(location);
+                        }
+                    } catch (IOException e) {
+                        throw new RuntimeException(e);
                     }
                 }
                 case "space.bilibili.com" -> {
@@ -288,7 +316,7 @@ public class WebSearch extends AIChatPlugin {
                     }
                 }
                 case "www.youtube.com" -> {
-                    if (ytbClient == null) return "YouTube访问能力未激活";
+                    if (ytbClient == null) return "YouTube 访问能力未激活";
                     Matcher matcher = Pattern.compile("v=([A-Za-z0-9_-]{11})").matcher(url);
                     if (matcher.find()) {
                         try {
@@ -320,16 +348,15 @@ public class WebSearch extends AIChatPlugin {
                             respBuilder.append("\n}");
                             return respBuilder.toString();
                         } catch (IOException e) {
-                            return "调用API时出错" + e.getMessage();
+                            return "调用 API 时出错" + e.getMessage();
                         }
                     }
                 }
                 default -> {
-                    return "不支持的链接类型";
+                    return "不支持的链接类型, 请停止访问此链接";
                 }
             }
         }
-        // 匹配B站视频的情况
         return "未知原因导致访问失败";
     }
 }
