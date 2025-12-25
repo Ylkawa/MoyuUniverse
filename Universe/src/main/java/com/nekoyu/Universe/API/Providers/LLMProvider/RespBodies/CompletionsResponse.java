@@ -10,6 +10,7 @@ public class CompletionsResponse {
     public Choice[] choices;
     public Usage usage;
     public String system_fingerprint;
+    public LLMError error;
 
     public CompletionsResponse() {
         choices = new Choice[0];
@@ -42,5 +43,10 @@ public class CompletionsResponse {
         public int prompt_tokens;
         public int completion_tokens;
         public int total_tokens;
+    }
+
+    public static class LLMError {
+        String message;
+        String type;
     }
 }
