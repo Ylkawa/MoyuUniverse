@@ -33,7 +33,7 @@ public class AIChatMemory extends AIChatPlugin {
             config.put("Password", "password");
             File cfgFile = new File("./config/AIChat/Plugins/Memory/config.yml");
             try {
-                cfgFile.createNewFile();
+                if (cfgFile.createNewFile()) logger.info("配置文件已生成，请修改配置文件再重新启动");
             } catch (IOException ex) {
                 throw new RuntimeException(ex);
             }
@@ -42,6 +42,8 @@ public class AIChatMemory extends AIChatPlugin {
             } catch (IOException ex) {
                 throw new RuntimeException(ex);
             }
+            ready = false;
+            return;
         }
         try {
             DriverManager.registerDriver(new com.mysql.cj.jdbc.Driver());
@@ -55,7 +57,7 @@ public class AIChatMemory extends AIChatPlugin {
             logger.info("数据库可用，组件已激活");
         } catch (SQLException e) {
             ready = false;
-            logger.error("无法创建SQL连接", e);
+            logger.error("无法创建 SQL 连接", e);
         }
     }
 

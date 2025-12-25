@@ -1,4 +1,4 @@
-package com.nekoyu.Universe.API.Providers.LLMProvider;
+package com.nekoyu.Universe.API.Providers.LLMProvider.RespBodies;
 
 import java.util.*;
 
