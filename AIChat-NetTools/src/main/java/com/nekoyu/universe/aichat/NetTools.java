@@ -2,7 +2,7 @@ package com.nekoyu.universe.aichat;
 
 import com.nekoyu.Universe.AIChat.AIChat;
 import com.nekoyu.Universe.AIChat.AIChatPlugin;
-import com.nekoyu.Universe.API.Providers.LLMProvider.RespBodies.LLMFunction;
+import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.LLMFunction;
 import okhttp3.HttpUrl;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;

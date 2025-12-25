@@ -8,7 +8,7 @@ import com.nekoyu.Universe.AIChat.WebSearch.BiliBiliAPI.*;
 import com.nekoyu.Universe.AIChat.WebSearch.GoogleWebSearchAPI.SearchResponse;
 import com.nekoyu.Universe.AIChat.WebSearch.YouTubeAPI.CommentThreadListResponse;
 import com.nekoyu.Universe.AIChat.WebSearch.YouTubeAPI.VideoListResponse;
-import com.nekoyu.Universe.API.Providers.LLMProvider.RespBodies.LLMFunction;
+import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.LLMFunction;
 import okhttp3.HttpUrl;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;

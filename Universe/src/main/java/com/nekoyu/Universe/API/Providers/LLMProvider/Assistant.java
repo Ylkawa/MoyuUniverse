@@ -4,7 +4,7 @@ import com.nekoyu.Universe.API.MessageChannel.MCMessage;
 import com.nekoyu.Universe.API.MessageChannel.MessageField.TextField;
 import com.nekoyu.Universe.API.MessageChannel.MessageList;
 import com.nekoyu.Universe.API.Providers.LLMProvider.RespBodies.CompletionsResponse;
-import com.nekoyu.Universe.API.Providers.LLMProvider.RespBodies.LLMFunction;
+import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.LLMFunction;
 
 import java.io.IOException;
 import java.util.HashMap;

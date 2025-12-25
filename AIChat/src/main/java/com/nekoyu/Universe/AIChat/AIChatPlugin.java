@@ -1,7 +1,7 @@
 package com.nekoyu.Universe.AIChat;
 
 import com.nekoyu.Universe.AIChat.Event.RequestEvent;
-import com.nekoyu.Universe.API.Providers.LLMProvider.RespBodies.LLMFunction;
+import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.LLMFunction;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 

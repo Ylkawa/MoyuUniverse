@@ -1,7 +1,5 @@
 package com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies;
 
-import com.nekoyu.Universe.API.Providers.LLMProvider.RespBodies.LLMTool;
-
 import java.util.HashMap;
 import java.util.LinkedList;
 import java.util.List;

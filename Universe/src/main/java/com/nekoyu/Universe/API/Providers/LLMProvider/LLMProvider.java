@@ -2,7 +2,7 @@ package com.nekoyu.Universe.API.Providers.LLMProvider;
 
 import com.nekoyu.Universe.API.MessageChannel.MessageList;
 import com.nekoyu.Universe.API.Providers.LLMProvider.RespBodies.CompletionsResponse;
-import com.nekoyu.Universe.API.Providers.LLMProvider.RespBodies.LLMFunction;
+import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.LLMFunction;
 import com.nekoyu.Universe.API.Providers.Provider;
 
 import java.io.IOException;
