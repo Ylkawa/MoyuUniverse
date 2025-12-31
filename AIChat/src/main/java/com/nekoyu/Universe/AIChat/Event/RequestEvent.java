@@ -8,4 +8,6 @@ import java.util.Map;
 public class RequestEvent {
     public Map<String, String> placeholders = new HashMap<>();
     public MessageList messageList;
+    public String sessionId;
+    public String locationId;
 }

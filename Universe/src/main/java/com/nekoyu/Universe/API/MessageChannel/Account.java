@@ -37,4 +37,8 @@ public class Account {
     public void setSex(String sex) {
         this.sex = sex;
     }
+
+    public String getLocationId() {
+        return platform + ":user/" + id;
+    }
 }

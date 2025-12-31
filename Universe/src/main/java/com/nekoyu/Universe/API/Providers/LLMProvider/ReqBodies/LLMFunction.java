@@ -1,5 +1,7 @@
 package com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies;
 
+import com.google.gson.annotations.SerializedName;
+
 import java.util.*;
 
 public class LLMFunction {
@@ -40,9 +42,47 @@ public class LLMFunction {
 
         public static class Property {
             String type;
+            String description;
+            @SerializedName("enum")
+            List<String> enum_;
+
+            private Property() {}
 
             public Property(String type) {
                 this.type = type;
+            }
+
+            public static class Builder {
+                private String type;
+                private String description;
+                private List<String> enum_;
+
+                public Builder type(String type) {
+                    this.type = type;
+                    return this;
+                }
+
+                public Builder description(String description) {
+                    this.description = description;
+                    return this;
+                }
+
+                public Builder enum_(List<String> enum_) {
+                    this.enum_ = enum_;
+                    return this;
+                }
+
+                public Property build() {
+                    Property property = new Property();
+                    property.type = type;
+                    property.description = this.description;
+                    property.enum_ = this.enum_;
+                    return property;
+                }
+            }
+
+            public static Builder Builder() {
+                return new Builder();
             }
         }
     }
@@ -65,12 +105,16 @@ public class LLMFunction {
             function.description = description;
             return this;
         }
-        public Builder parameters(Parameters parameters) {
-            function.parameters = parameters;
-            return this;
-        }
         public Builder parameters(String[] parameters, String[] required) {
             function.parameters = new Parameters("object", parameters, required);
+            return this;
+        }
+        public Builder parameters(String type, Map<String, Parameters.Property> properties, String[] required) {
+            function.parameters = new Parameters();
+            function.parameters.type = type;
+            function.parameters.properties = properties;
+            function.parameters.required = new ArrayList<>();
+            function.parameters.required.addAll(Arrays.asList(required));
             return this;
         }
         public Builder callback(Callback callback) {
@@ -80,6 +124,6 @@ public class LLMFunction {
     }
 
     public interface Callback {
-        String callback(HashMap<String, String> args);
+        String callback(Map<String, String> args);
     }
 }

@@ -35,7 +35,7 @@ public class AIChat extends Law {
     List<SessionConfig> configs = new ArrayList<>();
     static Multimap<String, LLMFunction> llmFunctions = ArrayListMultimap.create();
     List<AIChatPlugin> aiChatPlugins = new ArrayList<>();
-    Config new_cfg;
+    Config globalCfg;
 
     @Override
     public boolean prepare() {
@@ -51,13 +51,13 @@ public class AIChat extends Law {
         // 从这里开始重写
         try (Reader reader = new InputStreamReader(
                 new FileInputStream("./config/AIChat/config.json"), StandardCharsets.UTF_8)) {
-            new_cfg = gson.fromJson(reader, Config.class);
+            globalCfg = gson.fromJson(reader, Config.class);
         } catch (IOException e) {
             // 没找到配置文件，所以新建一个配置文件
-            new_cfg = new Config();
-            new_cfg.Prompt = ""; // 默认的System_prompt，这里留白了没写
+            globalCfg = new Config();
+            globalCfg.Prompt = ""; // 默认的System_prompt，这里留白了没写
             try (FileWriter fw = new FileWriter("./config/AIChat/config.json")) {
-                fw.write(gson.toJson(new_cfg)); //写入
+                fw.write(gson.toJson(globalCfg)); //写入
             } catch (IOException ex) {
                 throw new RuntimeException(ex);
             }
@@ -70,30 +70,34 @@ public class AIChat extends Law {
             File[] files = toolsDic.listFiles((dir, name) -> name.toLowerCase().endsWith(".jar"));
             List<AIChatPluginInfo> aiChatPluginInfos = new ArrayList<>();
             List<URL> urls = new ArrayList<>();
-            for (File f : files) {
-                try (JarFile jf = new JarFile(f)) {
-                    ZipEntry ze = jf.getEntry("plug.properties");
-                    if (ze == null) {
-                        logger.info("{} 无描述文件", f.getName());
-                        continue;
-                    }
-                    try (InputStream is = jf.getInputStream(ze)) {
-                        Properties properties = new Properties();
-                        properties.load(is);
-                        AIChatPluginInfo aiChatPluginInfo = new AIChatPluginInfo();
-                        aiChatPluginInfo.url = f.toURI().toURL();
-                        aiChatPluginInfo.mainClass = properties.getProperty("Main");
-                        aiChatPluginInfo.id = properties.getProperty("ID");
-                        if (aiChatPluginInfo.id != null && aiChatPluginInfo.mainClass != null) {
-                            aiChatPluginInfos.add(aiChatPluginInfo);
-                            urls.add(f.toURI().toURL());
-                        } else {
-                            logger.info("{} 没有有效的描述文件", f.getName());
+            if (files != null) {
+                for (File f : files) {
+                    try (JarFile jf = new JarFile(f)) {
+                        ZipEntry ze = jf.getEntry("plug.properties");
+                        if (ze == null) {
+                            logger.info("{} 无描述文件", f.getName());
+                            continue;
                         }
+                        try (InputStream is = jf.getInputStream(ze)) {
+                            Properties properties = new Properties();
+                            properties.load(is);
+                            AIChatPluginInfo aiChatPluginInfo = new AIChatPluginInfo();
+                            aiChatPluginInfo.url = f.toURI().toURL();
+                            aiChatPluginInfo.mainClass = properties.getProperty("Main");
+                            aiChatPluginInfo.id = properties.getProperty("ID");
+                            if (aiChatPluginInfo.id != null && aiChatPluginInfo.mainClass != null) {
+                                aiChatPluginInfos.add(aiChatPluginInfo);
+                                urls.add(f.toURI().toURL());
+                            } else {
+                                logger.info("{} 没有有效的描述文件", f.getName());
+                            }
+                        }
+                    } catch (IOException e) {
+                        throw new RuntimeException(e);
                     }
-                } catch (IOException e) {
-                    throw new RuntimeException(e);
                 }
+            } else {
+                logger.error("请确保有足够权限写入");
             }
             var classloader = new URLClassLoader(urls.toArray(new URL[0]), getClass().getClassLoader());
             for (var info : aiChatPluginInfos) {
@@ -137,14 +141,14 @@ public class AIChat extends Law {
     @Override
     public void run() {
         SimpleDateFormat sdf = new SimpleDateFormat("[yyyy-MM-dd HH:mm:ss]");
-        for (SessionConfig cfg : configs) {
-            Universe.MessageChannelManager.listenToSession(cfg.SessionId, mcm -> {
-                if (cfg.Trigger.equals("every") || mcm.messageString.contains(cfg.Keyword) || mcm.level >= 2) {
-                    Object provider = Universe.Providers.get(cfg.Provider);
+        for (SessionConfig sessionCfg : configs) {
+            Universe.MessageChannelManager.listenToSession(sessionCfg.SessionId, mcm -> {
+                if (sessionCfg.Trigger.equals("every") || mcm.messageString.contains(sessionCfg.Keyword) || mcm.level >= 2) {
+                    Object provider = Universe.Providers.get(sessionCfg.Provider);
                     if (provider instanceof LLMProvider lp) {
-                        Assistant assistant = lp.newAssistant(cfg.Model);
-                        if (cfg.Tools != null) {
-                            for (String tool : cfg.Tools) {
+                        Assistant assistant = lp.newAssistant(sessionCfg.Model);
+                        if (sessionCfg.Tools != null) {
+                            for (String tool : sessionCfg.Tools) {
                                 if (llmFunctions.get(tool) != null) {
                                     for (LLMFunction func : llmFunctions.get(tool)) {  // FIXME Tool 可能被重复添加而无保护
                                         assistant.addTool(func);
@@ -152,37 +156,28 @@ public class AIChat extends Law {
                                 }
                             } // 为assistant添加指定的tools // 如果不存在这个tool就不添加
                         }
-                        // 决定让AI发言
-                        MessageList ml = Universe.MessageChannelManager.getMessageHistory(cfg.SessionId);
+                        // 决定让 AI 发言
+                        MessageList ml = Universe.MessageChannelManager.getMessageHistory(sessionCfg.SessionId);
                         // 设置 System Prompt
                         // 先让插件处理事件 插件提供局部的PlaceHolder
                         var reqEv = new RequestEvent();
                         reqEv.messageList = ml;
+                        reqEv.locationId = mcm.getLocationId();
                         for (var plug : aiChatPlugins) {
-                            plug.onRequest(reqEv);
+                            try {
+                                plug.onRequest(reqEv);
+                            } catch (Exception e) {
+                                logger.debug("{} 在处理 RequestEvent 发生错误", plug.id, e);
+                            }
                         }
                         StringBuilder prompt = new StringBuilder();
                         prompt.append("当前时间: ").append(sdf.format(new Date(System.currentTimeMillis()))).append("\n");
-                        prompt.append("当前所处会话: ").append(cfg.SessionId).append("\n");
+                        prompt.append("当前所处会话: ").append(sessionCfg.SessionId).append("\n");
                         prompt.append("你的账号: ").append(mcm.receiver.getId()).append("\n");
-                        prompt.append(new_cfg.Prompt).append("\n");
-                        prompt.append(cfg.Prompt);
+                        prompt.append(globalCfg.Prompt).append("\n");
+                        prompt.append(sessionCfg.Prompt);
                         assistant.setSystemPrompt(PlaceHolder.replace(prompt.toString(), reqEv.placeholders));
-                        // 把还没转换好的MCMessage转换成String
-                        // todo:here 这里需要根据 mcm.receiver 是否等于 msg.sender 为openai message list 中的mcm指定role；需要把相邻的assistant message使用\n\n拼接成同一条
-//                        int key = 0; // 从第0条开始读取
-//                        MCMessage mcMessage = ml.get(key);
-//                        if (mcMessage.sender.equals(mcm.receiver)) {
-//                            StringBuilder assistantMsg = new StringBuilder();
-//                            do {
-//                                assistantMsg.append(mcMessage.solveAll());
-//                                key++;
-//                            } while ((mcMessage = ml.get(key)).sender.equals(mcm.receiver));
-//                        } else {
-//
-//                        }
 
-                        // 以下为旧逻辑
                         ExecutorService executor = Executors.newFixedThreadPool(5);
                         String[][] solve = new String[ml.size()][3];
                         for (int i = 0; i < ml.size(); i++) {
@@ -195,12 +190,12 @@ public class AIChat extends Law {
                                 solve[loopNum][2] =  // prefix
                                         sdf.format(new Date(msg.time * 1000)) + // [时间]
                                         "[" + msg.id + "]" + // [时间] [消息id]
-                                        msg.sender.getNickname() + "(" + msg.sender.getId() + ")" + msg.sender.getSex() + // [时间] [消息id] [昵称](用户QQ号)性别
-                                        ": "; // [时间] [消息id] [昵称](用户QQ号)性别: [消息内容]
+                                        msg.sender.getNickname() + "(" + msg.sender.getLocationId() + ")" + msg.sender.getSex() + // [时间] [消息id] [昵称](用户QQ号)性别
+                                        ": "; // [时间] [消息id] [昵称](用户 LocationId)性别: [消息内容]
                             });
                         }
                         executor.shutdown();
-                        // 以上为旧逻辑
+
                         try {
                             if (executor.awaitTermination(60, TimeUnit.SECONDS)) {
                                 RequestEvent re = new RequestEvent();
@@ -232,9 +227,13 @@ public class AIChat extends Law {
                                         }
                                     }
 
+                                    // Extend Args
+                                    Map<String, String> extendArgs = new HashMap<>();
+                                    extendArgs.put("_LocationID", mcm.getLocationId());
+
                                     // 接收响应 tokens
                                     StringBuilder respTokens = new StringBuilder();
-                                    assistant.completions(openaiMl, (LLMProvider.BufferCallback) outputs -> {
+                                    assistant.completions(openaiMl, extendArgs, outputs -> {
                                         String[] split = outputs.split("\n\n", 2); // 每一次接收够一段就回复一次消息
                                         if (split.length > 1) {
                                             respTokens.append(split[0]);
@@ -257,8 +256,8 @@ public class AIChat extends Law {
                             return;
                         }
                     } else {
-                        if (provider == null) logger.warn("无此适配器 {}", cfg.Provider);
-                        else logger.warn("定义的AI服务适配器 {} 无效", cfg.Provider);
+                        if (provider == null) logger.warn("无此适配器 {}", sessionCfg.Provider);
+                        else logger.warn("定义的AI服务适配器 {} 无效", sessionCfg.Provider);
                     }
                 }
             });

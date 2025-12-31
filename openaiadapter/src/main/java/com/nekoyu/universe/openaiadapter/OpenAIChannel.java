@@ -51,12 +51,14 @@ public class OpenAIChannel extends LLMProvider {
     }
 
     @Override
-    public CompletionsResponse completions(String model, MessageList messageList, Map<String, LLMFunction> llmFunctions, BufferCallback bufferCallback) throws IOException {
+    public CompletionsResponse completions(String model, MessageList messageList, Map<String, LLMFunction> llmFunctions, Map<String, String> extendArgs, BufferCallback bufferCallback) throws IOException {
         CompletionsResponse responding = new CompletionsResponse(); // fake unstreamed response
         responding.usage.completion_tokens = 0;
         responding.usage.prompt_tokens = 0;
         responding.usage.total_tokens = 0;
-        responding.choices = new CompletionsResponse.Choice[]{new CompletionsResponse.Choice(){{message.content = "";}}};
+        responding.choices = new CompletionsResponse.Choice[]{new CompletionsResponse.Choice() {{
+            message.content = "";
+        }}};
         CompletionsRequest cr = new CompletionsRequest();
         if ("dashscope".equals(speciallyAdaptation)) { // 对阿里云百炼进行特调
             cr.stream_options.put("include_usage", true);
@@ -100,13 +102,13 @@ public class OpenAIChannel extends LLMProvider {
             }
         }
         cr.stream = true;
-        CompletionsResponse completions = completions(cr, llmFunctions, bufferCallback, 5, responding);
+        CompletionsResponse completions = completions(cr, llmFunctions, bufferCallback, extendArgs, 5, responding);
         if (completions.usage.total_tokens > 0)
             logger.info("本次请求消耗 tokens: 输入 {}  输出 {}", completions.usage.prompt_tokens, completions.usage.completion_tokens); // 无言了，百炼的 API 默认不返回 usage
         return completions;
     }
 
-    public CompletionsResponse completions(CompletionsRequest completionsRequest, Map<String, LLMFunction> llmFunctions, BufferCallback bufferCallback, int timeout, CompletionsResponse responding) throws IOException {
+    public CompletionsResponse completions(CompletionsRequest completionsRequest, Map<String, LLMFunction> llmFunctions, BufferCallback bufferCallback, Map<String, String> extendArgs, int timeout, CompletionsResponse responding) throws IOException {
         boolean outputted = false;
         logger.debug(gson.toJson(completionsRequest));
         if (timeout <= 1) { // 超时时，禁用所有tool，进行最后一次请求，避免死循环
@@ -174,36 +176,51 @@ public class OpenAIChannel extends LLMProvider {
                     }
                     case "tool_calls" -> {
                         if (outputted) {
-                            responding.choices[0].message.content += "\n\n\n";
+                            responding.choices[0].message.content += "\n\n";
                             bufferCallback.onCompletion("\n\n");
                         }
                         Message msg = new Message();
                         completionsRequest.messages.add(msg);
                         msg.role = "assistant";
                         msg.tool_calls = tool_calls.values().toArray(new Tool_call[0]);
+                        boolean next = false;
                         for (Tool_call tool_call : msg.tool_calls) {
-                            if (tool_call.function.arguments.startsWith("\"")) tool_call.function.arguments = tool_call.function.arguments.substring(1, tool_call.function.arguments.length() - 1); // 不知道为什么DeepSeek喜欢在arg前后各加一个"，删了
+                            if (tool_call.function.arguments.startsWith("\""))
+                                tool_call.function.arguments = tool_call.function.arguments.substring(1, tool_call.function.arguments.length() - 1); // 不知道为什么DeepSeek喜欢在arg前后各加一个"，删了
                             logger.debug(gson.toJson(tool_call));
                             LLMFunction llmFunction = llmFunctions.get(tool_call.function.name);
                             ArrayMessage toolMsg = new ArrayMessage();
                             toolMsg.role = "tool";
                             toolMsg.tool_call_id = tool_call.id;
-                            HashMap args;
+                            Map args = null;
                             try {
                                 args = gson.fromJson(tool_call.function.arguments, HashMap.class);
-                                toolMsg.content.add(new TextPiece(llmFunction.callback.callback(args)));
                             } catch (JsonSyntaxException e) {
-                                tool_call.function.arguments.replaceAll("\\\\", "");
+                                tool_call.function.arguments.replaceAll("\\\\", ""); // 再捞一下 LLM 的零分试卷
                                 try {
                                     args = gson.fromJson(tool_call.function.arguments, HashMap.class);
-                                    toolMsg.content.add(new TextPiece(llmFunction.callback.callback(args)));
-                                } catch (JsonSyntaxException ex) { // 我真没话说，deepseek写的function calling的arguments，一次一套格式，json都不是，还把结构标识符转义掉了
+                                } catch (
+                                        JsonSyntaxException ex) { // 我真没话说，deepseek写的function calling的arguments，一次一套格式，json都不是，还把结构标识符转义掉了
                                     toolMsg.content.add(new TextPiece(ex.getMessage()));
                                 }
                             }
+                            if (args != null) args.putAll(extendArgs);
+                            String ctt;
+                            if (args == null)
+                                ctt = "未知原因的工具调用错误";
+                            else try {
+                                ctt = llmFunction.callback.callback(args);
+                            } catch (Exception e) {
+                                ctt = "调用工具失败: " + e.getMessage();
+                            }
+                            if (ctt != null) {
+                                next = true;
+                                toolMsg.content.add(new TextPiece(ctt));
+                            }
                             completionsRequest.messages.add(toolMsg);
                         }
-                        return completions(completionsRequest, llmFunctions, bufferCallback, timeout-1, responding);
+                        if (next)
+                            return completions(completionsRequest, llmFunctions, bufferCallback, extendArgs, timeout - 1, responding);
                     }
                     case "unfinished" -> throw new IOException("出现意外导致请求未完成");
                 }

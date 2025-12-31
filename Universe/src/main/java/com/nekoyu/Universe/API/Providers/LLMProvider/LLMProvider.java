@@ -10,16 +10,18 @@ import java.util.Map;
 
 public abstract class LLMProvider extends Provider {
     /**
-     * 生成LLM回复
+     * 生成 LLM 回复
      */
-
     public CompletionsResponse completions(MessageList messageList, BufferCallback bufferCallback) throws IOException {
         return completions(null, messageList, null, bufferCallback);
     }
     public CompletionsResponse completions(String model, MessageList messageList, BufferCallback bufferCallback) throws IOException {
         return completions(model, messageList, null, bufferCallback);
     }
-    public abstract CompletionsResponse completions(String model, MessageList messageList, Map<String, LLMFunction> llmTools, BufferCallback bufferCallback) throws IOException;
+    public CompletionsResponse completions(String model, MessageList messageList, Map<String, LLMFunction> llmTools, BufferCallback bufferCallback) throws IOException {
+        return completions(model, messageList, llmTools, null, bufferCallback);
+    }
+    public abstract CompletionsResponse completions(String model, MessageList messageList, Map<String, LLMFunction> llmTools, Map<String, String> extendArgs, BufferCallback bufferCallback) throws IOException;
 
     public interface BufferCallback {
         /** 输出中，每接收到一行data就会把模型输出的词输出到这里 */

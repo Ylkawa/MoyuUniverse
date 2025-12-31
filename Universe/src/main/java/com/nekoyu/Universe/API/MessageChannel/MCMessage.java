@@ -74,6 +74,10 @@ public class MCMessage {
         }
     }
 
+    public String getLocationId() {
+        return sender.platform + ":" + sessionId.split(":")[1];
+    }
+
     public void reply(String message) {
         Universe.MessageChannelManager.sendMessage(sessionId, message);
     }
