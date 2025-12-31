@@ -22,7 +22,7 @@ public class NetTools extends AIChatPlugin {
         registerFunction(new String[]{"WhoisLookup", "NetTools"}, LLMFunction.Builder()
                 .name("WhoisLookup")
                 .description("查询某一个域名的 Whois 信息")
-                .parameters(new LLMFunction.Parameters("object", new String[]{"Domain"}, new String[]{"Domain"}))
+                .parameters(new String[]{"Domain"}, new String[]{"Domain"})
                 .callback(args -> {
                     // Using this API to lookup: https://xxapi.cn/doc/whois
                     Request req = new Request.Builder()
