@@ -71,17 +71,14 @@ public class MinecraftConnectUniverse extends Law implements UniverseListener {
     public void run() {
         Universe.UniverseChannel.registerListener("Minecraft-Connect", this);
         for (Map.Entry<String, String> entry : forwardingStructureToServer.entries()) {
-            Universe.MessageChannelManager.listenToSession(entry.getKey(), new MessageChannelListener() {
-                String target = entry.getValue();
-                @Override
-                public void onMessage(MCMessage mcm) {
-                    ForwardChat ucm = new ForwardChat();
-                    ucm.message = "ForwardChat";
-                    ucm.args.put("sender", mcm.sender.getNickname());
-                    ucm.args.put("messageString", mcm.messageString);
+            String target = entry.getValue();
+            Universe.MessageChannelManager.listenToSession(entry.getKey(), mcm -> {
+                ForwardChat ucm = new ForwardChat();
+                ucm.message = "ForwardChat";
+                ucm.args.put("sender", mcm.sender.getNickname());
+                ucm.args.put("messageString", mcm.messageString);
 
-                    Universe.UniverseChannel.broadcast(target, ucm);
-                }
+                Universe.UniverseChannel.broadcast(target, ucm);
             });
         }
     }

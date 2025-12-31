@@ -101,7 +101,7 @@ public class MinecraftConnectSpigot extends JavaPlugin {
                 switch (ucm.message) {
                     case "ForwardChat":
                         ForwardChat fc = gson.fromJson(s, ForwardChat.class);
-                        Bukkit.broadcastMessage(ChatColor.GRAY + "[" + ucm.args.get("sender") + "]: " + ucm.args.get("messageString"));
+                        Bukkit.broadcastMessage(ChatColor.AQUA + "[" + ucm.args.get("sender") + "]: " + ChatColor.GRAY + ucm.args.get("messageString"));
                         break;
                 }
             }
