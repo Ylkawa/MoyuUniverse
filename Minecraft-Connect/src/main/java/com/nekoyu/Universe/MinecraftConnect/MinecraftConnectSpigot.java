@@ -15,6 +15,8 @@ import java.net.URISyntaxException;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 @SuppressWarnings("unused")
 public class MinecraftConnectSpigot extends JavaPlugin {
@@ -37,14 +39,12 @@ public class MinecraftConnectSpigot extends JavaPlugin {
                 token = properties.getProperty("Token");
                 ID = properties.getProperty("ThisID");
                 newWebsocketClient();
-                webSocketClient.connect();
 
                 Bukkit.getScheduler().runTaskTimer(this, () -> {
                     if (webSocketClient.isClosed()) {
                         newWebsocketClient();
-                        webSocketClient.connect();
                     }
-                }, 100L, 100L); // 第一个参数是延迟时间（tick），第二个参数是周期时间（tick）
+                }, 240L, 240L); // 第一个参数是延迟时间（tick），第二个参数是周期时间（tick）
             } catch (URISyntaxException e) {
                 getLogger().info("URI 格式有误");
             } catch (IOException e) {
@@ -79,7 +79,8 @@ public class MinecraftConnectSpigot extends JavaPlugin {
         header.put("Token", token);
         header.put("Type", "Spigot");
         header.put("ID", ID);
-        webSocketClient = new WebSocketClient(uri, header) {
+        CountDownLatch latch = new CountDownLatch(1);
+        WebSocketClient wsc = new WebSocketClient(uri, header) {
             @Override
             public void onOpen(ServerHandshake serverHandshake) {
                 UniverseChannelMessage ucm = new UniverseChannelMessage();
@@ -87,12 +88,13 @@ public class MinecraftConnectSpigot extends JavaPlugin {
                 ucm.message = "RegisterListener";
                 ucm.args.put("Tag", "Minecraft-Connect-Spigot");
                 Gson gson = new Gson();
-                webSocketClient.send(gson.toJson(ucm));
+                send(gson.toJson(ucm));
                 ucm.args.replace("Tag", "Minecraft-Connect");
-                webSocketClient.send(gson.toJson(ucm));
+                send(gson.toJson(ucm));
                 ucm.args.replace("Tag", ID);
-                webSocketClient.send(gson.toJson(ucm));
+                send(gson.toJson(ucm));
                 getLogger().info("已与宇宙建立连结");
+                latch.countDown();
             }
 
             @Override
@@ -116,5 +118,13 @@ public class MinecraftConnectSpigot extends JavaPlugin {
 
             }
         };
+        wsc.connect();
+        try {
+            latch.await(10, TimeUnit.SECONDS);
+            if (wsc.isOpen()) webSocketClient = wsc;
+            else wsc.close();
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
     }
 }

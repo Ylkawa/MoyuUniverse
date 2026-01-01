@@ -22,6 +22,7 @@ import java.net.URISyntaxException;
 import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
 @Plugin(id = "minecraftconnectvelocity", name = "Minecraft Connect - Moyu Universe", version = "0.1.0-SNAPSHOT",
@@ -109,13 +110,11 @@ public class MinecraftConnectVelocity {
         if (!loadAble) return;
         logger.info("创建穿隧...");
         newWebsocketClient();
-        wsClient.connect();
 
         // 连接保活
         velocity.getScheduler().buildTask(this, () -> {
                     if (wsClient.isClosed() || wsClient.isClosing()) {
                         newWebsocketClient();
-                        wsClient.connect();
                     } else if (wsClient.isOpen()) {
                         var statusUpload = new UniverseChannelMessage();
                         statusUpload.tag = "Minecraft-Connect";
@@ -129,10 +128,10 @@ public class MinecraftConnectVelocity {
                                 })
                                 .toList());
                         wsClient.send(gson.toJson(statusUpload));
-                    } else logger.error("WsClient出现意料之外的状态，既非open也非closed"); // 这应该不太可能吧，但是按照日志，被执行到else if里面去了
+                    }
                 })
-                .delay(5, TimeUnit.SECONDS)
-                .repeat(5, TimeUnit.SECONDS)
+                .delay(12, TimeUnit.SECONDS)
+                .repeat(12, TimeUnit.SECONDS)
                 .schedule();
     }
 
@@ -141,15 +140,17 @@ public class MinecraftConnectVelocity {
         header.put("Token", universeToken);
         header.put("Type", "Velocity");
         header.put("ID", ID);
-        wsClient = new WebSocketClient(universeURI, header) {
+        CountDownLatch latch = new CountDownLatch(1);
+        WebSocketClient wsc = new WebSocketClient(universeURI, header) {
             @Override
             public void onOpen(ServerHandshake serverHandshake) {
                 UniverseChannelMessage ucm = new UniverseChannelMessage();
                 ucm.tag = "Universe";
                 ucm.message = "RegisterListener";
                 ucm.args.put("Tag", "Minecraft-Connect");
-                wsClient.send(gson.toJson(ucm));
+                send(gson.toJson(ucm));
                 logger.info("已与宇宙建立连结");
+                latch.countDown();
             }
 
             @Override
@@ -167,6 +168,14 @@ public class MinecraftConnectVelocity {
 
             }
         };
+        wsc.connect();
+        try {
+            latch.await(10, TimeUnit.SECONDS);
+            if (wsc.isOpen()) wsClient = wsc;
+            else wsc.close();
+        } catch (InterruptedException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     @Subscribe
