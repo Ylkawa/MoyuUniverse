@@ -127,20 +127,16 @@ public class OnebotChannel extends MessageChannel {
                                     mcm.id = message.message_id;
                                     StringBuilder sessionId = new StringBuilder();
                                     sessionId.append(message.message_type).append("/");
-                                    StringBuilder msg = new StringBuilder();
                                     for (MessageSegment ms : message.message) {
                                         switch (ms.type) {
                                             case "text" -> {
-                                                msg.append(ms.data.get("text"));
                                                 mcm.messageFields.add(new TextField(ms.data.get("text")));
                                             }
                                             case "face" -> {
-                                                msg.append("[QQ表情]");
                                                 mcm.messageFields.add(new TextField("[QQ表情]"));
                                             }
                                             // 暂时没看到有能和emoji一一对应的表格，先不管
                                             case "image" -> {
-                                                msg.append("[图片]");
                                                 try {
                                                     var imageField = new ImageField(new URL(ms.data.get("url")));
                                                     mcm.messageFields.add(imageField);
@@ -151,7 +147,6 @@ public class OnebotChannel extends MessageChannel {
                                             }
                                             // 放不进去文本，先这样
                                             case "record" -> {
-                                                msg.append("[语音]");
                                                 try {
                                                     mcm.messageFields.add(new VoiceField(new URL(ms.data.get("url"))));
                                                 } catch (MalformedURLException e) {
@@ -160,7 +155,6 @@ public class OnebotChannel extends MessageChannel {
                                                 }
                                             }
                                             case "video" -> {
-                                                msg.append("[视频]");
                                                 try {
                                                     mcm.messageFields.add(new VideoField(new URL(ms.data.get("url"))));
                                                 } catch (MalformedURLException e) {
@@ -170,32 +164,25 @@ public class OnebotChannel extends MessageChannel {
                                                 }
                                             }
                                             case "at" -> {
-                                                msg.append("[@qq:user/").append(ms.data.get("qq")).append("]");
                                                 var account = getAccount("user/" + ms.data.get("qq"));
                                                 mcm.messageFields.add(new AtField(account));
                                             }
                                             case "rps" -> {
-                                                msg.append("[猜拳魔法表情]");
                                                 mcm.messageFields.add(new MetaField("[猜拳魔法表情]"));
                                             }
                                             case "dice" -> {
-                                                msg.append("[掷骰子魔法表情]");
                                                 mcm.messageFields.add(new MetaField("[掷骰子魔法表情]"));
                                             }
                                             case "shake" -> {
-                                                msg.append("[窗口抖动]");
                                                 mcm.messageFields.add(new MetaField("[窗口抖动]"));
                                             }
                                             case "poke" -> {
-                                                msg.append("[戳一戳]");
                                                 mcm.messageFields.add(new MetaField("[戳一戳]"));
                                             }
                                             case "anonymous" -> {
-                                                msg.append("(匿名消息)");
                                                 mcm.messageFields.add(new MetaField("(匿名消息)"));
                                             }
                                             case "share" -> {
-                                                msg.append("[分享链接, ").append(ms.data.get("title")).append(" : ").append(ms.data.get("url")).append(" ]");
                                                 try {
                                                     mcm.messageFields.add(new ShareUriField(ms.data.get("title"), new URI(ms.data.get("url"))));
                                                 } catch (URISyntaxException e) {
@@ -206,24 +193,19 @@ public class OnebotChannel extends MessageChannel {
                                             case "contact" -> {
                                                 switch (ms.data.get("type")) {
                                                     case "qq":
-                                                        msg.append("[分享QQ群, ");
                                                         mcm.messageFields.add(new ShareContactField("QQ", "group/" + ms.data.get("id")));
                                                         break;
                                                     case "group":
-                                                        msg.append("[分享QQ好友, ");
                                                         mcm.messageFields.add(new ShareContactField("QQ", "private/" + ms.data.get("id")));
                                                         break;
                                                 }
-                                                msg.append(ms.data.get("id")).append("]");
                                             }
                                             case "location" -> {
-                                                msg.append("[分享一处位置, ").append("纬度").append(ms.data.get("lat")).append(", 经度").append(ms.data.get("lon"));
                                                 mcm.messageFields.add(new LocationField(Double.parseDouble(ms.data.get("lat")), Double.parseDouble(ms.data.get("lon"))));
                                             }
                                             case "music" -> {
                                                 switch (ms.data.get("type")) {
                                                     case "163" -> {
-                                                        msg.append("[网易云音乐, ").append(ms.data.get("id")).append("]");
                                                         try {
                                                             mcm.messageFields.add(new ShareUriField("网易云音乐分享", new URI("https://music.163.com/#/song?id=" + ms.data.get("id"))));
                                                         } catch (URISyntaxException e) {
@@ -232,7 +214,6 @@ public class OnebotChannel extends MessageChannel {
                                                         }
                                                     }
                                                     case "qq" -> {
-                                                        msg.append("[QQ音乐, ").append(ms.data.get("id")).append("]");
                                                         try {
                                                             mcm.messageFields.add(new ShareUriField("QQ音乐分享", new URI("https://y.qq.com/n/ryqq/songDetail/" + ms.data.get("id"))));
                                                         } catch (URISyntaxException e) {
@@ -241,11 +222,9 @@ public class OnebotChannel extends MessageChannel {
                                                         }
                                                     }
                                                     case "xm" -> {
-                                                        msg.append("[虾米音乐, ").append(ms.data.get("id")).append("]");
                                                         mcm.messageFields.add(new TextField("[虾米音乐分享]"));
                                                     }
                                                     case "custom" -> {
-                                                        msg.append("[音乐分享, ").append(ms.data.get("title")).append(", ").append(ms.data.get("url"));
                                                         try {
                                                             mcm.messageFields.add(new ShareUriField("音乐分享", new URI(ms.data.get("url"))));
                                                         } catch (URISyntaxException e) {
@@ -256,29 +235,23 @@ public class OnebotChannel extends MessageChannel {
                                                 }
                                             }
                                             case "reply" -> {
-                                                msg.append("[回复消息 ").append(ms.data.get("id")).append("]");
                                                 mcm.messageFields.add(new MetaField("回复消息" + ms.data.get("id")));
                                             }
                                             case "forward" -> {
-                                                msg.append("[合并转发, ").append(ms.data.get("id")).append("]");
                                                 mcm.messageFields.add(new MetaField("[合并转发]"));
                                             }
                                             case "node" -> {
-                                                msg.append("[合并转发节点, ").append(ms.data.get("id")).append("]");
                                                 mcm.messageFields.add(new MetaField("[合并转发节点]"));
                                             }
                                             // 合并转发自定义节点 没做
                                             case "xml" -> {
-                                                msg.append("[XML消息]");
                                                 mcm.messageFields.add(new MetaField("[XML消息]"));
                                             }
                                             case "json" -> {
-                                                msg.append("[JSON消息]");
                                                 mcm.messageFields.add(new MetaField("[JSON消息]"));
                                             }
                                         }
                                     }
-                                    mcm.messageString = msg.toString();
                                     // 给消息定级
                                     for (MessageSegment seg : message.message) {
                                         if (seg.type.equals("at") && seg.data.get("qq").equals(String.valueOf(accountId))) {
