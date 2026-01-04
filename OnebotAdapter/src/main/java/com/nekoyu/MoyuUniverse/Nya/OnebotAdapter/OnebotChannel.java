@@ -165,8 +165,16 @@ public class OnebotChannel extends MessageChannel {
                                                 }
                                             }
                                             case "at" -> {
-                                                var account = getAccount("user/" + ms.data.get("qq"));
-                                                mcm.messageFields.add(new AtField(account));
+                                                if (ms.data.get("qq").equals("all")) {
+                                                    Account account = new Account(); // 假造一个算了
+                                                    account.setPlatform("QQ");
+                                                    account.setId("all");
+                                                    account.setNickname("全体成员");
+                                                    mcm.messageFields.add(new AtField(account));
+                                                } else {
+                                                    var account = getAccount("user/" + ms.data.get("qq"));
+                                                    mcm.messageFields.add(new AtField(account));
+                                                }
                                             }
                                             case "rps" -> {
                                                 mcm.messageFields.add(new MetaField("[猜拳魔法表情]"));
