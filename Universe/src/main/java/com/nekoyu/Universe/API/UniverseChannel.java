@@ -42,12 +42,12 @@ public class UniverseChannel {
     }
 
     public void load() {
-        registerListener("Universe", (planet, message, args) -> {
+        registerListener("Universe", (planet, message, args, rawJson) -> {
             switch (message) {
                 case "RegisterListener":
-                    String tag = (String) args.get("Tag");
+                    List<String> tag = (ArrayList<String>) args.get("Tag");
                     if (tag == null) return;
-                    externalListeners.put(tag, planet.getID());
+                    for (var t : tag) externalListeners.put(t, planet.getID());
                     logger.info("{} 注册了远程消息监听 {}", planet.getID(), tag);
             }
         });
@@ -87,7 +87,7 @@ public class UniverseChannel {
                     UniverseChannelMessage ucm = new Gson().fromJson(rawContent, UniverseChannelMessage.class);
                     if (ucm.tag != null && ucm.args != null) {
                         for (UniverseListener listener : internalListeners.get(ucm.tag)) {
-                            listener.onMessage(sender, ucm.message, ucm.args);
+                            listener.onMessage(sender, ucm.message, ucm.args, rawContent);
                         }
                     } else {
                         logger.warn("{} 发送的消息不规范，不会被处理", sender.ID);
@@ -187,8 +187,9 @@ public class UniverseChannel {
     }
 
     public void broadcast(String tag, UniverseChannelMessage ucm) {
+        String json = new Gson().toJson(ucm);
         for (String id : externalListeners.get(tag)) {
-            clientList.get(id).send(new Gson().toJson(ucm));
+            clientList.get(id).send(json);
         }
     }
 

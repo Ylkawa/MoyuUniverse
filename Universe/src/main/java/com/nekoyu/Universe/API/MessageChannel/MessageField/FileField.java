@@ -15,7 +15,7 @@ import java.util.UUID;
 public class FileField extends MsgField {
     String description;
     private static final Cleaner cleaner = Cleaner.create();
-    private File file = null;
+    private transient File file = null;
     public URL url;
 
     public FileField(URL url) {

@@ -19,13 +19,12 @@ import java.util.*;
 import java.util.regex.Pattern;
 
 public class MinecraftConnectUniverse extends Law implements UniverseListener {
-    private static final Gson gson = new Gson();
     Multimap<String, String> forwardingStructureToChannel = ArrayListMultimap.create();
     Multimap<String, String> forwardingStructureToServer = ArrayListMultimap.create();
     @Override
     public boolean prepare() {
         File cfgDic = new File("./config/Minecraft-Connect/");
-        if (!cfgDic.exists()) cfgDic.mkdir();
+        if (cfgDic.mkdir()) logger.info("配置文件创建中");
         File config = new File("./config/Minecraft-Connect/config.yml");
         if (!config.exists()) {
             try (FileWriter fw = new FileWriter(config)) {
@@ -54,13 +53,12 @@ public class MinecraftConnectUniverse extends Law implements UniverseListener {
                     String[] arg1 = args[0].split(":");
                     forwardingStructureToServer.put(arg1[0].strip() + ":" + arg1[1].strip(), args[1].strip());
                 } else {
-                    logger.warn("{} 行的定义有误，正确示例：\n" +
-                            "[ServerID] -> [MessageChannelID]:[SessionID]\n" +
-                            "[MessageChannelID]:[SessionID] -> [ServerID]", value);
+                    logger.warn("""
+                            {} 行的定义有误，正确示例：
+                            [ServerID] -> [MessageChannelID]:[SessionID]
+                            [MessageChannelID]:[SessionID] -> [ServerID]""", value);
                 }
             }
-        } catch (FileNotFoundException e) {
-            throw new RuntimeException(e);
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
@@ -75,8 +73,7 @@ public class MinecraftConnectUniverse extends Law implements UniverseListener {
             Universe.MessageChannelManager.listenToSession(entry.getKey(), mcm -> {
                 ForwardChat ucm = new ForwardChat();
                 ucm.message = "ForwardChat";
-                ucm.args.put("sender", mcm.sender.getNickname());
-                ucm.args.put("messageString", mcm.messageString);
+                ucm.MCMsg = mcm;
 
                 Universe.UniverseChannel.broadcast(target, ucm);
             });
@@ -89,7 +86,7 @@ public class MinecraftConnectUniverse extends Law implements UniverseListener {
     }
 
     @Override
-    public void onMessage(Planet planet, String message, Map args) {
+    public void onMessage(Planet planet, String message, Map args, String rawJson) {
         Collection<String> defineOfForward = forwardingStructureToChannel.get(planet.getID());
         switch (message) {
             case "StatusUpload":

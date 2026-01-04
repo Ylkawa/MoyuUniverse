@@ -5,7 +5,7 @@ import java.util.Map;
 
 public class UniverseChannelMessage {
     public String tag;
-    public Map args;
+    public Map<String, Object> args;
     public String message;
 
     public UniverseChannelMessage() {

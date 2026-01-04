@@ -147,7 +147,7 @@ public class MinecraftConnectVelocity {
                 UniverseChannelMessage ucm = new UniverseChannelMessage();
                 ucm.tag = "Universe";
                 ucm.message = "RegisterListener";
-                ucm.args.put("Tag", "Minecraft-Connect");
+                ucm.args.put("Tag", new String[]{"Minecraft-Connect"});
                 send(gson.toJson(ucm));
                 logger.info("已与宇宙建立连结");
                 latch.countDown();
@@ -180,7 +180,7 @@ public class MinecraftConnectVelocity {
 
     @Subscribe
     public void onPlayerLogin(LoginEvent event) {
-        Map<String, String> messageBody = new HashMap<>();
+        Map<String, Object> messageBody = new HashMap<>();
         messageBody.put("Joiner", event.getPlayer().getUsername());
 
         UniverseChannelMessage ucm = new UniverseChannelMessage();
@@ -193,7 +193,7 @@ public class MinecraftConnectVelocity {
 
     @Subscribe
     public void onPlayerDisconnect(DisconnectEvent event) {
-        Map<String, String> messageBody = new HashMap<>();
+        Map<String, Object> messageBody = new HashMap<>();
         messageBody.put("Leaver", event.getPlayer().getUsername());
 
         UniverseChannelMessage ucm = new UniverseChannelMessage();

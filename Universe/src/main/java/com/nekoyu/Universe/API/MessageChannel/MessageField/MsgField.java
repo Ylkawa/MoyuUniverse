@@ -1,7 +1,5 @@
 package com.nekoyu.Universe.API.MessageChannel.MessageField;
 
-import java.util.concurrent.atomic.AtomicBoolean;
-
 public abstract class MsgField {
     public String type;
     public boolean isSolved = false;

@@ -8,6 +8,9 @@
       <element id="extracted-dir" path="$MAVEN_REPOSITORY$/org/java-websocket/Java-WebSocket/1.6.0/Java-WebSocket-1.6.0.jar" path-in-jar="/" />
       <element id="file-copy" path="$PROJECT_DIR$/Minecraft-Connect/src/main/resources/velocity-plugin.json" />
       <element id="module-output" name="Universe" />
+      <element id="extracted-dir" path="$MAVEN_REPOSITORY$/com/google/code/gson/gson-extras/2.13.2-rc1/gson-extras-2.13.2-rc1.jar" path-in-jar="/" />
+      <element id="extracted-dir" path="$MAVEN_REPOSITORY$/com/google/code/gson/gson/2.13.2-rc1/gson-2.13.2-rc1.jar" path-in-jar="/" />
+      <element id="extracted-dir" path="$MAVEN_REPOSITORY$/com/drewnoakes/metadata-extractor/2.19.0/metadata-extractor-2.19.0.jar" path-in-jar="/" />
     </root>
   </artifact>
 </component>

@@ -36,7 +36,7 @@ public class MessageChannelManager {
      */
     public void onMessage(MessageChannel mc, MCMessage mcm) {
         if (mcm.sessionId != null && !mcm.sessionId.isEmpty()) {
-            mcm.messageString = mcm.solveAll();
+            mcm.messageString = mcm.solveAll(false);
             logger.info("接收到来自会话 {} 的消息 {} ({}): {}", mcm.sessionId, mcm.sender.nickname, mcm.sender.id, mcm.messageString);
             messageHistory.computeIfAbsent(mcm.sessionId, k -> new MessageList());
             MessageList messageList = messageHistory.get(mcm.sessionId);
@@ -57,10 +57,9 @@ public class MessageChannelManager {
      */
     public void onMessageRecall(String sessionId, long msgId) {
         MessageList messageList = messageHistory.get(sessionId);
-        if (messageList != null) return;
+        if (messageList == null) return;
         MCMessage mcm = messageList.getMsg(msgId);
-        if (mcm == null) return;
-        else if (System.currentTimeMillis() / 1000 >= mcm.time + 5) {
+        if (mcm != null && System.currentTimeMillis() / 1000 >= mcm.time + 5) {
             mcm.isRecalled = true;
         } else messageList.remove(mcm);
     }
