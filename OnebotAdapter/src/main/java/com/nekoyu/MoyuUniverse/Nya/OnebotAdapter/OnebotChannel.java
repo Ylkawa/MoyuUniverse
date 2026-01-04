@@ -91,6 +91,7 @@ public class OnebotChannel extends MessageChannel {
                         account.setSex(friendObj.get("sex").getAsString());
                         account.setId(friendObj.get("user_id").getAsString());
                         account.setNickname(friendObj.get("nickname").getAsString());
+                        account.setPlatform("QQ");
                         friendCount.getAndIncrement();
                         userAccounts.put(account.getId(), account);
                     });
@@ -425,7 +426,7 @@ public class OnebotChannel extends MessageChannel {
             obr.action = "get_stranger_info";
             obr.params.put("user_id", acc[1]);
             OBResponse resp = request(obr);
-            if (resp.status.equals("failed")) throw new UnsupportedAction("Request Failed");
+            if (resp.status.equals("failed")) throw new RuntimeException("Request Failed");
             account = new Account();
             account.setNickname(resp.data.getAsJsonObject().get("nickname").getAsString());
             account.setId(acc[1]);
