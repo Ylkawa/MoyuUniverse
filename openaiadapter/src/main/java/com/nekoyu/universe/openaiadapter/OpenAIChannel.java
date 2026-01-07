@@ -199,8 +199,8 @@ public class OpenAIChannel extends LLMProvider {
                                 tool_call.function.arguments.replaceAll("\\\\", ""); // 再捞一下 LLM 的零分试卷
                                 try {
                                     args = gson.fromJson(tool_call.function.arguments, HashMap.class);
-                                } catch (
-                                        JsonSyntaxException ex) { // 我真没话说，deepseek写的function calling的arguments，一次一套格式，json都不是，还把结构标识符转义掉了
+                                } catch (JsonSyntaxException ex) { // 我真没话说，deepseek写的function calling的arguments，一次一套格式，json都不是，还把结构标识符转义掉了
+                                    logger.warn("Assistant 唐完了，输出的参数 Gson 无法解析 {}", tool_call.function.arguments);
                                     toolMsg.content.add(new TextPiece(ex.getMessage()));
                                 }
                             }
@@ -218,13 +218,18 @@ public class OpenAIChannel extends LLMProvider {
                                 toolMsg.content.add(new TextPiece(ctt));
                             }
                             completionsRequest.messages.add(toolMsg);
+                            logger.debug("Assistant 调用了 {}，参数 {}，结果 {}", tool_call.function.name, tool_call.function.arguments, ctt);
                         }
                         if (next)
                             return completions(completionsRequest, llmFunctions, bufferCallback, extendArgs, timeout - 1, responding);
                     }
                     case "unfinished" -> throw new IOException("出现意外导致请求未完成");
                 }
-            } else throw new IOException("Unexpected code " + response); // 没成功就是抽风了，至于是服务器抽风，还是账号抽风，还是网络抽风，不想管
+            } else {
+                logger.error("Error Req Body {}", gson.toJson(completionsRequest));
+                logger.error("Error Resp Body {}", response.body().string());
+                throw new IOException("Unexpected code " + response); // 没成功就是抽风了，至于是服务器抽风，还是账号抽风，还是网络抽风，不想管
+            }
         }
         throw new IOException("Unknown error");
     }
