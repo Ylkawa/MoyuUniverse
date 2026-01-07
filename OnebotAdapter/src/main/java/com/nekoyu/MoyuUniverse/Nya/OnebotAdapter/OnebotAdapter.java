@@ -1,8 +1,6 @@
 package com.nekoyu.MoyuUniverse.Nya.OnebotAdapter;
 
 import com.google.gson.Gson;
-import com.nekoyu.Universe.ConfigureProcessor.CFGFileSyntaxException;
-import com.nekoyu.Universe.ConfigureProcessor.ConfigureProcessor;
 import com.nekoyu.Universe.LawsLoader.Law;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -76,28 +74,6 @@ public class OnebotAdapter extends Law {
                         } catch (URISyntaxException e) {
                             logger.warn("URI无效, {} 将不会被加载", file.getName());
                         }
-                    }
-                    if (file.getName().endsWith(".yml")) {
-                        ConfigureProcessor cp = null;
-                        try {
-                            cp = new ConfigureProcessor(file);
-                            cp.read();
-                        } catch (IOException e) {
-                            throw new RuntimeException(e);
-                        } catch (CFGFileSyntaxException e) {
-                            logger.error("配置文件 {} 无效", file.getName());
-                            return false;
-                        }
-                        OnebotChannel oc = new OnebotChannel(cp.getNode("ID").toString());
-                        oc.token = cp.getNode("Token").toString();
-                        try {
-                            oc.uri = new URI(cp.getNode("URI").toString());
-                        } catch (URISyntaxException e) {
-                            logger.error(e.getMessage());
-                            break;
-                        }
-                        ocs.add(oc);
-                        logger.info("已载入 Onebot 配置 {} 警告: 请将配置文件修改成json模式", oc.ID);
                     }
                 }
             }
