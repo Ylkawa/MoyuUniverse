@@ -72,6 +72,7 @@ public class OpenAIChannel extends LLMProvider {
             oaiTool.type = "function";
             cr.tools.add(oaiTool);
         }
+        if (cr.tools.isEmpty()) cr.tools = null;
         // Transfer Universe message list to OpenAI message list
         for (MCMessage m : messageList) {
             boolean fullyText = true;
@@ -112,7 +113,7 @@ public class OpenAIChannel extends LLMProvider {
         boolean outputted = false;
         logger.debug(gson.toJson(completionsRequest));
         if (timeout <= 1) { // 超时时，禁用所有tool，进行最后一次请求，避免死循环
-            completionsRequest.tools = new ArrayList<>();
+            completionsRequest.tools = null;
         }
         Request req = new Request.Builder()
                 .url(baseurl + "/chat/completions")
