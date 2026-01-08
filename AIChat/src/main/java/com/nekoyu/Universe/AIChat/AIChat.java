@@ -186,7 +186,7 @@ public class AIChat extends Law {
                                 MCMessage msg = ml.get(loopNum);
                                 if (msg.sender.getId().equals(mcm.receiver.getId())) solve[loopNum][0] = "assistant";
                                 else solve[loopNum][0] = "user";
-                                solve[loopNum][1] = msg.solveAll();
+                                solve[loopNum][1] = msg.solveAll(true);
                                 solve[loopNum][2] =  // prefix
                                         sdf.format(new Date(msg.time * 1000)) + // [时间]
                                         "[" + msg.id + "]" + // [时间] [消息id]
