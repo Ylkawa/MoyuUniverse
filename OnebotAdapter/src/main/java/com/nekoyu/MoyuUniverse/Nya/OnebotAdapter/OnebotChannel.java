@@ -42,6 +42,8 @@ public class OnebotChannel extends MessageChannel {
     String token;
     Map<String, Callback> syncActions = new HashMap<>();
     Map<String, Account> userAccounts = new HashMap<>();
+    boolean good = true;
+    boolean online = true;
 
     public OnebotChannel(String id) {
         super(id);
@@ -106,7 +108,6 @@ public class OnebotChannel extends MessageChannel {
 
             @Override
             public void onMessage(String s) {
-                logger.debug(s);
                 Gson gson = new Gson();
                 JsonElement content = gson.fromJson(s, JsonElement.class);
                 onMsgEx.submit(() -> {
@@ -282,6 +283,20 @@ public class OnebotChannel extends MessageChannel {
                                 }
                                 case "meta_event" -> {
                                     Meta_Event meta_event = gson.fromJson(s, Meta_Event.class);
+                                    if (meta_event.sub_type.equals("heartbeat")) {
+                                        if (meta_event.status.online) {
+                                            online = true;
+                                        } else if (online) {
+                                            online = false;
+                                            logger.warn("{} 的 OneBot 实现端离线", ID);
+                                        }
+                                        if (meta_event.status.good) {
+                                            good = true;
+                                        } else if (good) {
+                                            good = false;
+                                            logger.warn("{} 的 OneBot 实现端状态异常", ID);
+                                        }
+                                    }
                                 }
                                 case "notice" -> {
                                     Notice notice = gson.fromJson(s, Notice.class);
