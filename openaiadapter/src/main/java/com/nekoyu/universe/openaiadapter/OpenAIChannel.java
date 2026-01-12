@@ -133,7 +133,7 @@ public class OpenAIChannel extends LLMProvider {
                         logger.debug(json);
                         if (json.startsWith("{")) {
                             DataLine dl = gson.fromJson(json, DataLine.class);
-                            if (dl.choices.length > 0) {
+                            if (dl.choices != null && dl.choices.length > 0) {
                                 DataLine.Choice choice = dl.choices[0];
                                 if (choice.delta.content != null && !choice.delta.content.isBlank()) {
                                     bufferCallback.onCompletion(choice.delta.content);
@@ -224,7 +224,7 @@ public class OpenAIChannel extends LLMProvider {
                         if (next)
                             return completions(completionsRequest, llmFunctions, bufferCallback, extendArgs, timeout - 1, responding);
                     }
-                    case "unfinished" -> throw new IOException("出现意外导致请求未完成");
+                    case "unfinished" -> logger.error("出现意外导致请求未完成\nRaw req: {}", gson.toJson(completionsRequest));
                 }
             } else {
                 logger.error("Error Req Body {}", gson.toJson(completionsRequest));
