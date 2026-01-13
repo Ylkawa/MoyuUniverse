@@ -34,16 +34,16 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 public class OnebotChannel extends MessageChannel {
     WebSocketClient wsConnection;
-    ExecutorService onMsgEx = Executors.newCachedThreadPool();
-    ExecutorService callbackEx = Executors.newCachedThreadPool();
+    ExecutorService onMsgEx = Executors.newCachedThreadPool(); // 处理消息事件的线程池
+    ExecutorService callbackEx = Executors.newCachedThreadPool(); // 处理 sync action callback 的线程池
     boolean isReady = true;
     Logger logger = LoggerFactory.getLogger(this.getClass());
     URI uri;
     String token;
-    Map<String, Callback> syncActions = new HashMap<>();
-    Map<String, Account> userAccounts = new HashMap<>();
-    boolean good = true;
-    boolean online = true;
+    Map<String, Callback> syncActions = new HashMap<>(); // Echoes 和 Actions 的映射
+    Map<String, Account> userAccounts = new HashMap<>(); // 用户账号列表缓存
+    boolean good = true; // 实现端健康状态
+    boolean online = true; // 实现端在线状态
 
     public OnebotChannel(String id) {
         super(id);
@@ -283,7 +283,7 @@ public class OnebotChannel extends MessageChannel {
                                 }
                                 case "meta_event" -> {
                                     Meta_Event meta_event = gson.fromJson(s, Meta_Event.class);
-                                    if (meta_event.sub_type.equals("heartbeat")) {
+                                    if (meta_event.sub_type.equals("heartbeat")) { // 解析心跳包
                                         if (meta_event.status.online) {
                                             online = true;
                                         } else if (online) {
