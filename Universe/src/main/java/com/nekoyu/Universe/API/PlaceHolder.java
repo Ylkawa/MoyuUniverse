@@ -18,44 +18,33 @@ public class PlaceHolder {
     }
 
     public static String replace(String text) {
-        Matcher matcher = PLACEHOLDER_PATTERN.matcher(text);
-        StringBuffer result = new StringBuffer();
-
-        while (matcher.find()) {
-            String placeholder = matcher.group(1); // 提取占位符名称（去掉%）
-            String replacement = replacements.get(placeholder);
-
-            // 处理未识别的占位符（保留原文本）
-            if (replacement == null) {
-                replacement = matcher.group(0); // 使用原始占位符文本
-            }
-
-            // 转义特殊字符后替换
-            matcher.appendReplacement(result, Matcher.quoteReplacement(replacement));
-        }
-        matcher.appendTail(result);
-        return result.toString();
+        return replace(text, null);
     }
 
     public static String replace(String text, Map<String, String> localReplacements) {
         Matcher matcher = PLACEHOLDER_PATTERN.matcher(text);
-        StringBuffer result = new StringBuffer();
+        StringBuilder result = new StringBuilder();
 
         while (matcher.find()) {
-            String placeholder = matcher.group(1); // 提取占位符名称（去掉%）
-            String replacement = localReplacements.get(placeholder);
-            if (replacement == null || replacement.isEmpty()) {
+            String placeholder = matcher.group(1);
+            String replacement = null;
+
+            if (localReplacements != null) {
+                replacement = localReplacements.get(placeholder);
+            }
+
+            if (replacement == null) {
                 replacement = replacements.get(placeholder);
             }
 
-            // 处理未识别的占位符（保留原文本）
+            // 仍然没找到 → 保留原占位符
             if (replacement == null) {
-                replacement = matcher.group(0); // 使用原始占位符文本
+                replacement = matcher.group(0);
             }
 
-            // 转义特殊字符后替换
             matcher.appendReplacement(result, Matcher.quoteReplacement(replacement));
         }
+
         matcher.appendTail(result);
         return result.toString();
     }

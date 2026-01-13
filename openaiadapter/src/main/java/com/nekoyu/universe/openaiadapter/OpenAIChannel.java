@@ -114,6 +114,9 @@ public class OpenAIChannel extends LLMProvider {
         logger.debug(gson.toJson(completionsRequest));
         if (timeout <= 1) { // 超时时，禁用所有tool，进行最后一次请求，避免死循环
             completionsRequest.tools = null;
+            ArrayMessage am = new ArrayMessage();
+            am.content.add(new TextPiece("[WARNING] 工具调用回合超时，工具被禁用"));
+            completionsRequest.messages.add(am);
         }
         Request req = new Request.Builder()
                 .url(baseurl + "/chat/completions")

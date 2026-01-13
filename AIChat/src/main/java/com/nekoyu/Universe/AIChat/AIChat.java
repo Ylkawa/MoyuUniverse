@@ -170,13 +170,11 @@ public class AIChat extends Law {
                                 logger.debug("{} 在处理 RequestEvent 发生错误", plug.id, e);
                             }
                         }
-                        StringBuilder prompt = new StringBuilder();
-                        prompt.append("当前时间: ").append(sdf.format(new Date(System.currentTimeMillis()))).append("\n");
-                        prompt.append("当前所处会话: ").append(sessionCfg.SessionId).append("\n");
-                        prompt.append("你的账号: ").append(mcm.receiver.getId()).append("\n");
-                        prompt.append(globalCfg.Prompt).append("\n");
-                        prompt.append(sessionCfg.Prompt);
-                        assistant.setSystemPrompt(PlaceHolder.replace(prompt.toString(), reqEv.placeholders));
+                        reqEv.placeholders.put("TIME", sdf.format(new Date(System.currentTimeMillis())));
+                        reqEv.placeholders.put("SESSION_LOCATION_ID", mcm.getLocationId());
+                        reqEv.placeholders.put("ACCOUNT_NICKNAME", mcm.receiver.getNickname());
+                        reqEv.placeholders.put("SESSION_PROMPT", PlaceHolder.replace(sessionCfg.Prompt, reqEv.placeholders));
+                        assistant.setSystemPrompt(PlaceHolder.replace(globalCfg.Prompt, reqEv.placeholders));
 
                         ExecutorService executor = Executors.newFixedThreadPool(5);
                         String[][] solve = new String[ml.size()][3];
