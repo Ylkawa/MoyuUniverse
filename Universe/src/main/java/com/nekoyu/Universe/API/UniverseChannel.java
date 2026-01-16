@@ -66,7 +66,7 @@ public class UniverseChannel {
                     attachment.put("ID", clientHandshake.getFieldValue("ID"));
                     attachment.put("Type", clientHandshake.getFieldValue("Type"));
                     webSocket.setAttachment(attachment);
-                    logger.info("{} ({}-{}) 通过口令校验并创建了连接", webSocket.getRemoteSocketAddress(), clientHandshake.getFieldValue("Type"), clientHandshake.getFieldValue("ID"));
+                    logger.info("{} ({} - {}) 通过口令校验并创建了连接", webSocket.getRemoteSocketAddress(), clientHandshake.getFieldValue("Type"), clientHandshake.getFieldValue("ID"));
                 }
             }
 

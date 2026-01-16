@@ -25,6 +25,7 @@ import java.awt.image.BufferedImage;
 import java.io.*;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
@@ -119,6 +120,11 @@ public class MinecraftConnectSpigot extends JavaPlugin {
                 ucm.args.put("Tag", new String[]{"Minecraft-Connect-Spigot", "Minecraft-Connect", ID});
                 send(gson.toJson(ucm));
                 getLogger().info("已与宇宙建立连结");
+                ucm.tag = "Minecraft-Connect";
+                ucm.message = "InfoUpload";
+                ucm.args.clear();
+                ucm.args.put("BuildVersion", Bukkit.getVersion());
+                send(gson.toJson(ucm));
                 latch.countDown();
             }
 

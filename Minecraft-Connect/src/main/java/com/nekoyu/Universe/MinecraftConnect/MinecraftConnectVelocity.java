@@ -26,7 +26,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
 @Plugin(id = "minecraftconnectvelocity", name = "Minecraft Connect - Moyu Universe", version = "0.1.0-SNAPSHOT",
-        url = "https://nekoyu.com", description = "A connector to Moyu Universe", authors = {"Huanyue Moyu", "imylk"})
+        url = "https://nekoyu.com", description = "A connector to Moyu Universe", authors = {"Huanyue Moyu", "HatsuneYLK", "Axita_SORA"})
 public class MinecraftConnectVelocity {
     public static final Gson gson = new Gson();
     private String ID;

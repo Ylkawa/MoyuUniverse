@@ -89,29 +89,33 @@ public class MinecraftConnectUniverse extends Law implements UniverseListener {
     public void onMessage(Planet planet, String message, Map args, String rawJson) {
         Collection<String> defineOfForward = forwardingStructureToChannel.get(planet.getID());
         switch (message) {
-            case "StatusUpload":
+            case "InfoUpload" -> {
+                logger.info("{} 的构建版本为: {}", planet.getID(), String.valueOf(args.get("BuildVersion")));
+                PlaceHolder.setReplacement("Version:" + planet.getID(), String.valueOf(args.get("BuildVersion")));
+            }
+            case "StatusUpload" -> {
                 switch (planet.getType()) {
                     case "Velocity":
                         // 把在线人数添加到 PlaceHolder
-                        PlaceHolder.setReplacement("Online:"+planet.getID(), String.valueOf(((ArrayList<String>) args.get("Players")).size()));
+                        PlaceHolder.setReplacement("Online:" + planet.getID(), String.valueOf(((ArrayList<String>) args.get("Players")).size()));
                 }
-                break;
-            case "player_join_game":
+            }
+            case "player_join_game" -> {
                 if (defineOfForward.isEmpty()) {
                     logger.warn("没有为 {} 定义有效的转发规则", planet.getID());
                 }
                 for (String value : defineOfForward) {
                     Universe.MessageChannelManager.sendMessage(value, args.get("Joiner") + " 加入了服务器");
                 }
-                break;
-            case "player_leave_game":
+            }
+            case "player_leave_game" -> {
                 if (defineOfForward.isEmpty()) {
                     logger.warn("没有为 {} 定义有效的转发规则", planet.getID());
                 }
                 for (String value : defineOfForward) {
                     Universe.MessageChannelManager.sendMessage(value, args.get("Leaver") + " 退出了服务器");
                 }
-                break;
+            }
         }
     }
 }
