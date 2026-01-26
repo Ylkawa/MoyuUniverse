@@ -205,7 +205,7 @@ public class MinecraftConnectSpigot extends JavaPlugin {
 
             @Override
             public void onClose(int i, String s, boolean b) {
-
+                if (i != -1) getLogger().warning("与宇宙的连接断开" + i);
             }
 
             @Override
