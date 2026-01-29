@@ -9,6 +9,9 @@ import java.io.InputStream;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.util.*;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import java.util.jar.JarFile;
 import java.util.zip.ZipEntry;
 
@@ -129,10 +132,18 @@ public class LawsManager {
         law.isPrepared = true;
     }
 
-    // 顺序启动各法则
+    // 同时启动各法则
     public void enableLaws() {
+        ExecutorService executor = Executors.newCachedThreadPool();
         for (Law law : laws.values()) {
-            enableLaw(law);
+            executor.submit(() -> enableLaw(law));
+        }
+        executor.shutdown();
+        try {
+            executor.awaitTermination(120, TimeUnit.SECONDS);
+        } catch (InterruptedException e) {
+            logger.warn("宇宙法则加载超时");
+            throw new RuntimeException(e);
         }
     }
 
