@@ -6,7 +6,7 @@ import java.util.Map;
 public class OBRequest {
 
     protected String action;
-    protected Map params = new HashMap<>();
+    protected Map<String, Object> params = new HashMap<>();
     String echo = null;
 
     public OBRequest() {}

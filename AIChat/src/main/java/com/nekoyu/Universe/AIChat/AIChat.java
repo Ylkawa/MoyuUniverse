@@ -172,7 +172,7 @@ public class AIChat extends Law {
                         }
                         reqEv.placeholders.put("TIME", sdf.format(new Date(System.currentTimeMillis())));
                         reqEv.placeholders.put("SESSION_LOCATION_ID", mcm.getLocationId());
-                        reqEv.placeholders.put("ACCOUNT_NICKNAME", mcm.receiver.getNickname());
+                        reqEv.placeholders.put("ACCOUNT_NICKNAME", mcm.receiver.getName());
                         reqEv.placeholders.put("SESSION_PROMPT", PlaceHolder.replace(sessionCfg.Prompt, reqEv.placeholders));
                         assistant.setSystemPrompt(PlaceHolder.replace(globalCfg.Prompt, reqEv.placeholders));
 
@@ -188,7 +188,7 @@ public class AIChat extends Law {
                                 solve[loopNum][2] =  // prefix
                                         sdf.format(new Date(msg.time * 1000)) + // [时间]
                                         "[" + msg.id + "]" + // [时间] [消息id]
-                                        msg.sender.getNickname() + "(" + msg.sender.getLocationId() + ")" + msg.sender.getSex() + // [时间] [消息id] [昵称](用户QQ号)性别
+                                        msg.sender.getName() + "(" + msg.sender.getLocationId() + ")" + msg.sender.getSex() + // [时间] [消息id] [昵称](用户QQ号)性别
                                         ": "; // [时间] [消息id] [昵称](用户 LocationId)性别: [消息内容]
                             });
                         }

@@ -9,6 +9,7 @@ import org.slf4j.LoggerFactory;
 import java.util.*;
 
 public class MessageChannelManager {
+    int MESSAGE_LIST_MAX_SIZE = 20;
     public Map<String, MessageChannel> MessageChannels = new HashMap<>();
     Multimap<String, MessageChannelListener> sessionListeners = ArrayListMultimap.create();
     List<MessageChannelListener> listenersToAll = new ArrayList<>();
@@ -37,11 +38,11 @@ public class MessageChannelManager {
     public void onMessage(MessageChannel mc, MCMessage mcm) {
         if (mcm.sessionId != null && !mcm.sessionId.isEmpty()) {
             mcm.messageString = mcm.solveAll(false);
-            logger.info("接收到来自会话 {} 的消息 {} ({}): {}", mcm.sessionId, mcm.sender.nickname, mcm.sender.id, mcm.messageString);
+            logger.info("接收到来自会话 {} 的消息 {} ({}): {}", mcm.sessionId, mcm.sender.name, mcm.sender.id, mcm.messageString);
             messageHistory.computeIfAbsent(mcm.sessionId, k -> new MessageList());
             MessageList messageList = messageHistory.get(mcm.sessionId);
             messageList.add(mcm);
-            messageList.clean(20);
+            messageList.clean(MESSAGE_LIST_MAX_SIZE);
 
             for (MessageChannelListener mcl : sessionListeners.get(mcm.sessionId)) {
                 mcl.onMessage(mcm);
@@ -86,8 +87,8 @@ public class MessageChannelManager {
         String[] target = sessionId.split(":");
         MessageChannel mc = getChannel(target[0]);
         if (mc == null) {
-            // TODO: 不存在这个Channel，之后做异常处理
             logger.warn("不存在此Channel {}", target[0]);
+            throw new RuntimeException(target[0] + "is not exist");
         } else {
             logger.info("向会话 {} 发送消息: {}", sessionId, message);
             MCMessage mcm = new MCMessage();
@@ -95,7 +96,7 @@ public class MessageChannelManager {
             mcm.messageFields.add(new TextField(message));
             mcm.time = System.currentTimeMillis() / 1000;
             mcm.sender.id = mc.accountId;
-            mcm.sender.nickname = mc.nickname;
+            mcm.sender.name = mc.nickname;
             mcm.universe = true;
             // 应该没别的必须的参数了，留空算了
 
@@ -118,8 +119,8 @@ public class MessageChannelManager {
         return messageHistory.get(sessionId);
     }
 
-    public Account getAccount(String sessionId) {
+    public SessionInfo getAccount(String sessionId) {
         String[] split = sessionId.split(":", 2);
-        return getChannel(split[0]).getAccount(split[1]);
+        return getChannel(split[0]).getSessionInfo(split[1]);
     }
 }

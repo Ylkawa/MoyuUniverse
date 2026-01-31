@@ -26,10 +26,7 @@ import java.net.URL;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class OnebotChannel extends MessageChannel {
@@ -40,8 +37,8 @@ public class OnebotChannel extends MessageChannel {
     Logger logger = LoggerFactory.getLogger(this.getClass());
     URI uri;
     String token;
-    Map<String, Callback> syncActions = new HashMap<>(); // Echoes 和 Actions 的映射
-    Map<String, Account> userAccounts = new HashMap<>(); // 用户账号列表缓存
+    Map<String, Callback> syncActions = new ConcurrentHashMap<>(); // Echoes 和 Actions 的映射
+    Map<String, SessionInfo> sessionInfos = new HashMap<>(); // 用户账号列表缓存
     boolean good = true; // 实现端健康状态
     boolean online = true; // 实现端在线状态
 
@@ -89,13 +86,13 @@ public class OnebotChannel extends MessageChannel {
                     AtomicInteger friendCount = new AtomicInteger();
                     friendListReq.data.getAsJsonArray().forEach(friend -> {
                         JsonObject friendObj = friend.getAsJsonObject();
-                        Account account = new Account();
-                        account.setSex(friendObj.get("sex").getAsString());
-                        account.setId(friendObj.get("user_id").getAsString());
-                        account.setNickname(friendObj.get("nickname").getAsString());
-                        account.setPlatform("QQ");
+                        UserInfo userInfo = new UserInfo();
+                        userInfo.setSex(friendObj.get("sex").getAsString());
+                        userInfo.setId(friendObj.get("user_id").getAsString());
+                        userInfo.setName(friendObj.get("nickname").getAsString());
+                        userInfo.setPlatform("QQ");
                         friendCount.getAndIncrement();
-                        userAccounts.put(account.getId(), account);
+                        sessionInfos.put(userInfo.getId(), userInfo);
                     });
                     OBResponse groupListReq = request(new OBRequest("get_group_list"));
                     int groupCount = groupListReq.data.getAsJsonArray().size();
@@ -120,10 +117,10 @@ public class OnebotChannel extends MessageChannel {
                                     // 标注消息的基本信息
                                     mcm.time = message.time;
                                     mcm.receiver.setId(String.valueOf(message.self_id));
-                                    mcm.receiver.setNickname(nickname);
+                                    mcm.receiver.setName(nickname);
                                     mcm.receiver.setPlatform("QQ");
                                     mcm.sender.setId(String.valueOf(message.sender.user_id));
-                                    mcm.sender.setNickname(message.sender.nickname);
+                                    mcm.sender.setName(message.sender.nickname);
                                     mcm.sender.setPlatform("QQ");
                                     mcm.sender.setSex(message.sender.sex);
                                     mcm.id = message.message_id;
@@ -167,13 +164,13 @@ public class OnebotChannel extends MessageChannel {
                                             }
                                             case "at" -> {
                                                 if (ms.data.get("qq").equals("all")) {
-                                                    Account account = new Account(); // 假造一个算了
-                                                    account.setPlatform("QQ");
-                                                    account.setId("all");
-                                                    account.setNickname("全体成员");
-                                                    mcm.messageFields.add(new AtField(account));
+                                                    SessionInfo sessionInfo = new SessionInfo(); // 假造一个算了
+                                                    sessionInfo.setPlatform("QQ");
+                                                    sessionInfo.setId("all");
+                                                    sessionInfo.setName("全体成员");
+                                                    mcm.messageFields.add(new AtField(sessionInfo));
                                                 } else {
-                                                    var account = getAccount("user/" + ms.data.get("qq"));
+                                                    var account = getSessionInfo("user/" + ms.data.get("qq"));
                                                     mcm.messageFields.add(new AtField(account));
                                                 }
                                             }
@@ -276,6 +273,7 @@ public class OnebotChannel extends MessageChannel {
                                             break;
                                         case "private":
                                             Long userId = message.user_id;
+                                            mcm.sessionInfo = mcm.sender;
                                             sessionId.append(userId);
                                             break;
                                     }
@@ -354,7 +352,7 @@ public class OnebotChannel extends MessageChannel {
 
     @Override
     public int sendMessage(String sessionId, String message) {
-        String[] target = sessionId.split("\\/");
+        String[] target = sessionId.split("/");
         switch (target[0]) {
             case "group":
                 return sendGroupMessage(target[1], message);
@@ -437,26 +435,46 @@ public class OnebotChannel extends MessageChannel {
     }
 
     @Override
-    public Account getAccount(String sessionId) {
+    public SessionInfo getSessionInfo(String sessionId) {
         String[] acc = sessionId.split("/", 2);
-        if (!acc[0].equals("private") && !acc[0].equals("user")) {
-            logger.error("getAccount() cannot handle {}", sessionId);
-            throw new UnsupportedAction("Only support user account");
+        if (!acc[0].equals("private") && !acc[0].equals("user") && !acc[0].equals("group")) {
+            logger.error("getSessionInfo() cannot handle {}", sessionId);
+            throw new UnsupportedAction("Unsupported session type");
         }
-        Account account = userAccounts.get(acc[1]);
-        if (account == null) {
+        SessionInfo sessionInfo = sessionInfos.get(acc[1]);
+        if (sessionInfo == null) {
             OBRequest obr = new OBRequest();
-            obr.action = "get_stranger_info";
-            obr.params.put("user_id", acc[1]);
+            switch (acc[0]) {
+                case "group" -> {
+                    obr.action = "get_group_info";
+                    obr.params.put("group_id", acc[1]);
+                }
+                case "user","private" -> {
+                    obr.action = "get_stranger_info";
+                    obr.params.put("user_id", acc[1]);
+                }
+            }
             OBResponse resp = request(obr);
             if (resp.status.equals("failed")) throw new RuntimeException("Request Failed");
-            account = new Account();
-            account.setNickname(resp.data.getAsJsonObject().get("nickname").getAsString());
-            account.setId(acc[1]);
-            account.setPlatform("QQ");
-            account.setSex(resp.data.getAsJsonObject().get("sex").getAsString());
-            userAccounts.put(acc[1], account);
+            switch (acc[0]) {
+                case "group" -> {
+                    var groupInfo = new GroupInfo();
+                    groupInfo.setName(resp.data.getAsJsonObject().get("group_name").getAsString());
+                    groupInfo.setId(acc[1]);
+                    groupInfo.setPlatform("QQ");
+                    sessionInfo = groupInfo;
+                }
+                case "user","private" -> {
+                    var userInfo = new UserInfo();
+                    userInfo.setName(resp.data.getAsJsonObject().get("nickname").getAsString());
+                    userInfo.setId(acc[1]);
+                    userInfo.setPlatform("QQ");
+                    userInfo.setSex(resp.data.getAsJsonObject().get("sex").getAsString());
+                    sessionInfo = userInfo;
+                }
+            }
+            sessionInfos.put(acc[1], sessionInfo);
         }
-        return account;
+        return sessionInfo;
     }
 }

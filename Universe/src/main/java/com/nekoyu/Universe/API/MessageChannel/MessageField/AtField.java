@@ -1,16 +1,16 @@
 package com.nekoyu.Universe.API.MessageChannel.MessageField;
 
-import com.nekoyu.Universe.API.MessageChannel.Account;
+import com.nekoyu.Universe.API.MessageChannel.SessionInfo;
 
 public class AtField extends MsgField {
-    public Account target;
+    public SessionInfo target;
 
-    public AtField(Account target) {
+    public AtField(SessionInfo target) {
         super.type = "at";
         this.target = target;
     }
 
     public String getAsString() {
-        return "@"+target.getNickname();
+        return "@"+target.getName();
     }
 }

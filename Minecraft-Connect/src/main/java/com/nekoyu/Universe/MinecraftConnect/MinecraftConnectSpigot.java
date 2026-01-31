@@ -10,7 +10,6 @@ import net.md_5.bungee.api.chat.BaseComponent;
 import net.md_5.bungee.api.chat.ComponentBuilder;
 import net.md_5.bungee.api.chat.HoverEvent;
 import net.md_5.bungee.api.chat.TextComponent;
-import net.md_5.bungee.api.chat.hover.content.Content;
 import net.md_5.bungee.api.chat.hover.content.Text;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
@@ -25,7 +24,6 @@ import java.awt.image.BufferedImage;
 import java.io.*;
 import java.net.URI;
 import java.net.URISyntaxException;
-import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
@@ -135,7 +133,7 @@ public class MinecraftConnectSpigot extends JavaPlugin {
                     case "ForwardChat" -> {
                         ComponentBuilder bc = new ComponentBuilder();
                         ForwardChat fc = gson.fromJson(s, ForwardChat.class);
-                        TextComponent name = new TextComponent(net.md_5.bungee.api.ChatColor.AQUA + "[" + fc.MCMsg.sender.getNickname() + "]");
+                        TextComponent name = new TextComponent(net.md_5.bungee.api.ChatColor.AQUA + "[" + fc.MCMsg.sender.getName() + "]");
                         name.setHoverEvent(
                                 new HoverEvent(
                                         HoverEvent.Action.SHOW_TEXT,

@@ -9,8 +9,9 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 public class MCMessage {
-    public Account receiver;
-    public Account sender;
+    public SessionInfo sessionInfo;
+    public UserInfo receiver;
+    public UserInfo sender;
     public String messageString;
     public String sessionId; // 这个sessionId应该是Global SessionId
     public long time;
@@ -25,8 +26,8 @@ public class MCMessage {
     public boolean universe = false;
 
     public MCMessage() {
-        sender = new Account();
-        receiver = new Account();
+        sender = new UserInfo();
+        receiver = new UserInfo();
         messageFields = new LinkedList<>();
         level = 0;
     }
@@ -104,13 +105,18 @@ public class MCMessage {
             return this;
         }
 
-        public Builder receiverAccount(Account account) {
-            msg.receiver = account;
+        public Builder sessionInfo(SessionInfo sessionInfo) {
+            msg.sessionInfo = sessionInfo;
             return this;
         }
 
-        public Builder senderAccount(Account account) {
-            msg.sender = account;
+        public Builder receiverAccount(UserInfo userInfo) {
+            msg.receiver = userInfo;
+            return this;
+        }
+
+        public Builder senderAccount(UserInfo userInfo) {
+            msg.sender = userInfo;
             return this;
         }
 
