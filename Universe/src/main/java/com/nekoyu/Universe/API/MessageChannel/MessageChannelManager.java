@@ -38,7 +38,11 @@ public class MessageChannelManager {
     public void onMessage(MessageChannel mc, MCMessage mcm) {
         if (mcm.sessionId != null && !mcm.sessionId.isEmpty()) {
             mcm.messageString = mcm.solveAll(false);
-            logger.info("接收到来自会话 {} 的消息 {} ({}): {}", mcm.sessionId, mcm.sender.name, mcm.sender.id, mcm.messageString);
+            if (mcm.sessionInfo instanceof GroupInfo) {
+                logger.info("{}[{}] {}({}) -> {}", mc.ID, mcm.sessionInfo.name, mcm.sender.name, mcm.sender.id, mcm.messageString);
+            } else {
+                logger.info("{} {}({}) -> {}", mc.ID, mcm.sender.name, mcm.sender.id, mcm.messageString);
+            }
             messageHistory.computeIfAbsent(mcm.sessionId, k -> new MessageList());
             MessageList messageList = messageHistory.get(mcm.sessionId);
             messageList.add(mcm);
@@ -90,7 +94,7 @@ public class MessageChannelManager {
             logger.warn("不存在此Channel {}", target[0]);
             throw new RuntimeException(target[0] + "is not exist");
         } else {
-            logger.info("向会话 {} 发送消息: {}", sessionId, message);
+            logger.info("{} {} <- {}", mc.ID, mc.getSessionInfo(target[1]).name, message);
             MCMessage mcm = new MCMessage();
             mcm.id = mc.sendMessage(target[1], message.strip()); //将sessionId转换成局部形式传给MessageChannel处理，同时把聊天记录对象传过去
             mcm.messageFields.add(new TextField(message));

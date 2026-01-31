@@ -32,13 +32,12 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class OnebotChannel extends MessageChannel {
     WebSocketClient wsConnection;
     ExecutorService onMsgEx = Executors.newCachedThreadPool(); // 处理消息事件的线程池
-    ExecutorService callbackEx = Executors.newCachedThreadPool(); // 处理 sync action callback 的线程池
     boolean isReady = true;
     Logger logger = LoggerFactory.getLogger(this.getClass());
     URI uri;
     String token;
     Map<String, Callback> syncActions = new ConcurrentHashMap<>(); // Echoes 和 Actions 的映射
-    Map<String, SessionInfo> sessionInfos = new HashMap<>(); // 用户账号列表缓存
+    Map<String, SessionInfo> sessionInfos = new ConcurrentHashMap<>(); // 用户账号列表缓存
     boolean good = true; // 实现端健康状态
     boolean online = true; // 实现端在线状态
 
@@ -107,9 +106,9 @@ public class OnebotChannel extends MessageChannel {
             public void onMessage(String s) {
                 Gson gson = new Gson();
                 JsonElement content = gson.fromJson(s, JsonElement.class);
+                if (content.getAsJsonObject().get("post_type") != null) {
                 onMsgEx.submit(() -> {
                     try {
-                        if (content.getAsJsonObject().get("post_type") != null) {
                             switch (content.getAsJsonObject().get("post_type").getAsString()) {
                                 case "message" -> {
                                     Message message = gson.fromJson(s, Message.class);
@@ -270,11 +269,12 @@ public class OnebotChannel extends MessageChannel {
                                         case "group":
                                             Long groupId = message.group_id;
                                             sessionId.append(groupId);
+                                            mcm.sessionInfo = getSessionInfo(sessionId.toString());
                                             break;
                                         case "private":
                                             Long userId = message.user_id;
-                                            mcm.sessionInfo = mcm.sender;
                                             sessionId.append(userId);
+                                            mcm.sessionInfo = mcm.sender;
                                             break;
                                     }
                                     broadcastMessage(sessionId.toString(), mcm);
@@ -313,18 +313,15 @@ public class OnebotChannel extends MessageChannel {
                                     return;
                                 }
                             }
-                        }
                     } catch (JsonSyntaxException ignored) {
 
                     }
                 });
+                }
                 if (content.getAsJsonObject().get("echo") != null) {
                     OBResponse response = gson.fromJson(content, OBResponse.class);
                     if (!response.echo.isEmpty()) {
-                        callbackEx.submit(() -> {
-                            syncActions.get(response.echo).callback(response);
-                            syncActions.remove(response.echo);
-                        });
+                        new Thread(() -> syncActions.remove(response.echo).callback(response)).start();
                     }
                 }
             }
@@ -390,6 +387,7 @@ public class OnebotChannel extends MessageChannel {
     /**
      * 用于直接发送不需要处理结果的请求
      * 如果需要处理请求的结果，请改用 syncRequest 方法
+     *
      * @param obr OnebotRequest
      */
     private void action(OBRequest obr) {
@@ -419,7 +417,8 @@ public class OnebotChannel extends MessageChannel {
 
     /**
      * 此方法用于发送需要处理结果的请求，请求结果交由 Callback 对象中定义的代码处理
-     * @param obr OnebotRequest
+     *
+     * @param obr      OnebotRequest
      * @param callback 回调函数
      */
     private void syncRequest(OBRequest obr, Callback callback) {
@@ -428,10 +427,6 @@ public class OnebotChannel extends MessageChannel {
         obr.echo = uuid.toString();
         syncActions.put(obr.echo, callback);
         wsConnection.send(new Gson().toJson(obr));
-    }
-
-    private interface Callback {
-        void callback(OBResponse response);
     }
 
     @Override
@@ -449,7 +444,7 @@ public class OnebotChannel extends MessageChannel {
                     obr.action = "get_group_info";
                     obr.params.put("group_id", acc[1]);
                 }
-                case "user","private" -> {
+                case "user", "private" -> {
                     obr.action = "get_stranger_info";
                     obr.params.put("user_id", acc[1]);
                 }
@@ -464,7 +459,7 @@ public class OnebotChannel extends MessageChannel {
                     groupInfo.setPlatform("QQ");
                     sessionInfo = groupInfo;
                 }
-                case "user","private" -> {
+                case "user", "private" -> {
                     var userInfo = new UserInfo();
                     userInfo.setName(resp.data.getAsJsonObject().get("nickname").getAsString());
                     userInfo.setId(acc[1]);
@@ -476,5 +471,9 @@ public class OnebotChannel extends MessageChannel {
             sessionInfos.put(acc[1], sessionInfo);
         }
         return sessionInfo;
+    }
+
+    private interface Callback {
+        void callback(OBResponse response);
     }
 }
