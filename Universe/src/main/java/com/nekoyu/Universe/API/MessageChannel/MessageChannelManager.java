@@ -14,6 +14,7 @@ public class MessageChannelManager {
     Multimap<String, MessageChannelListener> sessionListeners = ArrayListMultimap.create();
     List<MessageChannelListener> listenersToAll = new ArrayList<>();
     Logger logger = LoggerFactory.getLogger(getClass());
+    Logger messagingLogger = LoggerFactory.getLogger("Messaging");
     Map<String, MessageList> messageHistory = new HashMap();
 
     public void registerChannel(String id, MessageChannel mc) {
@@ -39,9 +40,9 @@ public class MessageChannelManager {
         if (mcm.sessionId != null && !mcm.sessionId.isEmpty()) {
             mcm.messageString = mcm.solveAll(false);
             if (mcm.sessionInfo instanceof GroupInfo) {
-                logger.info("{}[{}] {}({}) -> {}", mc.ID, mcm.sessionInfo.name, mcm.sender.name, mcm.sender.id, mcm.messageString);
+                messagingLogger.info("{}[{}] {}({}) -> {}", mc.ID, mcm.sessionInfo.name, mcm.sender.name, mcm.sender.id, mcm.messageString);
             } else {
-                logger.info("{} {}({}) -> {}", mc.ID, mcm.sender.name, mcm.sender.id, mcm.messageString);
+                messagingLogger.info("{} {}({}) -> {}", mc.ID, mcm.sender.name, mcm.sender.id, mcm.messageString);
             }
             messageHistory.computeIfAbsent(mcm.sessionId, k -> new MessageList());
             MessageList messageList = messageHistory.get(mcm.sessionId);
@@ -94,7 +95,7 @@ public class MessageChannelManager {
             logger.warn("不存在此Channel {}", target[0]);
             throw new RuntimeException(target[0] + "is not exist");
         } else {
-            logger.info("{} {} <- {}", mc.ID, mc.getSessionInfo(target[1]).name, message);
+            messagingLogger.info("{} {} <- {}", mc.ID, mc.getSessionInfo(target[1]).name, message);
             MCMessage mcm = new MCMessage();
             mcm.id = mc.sendMessage(target[1], message.strip()); //将sessionId转换成局部形式传给MessageChannel处理，同时把聊天记录对象传过去
             mcm.messageFields.add(new TextField(message));
