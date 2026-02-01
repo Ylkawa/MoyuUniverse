@@ -15,7 +15,7 @@ public class MessageChannelManager {
     List<MessageChannelListener> listenersToAll = new ArrayList<>();
     Logger logger = LoggerFactory.getLogger(getClass());
     Logger messagingLogger = LoggerFactory.getLogger("Messaging");
-    Map<String, MessageList> messageHistory = new HashMap();
+    Map<String, MessageList> messageHistory = new HashMap<>();
 
     public void registerChannel(String id, MessageChannel mc) {
         MessageChannels.put(id, mc);
@@ -124,7 +124,7 @@ public class MessageChannelManager {
         return messageHistory.get(sessionId);
     }
 
-    public SessionInfo getAccount(String sessionId) {
+    public SessionInfo getSessionInfo(String sessionId) {
         String[] split = sessionId.split(":", 2);
         return getChannel(split[0]).getSessionInfo(split[1]);
     }
