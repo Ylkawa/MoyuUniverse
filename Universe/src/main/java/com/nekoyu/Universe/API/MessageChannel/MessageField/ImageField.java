@@ -11,22 +11,26 @@ import com.nekoyu.AmapAPI.v3.AmapClient;
 import com.nekoyu.AmapAPI.v3.geocode.RegeoRequest;
 import com.nekoyu.AmapAPI.v3.geocode.RegeoResponse;
 import com.nekoyu.Universe.Universe;
+import com.nekoyu.Universe.Utils.ImageUtils;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.annotation.Nullable;
+import java.awt.*;
 import java.io.IOException;
 import java.math.RoundingMode;
 import java.net.URL;
 import java.text.DecimalFormat;
 import java.text.SimpleDateFormat;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 public class ImageField extends FileField {
     private static final Logger logger = LoggerFactory.getLogger(ImageField.class);
+    private final AtomicReference<Color> mainColor = new AtomicReference<>();
 
     public ImageField(URL url) {
         super(url);
@@ -137,6 +141,18 @@ public class ImageField extends FileField {
             return ImageMetadataReader.readMetadata(response.body().byteStream());
         } catch (IOException | ImageProcessingException e) {
             throw new RuntimeException(e);
+        }
+    }
+
+    public Color getMainColor() {
+        if (mainColor.get() != null) return mainColor.get();
+        synchronized (mainColor) {
+            try {
+                mainColor.set(ImageUtils.getMainColor(url));
+                return mainColor.get();
+            } catch (IOException e) {
+                return null;
+            }
         }
     }
 }

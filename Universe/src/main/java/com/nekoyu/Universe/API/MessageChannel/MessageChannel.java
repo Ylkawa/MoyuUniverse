@@ -3,7 +3,10 @@ package com.nekoyu.Universe.API.MessageChannel;
 import com.nekoyu.Universe.API.MessageSession;
 import com.nekoyu.Universe.Universe;
 
+import java.awt.*;
+
 public abstract class MessageChannel {
+    public Color mainColor = new Color(255, 255, 255);
     public String type;
     public final String ID;
     public String accountId;

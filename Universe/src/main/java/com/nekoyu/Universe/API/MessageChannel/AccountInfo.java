@@ -1,6 +1,6 @@
 package com.nekoyu.Universe.API.MessageChannel;
 
-public class UserInfo extends SessionInfo {
+public class AccountInfo extends SessionInfo {
     String sex;
 
     public String getSex() {

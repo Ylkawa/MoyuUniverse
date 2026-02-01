@@ -12,13 +12,18 @@ import com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.event.Notices.FriendRecall;
 import com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.event.Notices.GroupRecall;
 import com.nekoyu.Universe.API.MessageChannel.*;
 import com.nekoyu.Universe.API.MessageChannel.MessageField.*;
+import com.nekoyu.Universe.API.MessageChannel.MessageField.TextField;
 import com.nekoyu.Universe.API.MessageSession;
 import com.nekoyu.Universe.Universe;
+import com.nekoyu.Universe.Utils.ColorUtils;
+import com.nekoyu.Universe.Utils.ImageUtils;
 import org.java_websocket.client.WebSocketClient;
 import org.java_websocket.handshake.ServerHandshake;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.awt.*;
+import java.io.IOException;
 import java.net.MalformedURLException;
 import java.net.URI;
 import java.net.URISyntaxException;
@@ -85,19 +90,29 @@ public class OnebotChannel extends MessageChannel {
                     AtomicInteger friendCount = new AtomicInteger();
                     friendListReq.data.getAsJsonArray().forEach(friend -> {
                         JsonObject friendObj = friend.getAsJsonObject();
-                        UserInfo userInfo = new UserInfo();
-                        userInfo.setSex(friendObj.get("sex").getAsString());
-                        userInfo.setId(friendObj.get("user_id").getAsString());
-                        userInfo.setName(friendObj.get("nickname").getAsString());
-                        userInfo.setPlatform("QQ");
+                        AccountInfo accountInfo = new AccountInfo();
+                        accountInfo.setSex(friendObj.get("sex").getAsString());
+                        accountInfo.setId(friendObj.get("user_id").getAsString());
+                        accountInfo.setName(friendObj.get("nickname").getAsString());
+                        accountInfo.setPlatform("QQ");
+                        try {
+                            accountInfo.setAvatar(new ImageField(new URL("https://q.qlogo.cn/headimg_dl?dst_uin=" + accountInfo.getId() + "&spec=640&img_type=jpg")));
+                        } catch (MalformedURLException e) {
+                            logger.error(e.getMessage(), e);
+                        }
                         friendCount.getAndIncrement();
-                        sessionInfos.put(userInfo.getId(), userInfo);
+                        sessionInfos.put(accountInfo.getId(), accountInfo);
                     });
                     OBResponse groupListReq = request(new OBRequest("get_group_list"));
                     int groupCount = groupListReq.data.getAsJsonArray().size();
                     JsonObject responseData = response.data.getAsJsonObject();
                     nickname = responseData.get("nickname").getAsString();
                     accountId = responseData.get("user_id").getAsString();
+                    try {
+                        mainColor = ImageUtils.getMainColor(new URL("https://q.qlogo.cn/headimg_dl?dst_uin=" + accountId + "&spec=640&img_type=jpg"));
+                    } catch (IOException e) {
+                        throw new RuntimeException(e);
+                    }
                     logger.info("{} 登录的 QQ号 为 {} ({}), {} 个好友  {} 个群聊", ID, nickname, accountId, friendCount.get(), groupCount);
                 });
             }
@@ -107,8 +122,8 @@ public class OnebotChannel extends MessageChannel {
                 Gson gson = new Gson();
                 JsonElement content = gson.fromJson(s, JsonElement.class);
                 if (content.getAsJsonObject().get("post_type") != null) {
-                onMsgEx.submit(() -> {
-                    try {
+                    onMsgEx.submit(() -> {
+                        try {
                             switch (content.getAsJsonObject().get("post_type").getAsString()) {
                                 case "message" -> {
                                     Message message = gson.fromJson(s, Message.class);
@@ -118,10 +133,7 @@ public class OnebotChannel extends MessageChannel {
                                     mcm.receiver.setId(String.valueOf(message.self_id));
                                     mcm.receiver.setName(nickname);
                                     mcm.receiver.setPlatform("QQ");
-                                    mcm.sender.setId(String.valueOf(message.sender.user_id));
-                                    mcm.sender.setName(message.sender.nickname);
-                                    mcm.sender.setPlatform("QQ");
-                                    mcm.sender.setSex(message.sender.sex);
+                                    mcm.sender = (AccountInfo) getSessionInfo("user/" + message.sender.user_id);
                                     mcm.id = message.message_id;
                                     StringBuilder sessionId = new StringBuilder();
                                     sessionId.append(message.message_type).append("/");
@@ -313,10 +325,10 @@ public class OnebotChannel extends MessageChannel {
                                     return;
                                 }
                             }
-                    } catch (JsonSyntaxException ignored) {
+                        } catch (JsonSyntaxException ignored) {
 
-                    }
-                });
+                        }
+                    });
                 }
                 if (content.getAsJsonObject().get("echo") != null) {
                     OBResponse response = gson.fromJson(content, OBResponse.class);
@@ -457,15 +469,25 @@ public class OnebotChannel extends MessageChannel {
                     groupInfo.setName(resp.data.getAsJsonObject().get("group_name").getAsString());
                     groupInfo.setId(acc[1]);
                     groupInfo.setPlatform("QQ");
+                    try {
+                        groupInfo.setAvatar(new ImageField(new URL("https://p.qlogo.cn/gh/" + acc[1] + "/" + acc[1] + "/0")));
+                    } catch (MalformedURLException e) {
+                        logger.error(e.getMessage(), e);
+                    }
                     sessionInfo = groupInfo;
                 }
                 case "user", "private" -> {
-                    var userInfo = new UserInfo();
-                    userInfo.setName(resp.data.getAsJsonObject().get("nickname").getAsString());
-                    userInfo.setId(acc[1]);
-                    userInfo.setPlatform("QQ");
-                    userInfo.setSex(resp.data.getAsJsonObject().get("sex").getAsString());
-                    sessionInfo = userInfo;
+                    var accountInfo = new AccountInfo();
+                    accountInfo.setName(resp.data.getAsJsonObject().get("nickname").getAsString());
+                    accountInfo.setId(acc[1]);
+                    accountInfo.setPlatform("QQ");
+                    accountInfo.setSex(resp.data.getAsJsonObject().get("sex").getAsString());
+                    try {
+                        accountInfo.setAvatar(new ImageField(new URL("https://q.qlogo.cn/headimg_dl?dst_uin=" + accountInfo.getId() + "&spec=640&img_type=jpg")));
+                    } catch (MalformedURLException e) {
+                        logger.error(e.getMessage(), e);
+                    }
+                    sessionInfo = accountInfo;
                 }
             }
             sessionInfos.put(acc[1], sessionInfo);

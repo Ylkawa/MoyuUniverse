@@ -1,9 +1,15 @@
 package com.nekoyu.Universe.API.MessageChannel;
 
+import com.nekoyu.Universe.API.MessageChannel.MessageField.ImageField;
+
+import javax.annotation.Nullable;
+
 public class SessionInfo {
     String id;
     String platform;
     String name;
+    @Nullable
+    ImageField avatar;
 
     public String getId() {
         return id;
@@ -27,6 +33,14 @@ public class SessionInfo {
 
     public void setName(String name) {
         this.name = name;
+    }
+
+    public ImageField getAvatar() {
+        return avatar;
+    }
+
+    public void setAvatar(ImageField avatar) {
+        this.avatar = avatar;
     }
 
     public String getLocationId() {

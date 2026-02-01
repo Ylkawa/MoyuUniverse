@@ -3,10 +3,14 @@ package com.nekoyu.Universe.API.MessageChannel;
 import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.Multimap;
 import com.nekoyu.Universe.API.MessageChannel.MessageField.TextField;
+import com.nekoyu.Universe.Utils.ColorUtils;
+import com.nekoyu.Universe.Utils.ImageUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.awt.*;
 import java.util.*;
+import java.util.List;
 
 public class MessageChannelManager {
     int MESSAGE_LIST_MAX_SIZE = 20;
@@ -39,10 +43,41 @@ public class MessageChannelManager {
     public void onMessage(MessageChannel mc, MCMessage mcm) {
         if (mcm.sessionId != null && !mcm.sessionId.isEmpty()) {
             mcm.messageString = mcm.solveAll(false);
-            if (mcm.sessionInfo instanceof GroupInfo) {
-                messagingLogger.info("{}[{}] {}({}) -> {}", mc.ID, mcm.sessionInfo.name, mcm.sender.name, mcm.sender.id, mcm.messageString);
+            String fg = "";
+            if (mcm.sender.getAvatar() != null) {
+                fg = ColorUtils.fg(mcm.sender.getAvatar().getMainColor());
+            } else logger.debug("sender avatar is null");
+            if (mcm.sessionInfo instanceof GroupInfo groupInfo) {
+                Color groupAvatarColor = null;
+                if (groupInfo.getAvatar() != null) {
+                    groupAvatarColor = groupInfo.getAvatar().getMainColor();
+                } else logger.debug("group avatar is null");
+                String groupFg = "";
+                if (groupAvatarColor != null) {
+                    groupFg = ColorUtils.fg(groupAvatarColor);
+                }
+                messagingLogger.info("{}{}{}[{}{}{}] {}{}{}({}) -> {}",
+                        ColorUtils.fg(mc.mainColor),
+                        mc.ID,
+                        ColorUtils.RESET,
+                        groupFg,
+                        mcm.sessionInfo.name,
+                        ColorUtils.RESET,
+                        fg,
+                        mcm.sender.name,
+                        ColorUtils.RESET,
+                        mcm.sender.id,
+                        mcm.messageString);
             } else {
-                messagingLogger.info("{} {}({}) -> {}", mc.ID, mcm.sender.name, mcm.sender.id, mcm.messageString);
+                messagingLogger.info("{}{}{} {}{}{}({}) -> {}",
+                        ColorUtils.fg(mc.mainColor),
+                        mc.ID,
+                        ColorUtils.RESET,
+                        fg,
+                        mcm.sender.name,
+                        ColorUtils.RESET,
+                        mcm.sender.id,
+                        mcm.messageString);
             }
             messageHistory.computeIfAbsent(mcm.sessionId, k -> new MessageList());
             MessageList messageList = messageHistory.get(mcm.sessionId);
@@ -95,7 +130,19 @@ public class MessageChannelManager {
             logger.warn("不存在此Channel {}", target[0]);
             throw new RuntimeException(target[0] + "is not exist");
         } else {
-            messagingLogger.info("{} {} <- {}", mc.ID, mc.getSessionInfo(target[1]).name, message);
+            SessionInfo sessionInfo = mc.getSessionInfo(target[1]);
+            String fg = "";
+            if (sessionInfo.avatar != null) {
+                fg = ColorUtils.fg(sessionInfo.avatar.getMainColor());
+            }
+            messagingLogger.info("{}{}{} {}{}{} <- {}",
+                    ColorUtils.fg(mc.mainColor),
+                    mc.ID,
+                    ColorUtils.RESET,
+                    fg,
+                    sessionInfo.name,
+                    ColorUtils.RESET,
+                    message);
             MCMessage mcm = new MCMessage();
             mcm.id = mc.sendMessage(target[1], message.strip()); //将sessionId转换成局部形式传给MessageChannel处理，同时把聊天记录对象传过去
             mcm.messageFields.add(new TextField(message));
