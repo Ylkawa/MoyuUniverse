@@ -8,4 +8,5 @@ import java.util.LinkedList;
 
 public class ForwardChat extends UniverseChannelMessage {
     public MCMessage MCMsg;
+    public int[] RGB;
 }

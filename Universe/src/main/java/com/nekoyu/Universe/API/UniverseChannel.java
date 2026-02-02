@@ -187,7 +187,9 @@ public class UniverseChannel {
     }
 
     public void broadcast(String tag, UniverseChannelMessage ucm) {
+        logger.debug("to json");
         String json = new Gson().toJson(ucm);
+        logger.debug("done");
         for (String id : externalListeners.get(tag)) {
             clientList.get(id).send(json);
         }

@@ -14,8 +14,10 @@ import com.nekoyu.Universe.LawsLoader.Law;
 import com.nekoyu.Universe.Universe;
 import org.yaml.snakeyaml.Yaml;
 
+import java.awt.*;
 import java.io.*;
 import java.util.*;
+import java.util.List;
 import java.util.regex.Pattern;
 
 public class MinecraftConnectUniverse extends Law implements UniverseListener {
@@ -74,7 +76,11 @@ public class MinecraftConnectUniverse extends Law implements UniverseListener {
                 ForwardChat ucm = new ForwardChat();
                 ucm.message = "ForwardChat";
                 ucm.MCMsg = mcm;
+                Color color = Color.CYAN;
+                if (mcm.sender.getAvatar() != null) color = mcm.sender.getAvatar().getMainColor();
+                ucm.RGB = new int[]{color.getRed(), color.getGreen(), color.getBlue()};
 
+                logger.debug("broadcast");
                 Universe.UniverseChannel.broadcast(target, ucm);
             });
         }

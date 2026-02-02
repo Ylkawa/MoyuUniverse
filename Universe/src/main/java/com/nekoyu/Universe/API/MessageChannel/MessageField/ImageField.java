@@ -30,7 +30,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 public class ImageField extends FileField {
     private static final Logger logger = LoggerFactory.getLogger(ImageField.class);
-    private final AtomicReference<Color> mainColor = new AtomicReference<>();
+    transient private final AtomicReference<Color> mainColor = new AtomicReference<>();
 
     public ImageField(URL url) {
         super(url);

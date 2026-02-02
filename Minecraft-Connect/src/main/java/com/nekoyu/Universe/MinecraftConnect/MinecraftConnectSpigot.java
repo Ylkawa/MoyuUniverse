@@ -133,7 +133,8 @@ public class MinecraftConnectSpigot extends JavaPlugin {
                     case "ForwardChat" -> {
                         ComponentBuilder bc = new ComponentBuilder();
                         ForwardChat fc = gson.fromJson(s, ForwardChat.class);
-                        TextComponent name = new TextComponent(net.md_5.bungee.api.ChatColor.AQUA + "[" + fc.MCMsg.sender.getName() + "]");
+                        net.md_5.bungee.api.ChatColor aqua = net.md_5.bungee.api.ChatColor.of(new Color(fc.RGB[0],fc.RGB[1],fc.RGB[2]));
+                        TextComponent name = new TextComponent(aqua + "[" + fc.MCMsg.sender.getName() + "]");
                         name.setHoverEvent(
                                 new HoverEvent(
                                         HoverEvent.Action.SHOW_TEXT,
