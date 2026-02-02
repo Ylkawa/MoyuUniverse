@@ -374,10 +374,7 @@ public class OnebotChannel extends MessageChannel {
     }
 
     /**
-     *
      * @param sessionId group/*******
-     * @param name
-     * @throws UnsupportedAction
      */
     @Override
     public void setSessionName(String sessionId, String name) throws UnsupportedAction {

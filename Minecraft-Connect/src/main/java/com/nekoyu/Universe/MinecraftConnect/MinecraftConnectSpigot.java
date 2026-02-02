@@ -134,7 +134,8 @@ public class MinecraftConnectSpigot extends JavaPlugin {
                         ComponentBuilder bc = new ComponentBuilder();
                         ForwardChat fc = gson.fromJson(s, ForwardChat.class);
                         net.md_5.bungee.api.ChatColor color = net.md_5.bungee.api.ChatColor.of(new Color(fc.RGB[0],fc.RGB[1],fc.RGB[2]));
-                        TextComponent name = new TextComponent(color + "[" + fc.MCMsg.sender.getName() + "]");
+                        TextComponent name = new TextComponent("[" + fc.MCMsg.sender.getName() + "]");
+                        name.setColor(color);
                         name.setHoverEvent(
                                 new HoverEvent(
                                         HoverEvent.Action.SHOW_TEXT,
@@ -144,7 +145,8 @@ public class MinecraftConnectSpigot extends JavaPlugin {
                         bc.append(name).append(": ");
                         for (MsgField f : fc.MCMsg.messageFields) {
                             if (f instanceof AtField af) {
-                                TextComponent tc = new TextComponent(ChatColor.YELLOW + f.getAsString());
+                                TextComponent tc = new TextComponent(f.getAsString());
+                                tc.setColor(net.md_5.bungee.api.ChatColor.YELLOW);
                                 tc.setHoverEvent(
                                         new HoverEvent(
                                                 HoverEvent.Action.SHOW_TEXT,
@@ -183,7 +185,8 @@ public class MinecraftConnectSpigot extends JavaPlugin {
                                     }
 
                                     BaseComponent[] hover = TextComponent.fromLegacyText(sb.toString());
-                                    TextComponent tc = new TextComponent(ChatColor.UNDERLINE + "[图片]");
+                                    TextComponent tc = new TextComponent("[图片]");
+                                    tc.setColor(net.md_5.bungee.api.ChatColor.GRAY);
                                     tc.setHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, new Text(hover)));
                                     bc.append(tc);
                                 } catch (Exception e) {
@@ -193,6 +196,7 @@ public class MinecraftConnectSpigot extends JavaPlugin {
                                 }
                             } else {
                                 TextComponent tc = new TextComponent(f.getAsString());
+                                tc.setColor(net.md_5.bungee.api.ChatColor.WHITE);
                                 tc.setHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, new Text("")));
                                 bc.append(tc);
                             }

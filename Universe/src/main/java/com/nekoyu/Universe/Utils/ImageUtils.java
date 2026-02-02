@@ -41,7 +41,7 @@ public class ImageUtils {
     // ---- K-Means ----
 
     private static Color kMeansMainColor(List<int[]> pts, int k, int iterations) {
-        Random rand = new Random();
+        Random rand = new Random(24);
         int[][] centers = new int[k][3];
 
         for (int i = 0; i < k; i++) {
