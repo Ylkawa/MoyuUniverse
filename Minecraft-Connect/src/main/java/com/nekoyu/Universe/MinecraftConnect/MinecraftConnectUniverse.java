@@ -80,7 +80,6 @@ public class MinecraftConnectUniverse extends Law implements UniverseListener {
                 if (mcm.sender.getAvatar() != null) color = mcm.sender.getAvatar().getMainColor();
                 ucm.RGB = new int[]{color.getRed(), color.getGreen(), color.getBlue()};
 
-                logger.debug("broadcast");
                 Universe.UniverseChannel.broadcast(target, ucm);
             });
         }
