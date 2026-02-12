@@ -8,4 +8,5 @@ public class SessionConfig {
     String Model;
     String[] Tools;
     String Keyword;
+    boolean nativeImage;
 }

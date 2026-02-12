@@ -5,6 +5,8 @@ import com.google.common.collect.Multimap;
 import com.google.gson.Gson;
 import com.nekoyu.Universe.AIChat.Event.RequestEvent;
 import com.nekoyu.Universe.API.MessageChannel.MCMessage;
+import com.nekoyu.Universe.API.MessageChannel.MessageField.ImageField;
+import com.nekoyu.Universe.API.MessageChannel.MessageField.MsgField;
 import com.nekoyu.Universe.API.MessageChannel.MessageField.TextField;
 import com.nekoyu.Universe.API.MessageChannel.MessageList;
 import com.nekoyu.Universe.API.PlaceHolder;
@@ -177,19 +179,18 @@ public class AIChat extends Law {
                         assistant.setSystemPrompt(PlaceHolder.replace(globalCfg.Prompt, reqEv.placeholders));
 
                         ExecutorService executor = Executors.newFixedThreadPool(5);
-                        String[][] solve = new String[ml.size()][3];
+                        String[][] solveInfo = new String[ml.size()][2];
                         for (int i = 0; i < ml.size(); i++) {
-                            int loopNum = i;
-                            executor.submit(() -> {
-                                MCMessage msg = ml.get(loopNum);
-                                if (msg.sender.getId().equals(mcm.receiver.getId())) solve[loopNum][0] = "assistant";
-                                else solve[loopNum][0] = "user";
-                                solve[loopNum][1] = msg.solveAll(true);
-                                solve[loopNum][2] =  // prefix
-                                        sdf.format(new Date(msg.time * 1000)) + // [时间]
-                                        "[" + msg.id + "]" + // [时间] [消息id]
-                                        msg.sender.getName() + "(" + msg.sender.getLocationId() + ")" + msg.sender.getSex() + // [时间] [消息id] [昵称](用户QQ号)性别
-                                        ": "; // [时间] [消息id] [昵称](用户 LocationId)性别: [消息内容]
+                            MCMessage msg = ml.get(i);
+                            if (msg.sender.getLocationId() == mcm.sender.getLocationId()) {
+                                solveInfo[i][0] = "assistant";
+                            } else solveInfo[i][0] = "user";
+                            executor.submit(() -> { // presolve
+                                for (MsgField mf : msg.messageFields) {
+                                    if (mf instanceof ImageField) {
+                                        if (!sessionCfg.nativeImage) mf.solve();
+                                    }
+                                }
                             });
                         }
                         executor.shutdown();
@@ -201,26 +202,31 @@ public class AIChat extends Law {
                                 try {
                                     // 构建 OpenAI Adapter ML
                                     MessageList openaiMl = new MessageList();
-                                    int key = 0;
-                                    for (int i = 0; i < solve.length; i++) {
-                                        if (solve[i][0].equals("assistant")) {
+                                    for (int i = 0; i < solveInfo.length; i++) {
+                                        if (solveInfo[i][0].equals("assistant")) {
                                             StringBuilder content = new StringBuilder();
                                             boolean first = true;
                                             do {
-                                                if (!first) content.append("\n\n");
-                                                content.append(solve[i][1]);
+                                                if (first) first = false;
+                                                else content.append("\n\n");
+                                                content.append(ml.get(i).solveAll());
                                                 i++;
-                                                first = false;
-                                            } while (solve[i] != null && solve[i][0].equals("assistant"));
+                                            } while (solveInfo[i] != null && solveInfo[i][0].equals("assistant"));
                                             i--;
                                             MCMessage msg = new MCMessage();
                                             msg.putMetainfo("role", "assistant");
                                             msg.messageFields.add(new TextField(content.toString()));
                                             openaiMl.add(msg);
-                                        } else {
+                                        } else { // 此处默认非 assistant 即 user
                                             MCMessage msg = new MCMessage();
                                             msg.putMetainfo("role", "user");
-                                            msg.messageFields.add(new TextField(solve[i][2] + solve[i][1]));
+                                            for (MsgField mf : ml.get(i).messageFields) {
+                                                if (mf instanceof TextField) {
+                                                    msg.messageFields.add(mf);
+                                                } else if (mf instanceof ImageField) {
+                                                    if (sessionCfg.nativeImage) msg.messageFields.add(mf);
+                                                } else msg.messageFields.add(new TextField(mf.getAsString()));
+                                            }
                                             openaiMl.add(msg);
                                         }
                                     }

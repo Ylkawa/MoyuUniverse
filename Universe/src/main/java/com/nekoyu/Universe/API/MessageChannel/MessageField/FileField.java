@@ -54,4 +54,12 @@ public class FileField extends MsgField {
     public String getAsString() {
         return "[文件]";
     }
+
+    public URL getUrl() {
+        return url;
+    }
+
+    public void setUrl(URL url) {
+        this.url = url;
+    }
 }

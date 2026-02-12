@@ -3,9 +3,11 @@ package com.nekoyu.universe.openaiadapter;
 import com.google.gson.Gson;
 import com.google.gson.JsonSyntaxException;
 import com.nekoyu.Universe.API.MessageChannel.MCMessage;
+import com.nekoyu.Universe.API.MessageChannel.MessageField.ImageField;
 import com.nekoyu.Universe.API.MessageChannel.MessageField.MsgField;
 import com.nekoyu.Universe.API.MessageChannel.MessageList;
 import com.nekoyu.Universe.API.Providers.LLMProvider.LLMProvider;
+import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.ContentPiece.ImageUrlPiece;
 import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.LLMFunction;
 import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.*;
 import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.ContentPiece.TextPiece;
@@ -98,7 +100,11 @@ public class OpenAIChannel extends LLMProvider {
                 } else if (m.getMetainfo("role") instanceof String role) {
                     message.role = role;
                 } else message.role = "user";
-                message.content.add(new TextPiece(m.solveAll()));
+                for (MsgField mf : m.messageFields) {
+                    if (mf instanceof ImageField imageField) {
+                        message.content.add(new ImageUrlPiece(imageField.getUrl().toString()));
+                    } else message.content.add(new TextPiece(mf.getAsString()));
+                }
                 cr.messages.add(message);
             }
         }
@@ -123,7 +129,6 @@ public class OpenAIChannel extends LLMProvider {
                 .addHeader("Authorization", "Bearer " + apikey)
                 .post(RequestBody.create(gson.toJson(completionsRequest), MediaType.get("application/json; charset=utf-8")))
                 .build();
-        // 这里得改成异步的，不然不够先进
         try (Response response = client.newCall(req).execute()) {
             if (response.isSuccessful()) {
                 BufferedSource source = response.body().source();
