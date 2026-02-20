@@ -182,7 +182,7 @@ public class AIChat extends Law {
                         String[][] solveInfo = new String[ml.size()][2];
                         for (int i = 0; i < ml.size(); i++) {
                             MCMessage msg = ml.get(i);
-                            if (msg.sender.getLocationId() == mcm.sender.getLocationId()) {
+                            if (msg.sender.getLocationId().equals(mcm.receiver.getLocationId())) {
                                 solveInfo[i][0] = "assistant";
                             } else solveInfo[i][0] = "user";
                             executor.submit(() -> { // presolve
