@@ -13,6 +13,9 @@ import org.slf4j.LoggerFactory;
 
 import java.awt.*;
 import java.io.*;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
@@ -33,7 +36,12 @@ public class Universe {
         File lawsDir = new File("./laws/");
         File configsDir = new File("./config/");
         File dataDir = new File("./data/");
-        File[] necessaryDictionaries = {lawsDir, configsDir, dataDir};
+        File cacheDir = new File("./cache/");
+        File repostsDir = new File("./cache/reposts/");
+        if (cacheDir.exists()) {
+            cleanCache(cacheDir);
+        }
+        File[] necessaryDictionaries = {lawsDir, configsDir, dataDir, cacheDir, repostsDir};
         for (File necessaryDictionary : necessaryDictionaries) {
             if (!necessaryDictionary.exists()) {
                 necessaryDictionary.mkdir();
@@ -66,8 +74,14 @@ public class Universe {
             throw new RuntimeException(e);
         }
 
-        if (properties.get("Debug").toString().equalsIgnoreCase("debug")) Configurator.setRootLevel(Level.DEBUG);
-        if (properties.get("Debug").toString().equalsIgnoreCase("trace")) Configurator.setRootLevel(Level.TRACE);
+        if (properties.get("Debug").toString().equalsIgnoreCase("debug")) {
+            Configurator.setRootLevel(Level.DEBUG);
+            logger.warn("Logger level has been setting to DEBUG");
+        }
+        if (properties.get("Debug").toString().equalsIgnoreCase("trace")) {
+            Configurator.setRootLevel(Level.TRACE);
+            logger.warn("Logger level has been setting to TRACE");
+        }
 
         // 加载宇宙通道配置文件
         try {
@@ -105,6 +119,10 @@ public class Universe {
             if (token != null) {
                 UniverseChannel.setToken(token.toString());
             }
+            Object outboundHttpAddress = universeChannelProp.get("OutboundHttpAddress");
+            if (outboundHttpAddress != null) {
+                UniverseChannel.setOutboundHttpAddress(outboundHttpAddress.toString());
+            }
             UniverseChannel.load();
         }
 
@@ -120,6 +138,20 @@ public class Universe {
         Runtime.getRuntime().addShutdownHook(new Thread(() -> { 
             logger.info("Exiting");
             LawsManager.stopLaws();
+            if (!cacheDir.exists()) return;
+
+            cleanCache(cacheDir);
         }));
+    }
+
+    private static void cleanCache(File cacheDir) {
+        try {
+            Files.walk(cacheDir.toPath())
+                    .sorted(Comparator.reverseOrder())
+                    .map(Path::toFile)
+                    .forEach(File::delete);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
     }
 }

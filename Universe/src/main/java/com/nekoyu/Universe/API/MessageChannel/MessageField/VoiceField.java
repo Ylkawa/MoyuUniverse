@@ -18,7 +18,7 @@ public class VoiceField extends FileField {
         isSolved = true;
         if (Universe.voiceSolver == null) return;
         try {
-            description = Universe.voiceSolver.getDescription(url);
+            description = Universe.voiceSolver.getDescription(getUrl());
         } catch (IOException ignored) {}
     }
 

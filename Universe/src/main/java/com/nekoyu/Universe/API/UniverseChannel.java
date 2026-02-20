@@ -6,19 +6,24 @@ import com.google.gson.Gson;
 import com.google.gson.JsonSyntaxException;
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
 import org.java_websocket.WebSocket;
 import org.java_websocket.handshake.ClientHandshake;
 import org.java_websocket.server.WebSocketServer;
+import org.jspecify.annotations.NonNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.io.File;
-import java.io.IOException;
-import java.io.OutputStream;
+import java.io.*;
 import java.net.InetSocketAddress;
+import java.net.MalformedURLException;
+import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class UniverseChannel {
     private WebSocketServer wsServer;
@@ -28,10 +33,13 @@ public class UniverseChannel {
     private final Multimap<String, String> externalListeners = ArrayListMultimap.create();
     private final Multimap<String, WebSocket> clientGroup = ArrayListMultimap.create();
     private String token = null;
-    private final Logger logger = LoggerFactory.getLogger(getClass());
+    private static final Logger logger = LoggerFactory.getLogger(UniverseChannel.class);
     private final Map<String, WebSocket> clientList = new HashMap<>();
     private HttpServer httpServer = null;
-    private final Map<String, File> fileMounting = new HashMap<>();
+    private static final Map<String, File> fileMounting = new HashMap<>();
+    private static final Map<String, CachedFile> remoteUrlCachedFile = new ConcurrentHashMap<>();
+    private static final Map<String, CachedFile> repostUrlCachedFile = new ConcurrentHashMap<>();
+    private String outboundHttpAddress;
 
     public void setToken(String token) {
         this.token = token;
@@ -60,14 +68,17 @@ public class UniverseChannel {
                         logger.info("拒绝了来自 {} 的连接，因为口令校验不通过", webSocket.getRemoteSocketAddress());
                         return;
                     }
-                    clientList.put(clientHandshake.getFieldValue("ID"), webSocket);
-                    clientGroup.put(clientHandshake.getFieldValue("Type"), webSocket);
-                    Map<String, String> attachment = new HashMap<>();
-                    attachment.put("ID", clientHandshake.getFieldValue("ID"));
-                    attachment.put("Type", clientHandshake.getFieldValue("Type"));
-                    webSocket.setAttachment(attachment);
-                    logger.info("{} ({} - {}) 通过口令校验并创建了连接", webSocket.getRemoteSocketAddress(), clientHandshake.getFieldValue("Type"), clientHandshake.getFieldValue("ID"));
                 }
+                String id = clientHandshake.getFieldValue("ID");
+                String type = clientHandshake.getFieldValue("Type");
+                if (id == null || type == null) logger.info("无法接受 {} 的连接，因为 ID 或者 Type 未指定", webSocket.getRemoteSocketAddress());
+                clientList.put(id, webSocket);
+                clientGroup.put(type, webSocket);
+                Map<String, String> attachment = new HashMap<>();
+                attachment.put("ID", id);
+                attachment.put("Type", type);
+                webSocket.setAttachment(attachment);
+                logger.info("{} ({} - {}) 创建了连接", webSocket.getRemoteSocketAddress(), type, id);
             }
 
             @Override
@@ -174,8 +185,13 @@ public class UniverseChannel {
         });
     }
 
-    public void addFileMounting(String mountPath, File file) {
+    public URL addFileMounting(String mountPath, File file) {
         fileMounting.put(mountPath, file);
+        try {
+            return new URL(outboundHttpAddress + "/Universe/" + mountPath);
+        } catch (MalformedURLException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     public void registerListener(String tag, UniverseListener universeListener) {
@@ -193,6 +209,52 @@ public class UniverseChannel {
         }
     }
 
+    public URL repostFile(URL url) throws IOException {
+        CachedFile cf = remoteUrlCachedFile.get(url.toString());
+        if (cf == null) {
+            OkHttpClient client = new OkHttpClient();
+            Request req = new Request.Builder().url(url.toString()).build();
+            try (var resp = client.newCall(req).execute()) {
+                if (!resp.isSuccessful()) throw new IOException("Request failed with unexpected code " + resp);
+                if (resp.body() == null) throw new IOException("Response body is null");
+                var body = resp.body();
+                String extension;
+                if (body.contentType() != null) switch (body.contentType().toString()) {
+                    case "application/json" -> extension = ".json";
+                    case "image/jpeg" -> extension = ".jpeg";
+                    default -> extension = "";
+                }
+                else extension = "";
+                UUID uuid = UUID.randomUUID();
+                cf = new CachedFile("./cache/reposts/" + uuid + extension);
+                cf.outboundUrl = new URL(outboundHttpAddress + "/Universe/" + uuid + extension);
+                cf.uuid = uuid.toString();
+                cf.extension = extension;
+                if (!cf.createNewFile()) throw new IOException("Could not create file");
+                try (
+                        InputStream in = body.byteStream();
+                        FileOutputStream out = new FileOutputStream(cf)
+                ) {
+                    byte[] buffer = new byte[8192];
+                    int len;
+
+                    while ((len = in.read(buffer)) != -1) {
+                        out.write(buffer, 0, len);
+                    }
+                    cf.outboundUrl = addFileMounting(uuid + extension, cf);
+                }
+            }
+            remoteUrlCachedFile.put(url.toString(), cf);
+            repostUrlCachedFile.put(cf.outboundUrl.toString(), cf);
+        }
+        cf.ref.incrementAndGet();
+        return cf.outboundUrl;
+    }
+
+    public void releaseRepost(URL url) {
+        repostUrlCachedFile.get(url.toString()).release();
+    }
+
     public Collection<WebSocket> listWebSocketConnections() {
         return wsServer.getConnections();
     }
@@ -207,5 +269,31 @@ public class UniverseChannel {
 
     public void removeHttpHandler(String path) {
         httpServer.removeContext(path);
+    }
+
+    public void setOutboundHttpAddress(String addr) {
+        this.outboundHttpAddress = addr;
+    }
+
+    public static class CachedFile extends File {
+        AtomicInteger ref = new AtomicInteger(0);
+        AtomicInteger released = new AtomicInteger(0);
+        String extension;
+        String uuid;
+        URL outboundUrl;
+
+        public void release() {
+            released.incrementAndGet();
+            if (released.get() >= ref.get()) {
+                remoteUrlCachedFile.remove(outboundUrl.toString());
+                repostUrlCachedFile.remove(outboundUrl.toString());
+                fileMounting.remove(uuid + extension);
+                if (delete()) logger.debug("已清理 {} 的缓存", outboundUrl);
+            }
+        }
+
+        public CachedFile(@NonNull String pathname) {
+            super(pathname);
+        }
     }
 }

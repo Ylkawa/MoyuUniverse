@@ -148,7 +148,7 @@ public class OnebotChannel extends MessageChannel {
                                             // 暂时没看到有能和emoji一一对应的表格，先不管
                                             case "image" -> {
                                                 try {
-                                                    var imageField = new ImageField(new URL(ms.data.get("url")));
+                                                    ImageField imageField = new ImageField(new URL(ms.data.get("url")));
                                                     mcm.messageFields.add(imageField);
                                                 } catch (MalformedURLException e) {
                                                     logger.error("无法以 {} 创建URL对象", ms.data.get("file"), e);
@@ -158,7 +158,8 @@ public class OnebotChannel extends MessageChannel {
                                             // 放不进去文本，先这样
                                             case "record" -> {
                                                 try {
-                                                    mcm.messageFields.add(new VoiceField(new URL(ms.data.get("url"))));
+                                                    VoiceField voiceField = new VoiceField(new URL(ms.data.get("url")));
+                                                    mcm.messageFields.add(voiceField);
                                                 } catch (MalformedURLException e) {
                                                     logger.error("无法以 {} 创建URL对象", ms.data.get("url"), e);
                                                     mcm.messageFields.add(new TextField("[语音]"));
@@ -166,7 +167,8 @@ public class OnebotChannel extends MessageChannel {
                                             }
                                             case "video" -> {
                                                 try {
-                                                    mcm.messageFields.add(new VideoField(new URL(ms.data.get("url"))));
+                                                    VideoField videoField = new VideoField(new URL(ms.data.get("url")));
+                                                    mcm.messageFields.add(videoField);
                                                 } catch (MalformedURLException e) {
                                                     logger.error("无法以 {} 创建URL对象", ms.data.get("url"), e);
                                                     mcm.messageFields.add(new TextField("[视频]"));
@@ -290,6 +292,17 @@ public class OnebotChannel extends MessageChannel {
                                             break;
                                     }
                                     broadcastMessage(sessionId.toString(), mcm);
+                                    CompletableFuture.runAsync(() -> {
+                                        try {
+                                            Thread.sleep(300000);
+                                            for (var f : mcm.messageFields) {
+                                                if (f instanceof FileField ff) ff.repost();
+                                            }
+                                        } catch (IOException | InterruptedException e) {
+                                            e.printStackTrace();
+                                            throw new RuntimeException(e);
+                                        }
+                                    });
                                 }
                                 case "meta_event" -> {
                                     Meta_Event meta_event = gson.fromJson(s, Meta_Event.class);

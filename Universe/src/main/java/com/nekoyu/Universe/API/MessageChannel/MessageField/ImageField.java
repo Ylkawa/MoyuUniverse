@@ -43,7 +43,7 @@ public class ImageField extends FileField {
         if (isSolved) return;
         StringBuilder descriptionBuilder = new StringBuilder().append("[图片, \n");
         try {
-            descriptionBuilder.append("内容描述: \n").append(Universe.pictureSolver.getDescription(url)).append("\n");
+            descriptionBuilder.append("内容描述: \n").append(Universe.pictureSolver.getDescription(getUrl())).append("\n");
         } catch (Exception e) {
             descriptionBuilder.append("出错，解析失败");
         }
@@ -129,7 +129,7 @@ public class ImageField extends FileField {
                 .build();
 
         Request request = new Request.Builder()
-                .url(url)
+                .url(getUrl())
                 .build();
 
         try (Response response = client.newCall(request).execute()) {
@@ -148,7 +148,7 @@ public class ImageField extends FileField {
         if (mainColor.get() != null) return mainColor.get();
         synchronized (mainColor) {
             try {
-                mainColor.set(ImageUtils.getMainColor(url));
+                mainColor.set(ImageUtils.getMainColor(getUrl()));
                 return mainColor.get();
             } catch (IOException e) {
                 return null;

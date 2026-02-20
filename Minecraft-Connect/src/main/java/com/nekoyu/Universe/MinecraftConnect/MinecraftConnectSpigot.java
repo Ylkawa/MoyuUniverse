@@ -156,7 +156,7 @@ public class MinecraftConnectSpigot extends JavaPlugin {
                                 bc.append(tc);
                             } else if (f instanceof ImageField imgF) {
                                 try {
-                                    BufferedImage bi = ImageIO.read(imgF.url);
+                                    BufferedImage bi = ImageIO.read(imgF.getUrl());
                                     int maxSize = 40;
                                     double scale = Math.min(
                                             (double) maxSize / bi.getWidth(),
