@@ -10,6 +10,7 @@ public class CompletionsRequest {
     public List<Message> messages;
     public List<LLMTool> tools;
     public HashMap<String, Object> stream_options;
+    public boolean enable_thinking;
 
     public CompletionsRequest() {
         messages = new LinkedList<>();

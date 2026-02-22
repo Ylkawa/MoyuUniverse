@@ -11,6 +11,7 @@ import com.nekoyu.Universe.API.MessageChannel.MessageField.TextField;
 import com.nekoyu.Universe.API.MessageChannel.MessageList;
 import com.nekoyu.Universe.API.PlaceHolder;
 import com.nekoyu.Universe.API.Providers.LLMProvider.Assistant;
+import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.ExtensionalArgs;
 import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.LLMFunction;
 import com.nekoyu.Universe.API.Providers.LLMProvider.LLMProvider;
 import com.nekoyu.Universe.LawsLoader.Law;
@@ -220,6 +221,10 @@ public class AIChat extends Law {
                                         } else { // 此处默认非 assistant 即 user
                                             MCMessage msg = new MCMessage();
                                             msg.putMetainfo("role", "user");
+                                            msg.messageFields.add(new TextField(sdf.format(new Date(msg.time * 1000)) + // [时间]
+                                                    "[" + ml.get(i).id + "]" + // [时间] [消息id]
+                                                    ml.get(i).sender.getName() + "(" + ml.get(i).sender.getLocationId() + ")" + ml.get(i).sender.getSex() + // [时间] [消息id] [昵称](用户QQ号)性别
+                                                    ": "));  // [时间] [消息id] [昵称](用户 LocationId)性别: [消息内容]
                                             for (MsgField mf : ml.get(i).messageFields) {
                                                 if (mf instanceof TextField) {
                                                     msg.messageFields.add(mf);
@@ -231,13 +236,14 @@ public class AIChat extends Law {
                                         }
                                     }
 
-                                    // Extend Args
-                                    Map<String, String> extendArgs = new HashMap<>();
-                                    extendArgs.put("_LocationID", mcm.getLocationId());
+                                    // Extensional Args
+                                    ExtensionalArgs extensionalArgs = new ExtensionalArgs();
+                                    extensionalArgs.placeholders.put("_LocationID", mcm.getLocationId());
+                                    extensionalArgs.enable_thinking = sessionCfg.enable_thinking;
 
                                     // 接收响应 tokens
                                     StringBuilder respTokens = new StringBuilder();
-                                    assistant.completions(openaiMl, extendArgs, outputs -> {
+                                    assistant.completions(openaiMl, extensionalArgs, outputs -> {
                                         String[] split = outputs.split("\n\n", 2); // 每一次接收够一段就回复一次消息
                                         if (split.length > 1) {
                                             respTokens.append(split[0]);

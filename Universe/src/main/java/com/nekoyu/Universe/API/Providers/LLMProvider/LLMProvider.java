@@ -1,6 +1,8 @@
 package com.nekoyu.Universe.API.Providers.LLMProvider;
 
 import com.nekoyu.Universe.API.MessageChannel.MessageList;
+import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.CompletionsRequest;
+import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.ExtensionalArgs;
 import com.nekoyu.Universe.API.Providers.LLMProvider.RespBodies.CompletionsResponse;
 import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.LLMFunction;
 import com.nekoyu.Universe.API.Providers.Provider;
@@ -21,7 +23,7 @@ public abstract class LLMProvider extends Provider {
     public CompletionsResponse completions(String model, MessageList messageList, Map<String, LLMFunction> llmTools, BufferCallback bufferCallback) throws IOException {
         return completions(model, messageList, llmTools, null, bufferCallback);
     }
-    public abstract CompletionsResponse completions(String model, MessageList messageList, Map<String, LLMFunction> llmTools, Map<String, String> extendArgs, BufferCallback bufferCallback) throws IOException;
+    public abstract CompletionsResponse completions(String model, MessageList messageList, Map<String, LLMFunction> llmTools, ExtensionalArgs extensionalArgs, BufferCallback bufferCallback) throws IOException;
 
     public interface BufferCallback {
         /** 输出中，每接收到一行data就会把模型输出的词输出到这里 */

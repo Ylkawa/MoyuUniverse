@@ -53,7 +53,7 @@ public class OpenAIChannel extends LLMProvider {
     }
 
     @Override
-    public CompletionsResponse completions(String model, MessageList messageList, Map<String, LLMFunction> llmFunctions, Map<String, String> extendArgs, BufferCallback bufferCallback) throws IOException {
+    public CompletionsResponse completions(String model, MessageList messageList, Map<String, LLMFunction> llmFunctions, ExtensionalArgs extensionalArgs, BufferCallback bufferCallback) throws IOException {
         CompletionsResponse responding = new CompletionsResponse(); // fake unstreamed response
         responding.usage.completion_tokens = 0;
         responding.usage.prompt_tokens = 0;
@@ -109,13 +109,14 @@ public class OpenAIChannel extends LLMProvider {
             }
         }
         cr.stream = true;
-        CompletionsResponse completions = completions(cr, llmFunctions, bufferCallback, extendArgs, 5, responding);
+        if (extensionalArgs.enable_thinking) cr.enable_thinking = true;
+        CompletionsResponse completions = completions(cr, llmFunctions, bufferCallback, extensionalArgs, 5, responding);
         if (completions.usage.total_tokens > 0)
             logger.info("本次请求消耗 tokens: 输入 {}  输出 {}", completions.usage.prompt_tokens, completions.usage.completion_tokens); // 无言了，百炼的 API 默认不返回 usage
         return completions;
     }
 
-    public CompletionsResponse completions(CompletionsRequest completionsRequest, Map<String, LLMFunction> llmFunctions, BufferCallback bufferCallback, Map<String, String> extendArgs, int timeout, CompletionsResponse responding) throws IOException {
+    public CompletionsResponse completions(CompletionsRequest completionsRequest, Map<String, LLMFunction> llmFunctions, BufferCallback bufferCallback, ExtensionalArgs extensionalArgs, int timeout, CompletionsResponse responding) throws IOException {
         boolean outputted = false;
         logger.debug(gson.toJson(completionsRequest));
         if (timeout <= 1) { // 超时时，禁用所有tool，进行最后一次请求，避免死循环
@@ -213,7 +214,7 @@ public class OpenAIChannel extends LLMProvider {
                                     toolMsg.content.add(new TextPiece(ex.getMessage()));
                                 }
                             }
-                            if (args != null) args.putAll(extendArgs);
+                            if (args != null && extensionalArgs != null) args.putAll(extensionalArgs.placeholders);
                             String ctt;
                             if (args == null)
                                 ctt = "未知原因的工具调用错误";
@@ -230,7 +231,7 @@ public class OpenAIChannel extends LLMProvider {
                             logger.debug("Assistant 调用了 {}，参数 {}，结果 {}", tool_call.function.name, tool_call.function.arguments, ctt);
                         }
                         if (next)
-                            return completions(completionsRequest, llmFunctions, bufferCallback, extendArgs, timeout - 1, responding);
+                            return completions(completionsRequest, llmFunctions, bufferCallback, extensionalArgs, timeout - 1, responding);
                     }
                     case "unfinished" -> logger.error("出现意外导致请求未完成\nRaw req: {}", gson.toJson(completionsRequest));
                 }

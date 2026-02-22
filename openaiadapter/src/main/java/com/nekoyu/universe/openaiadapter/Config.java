@@ -5,4 +5,5 @@ public class Config {
     String APIKey;
     String BaseUrl;
     String DefaultModel;
+    boolean enable_thinking = false;
 }
