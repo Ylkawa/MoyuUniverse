@@ -79,8 +79,6 @@ public class WebSearch extends AIChatPlugin {
         );
         registerFunction("WebSearch", dst);
 
-
-
         LLMFunction visitUrl = new LLMFunction("访问网页",
                 """
                         获取部分受支持的网页中的信息（内容会被精简）仅支持哔哩哔哩视频和用户空间、YouTube视频

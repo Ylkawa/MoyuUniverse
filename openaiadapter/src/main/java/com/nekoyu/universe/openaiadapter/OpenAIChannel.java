@@ -118,7 +118,6 @@ public class OpenAIChannel extends LLMProvider {
 
     public CompletionsResponse completions(CompletionsRequest completionsRequest, Map<String, LLMFunction> llmFunctions, BufferCallback bufferCallback, ExtensionalArgs extensionalArgs, int timeout, CompletionsResponse responding) throws IOException {
         boolean outputted = false;
-        logger.debug(gson.toJson(completionsRequest));
         if (timeout <= 1) { // 超时时，禁用所有tool，进行最后一次请求，避免死循环
             completionsRequest.tools = null;
             ArrayMessage am = new ArrayMessage();
@@ -139,7 +138,6 @@ public class OpenAIChannel extends LLMProvider {
                 while ((line = source.readUtf8Line()) != null) {
                     if (line.startsWith("data: ")) {
                         String json = line.substring(6).trim();
-                        logger.debug(json);
                         if (json.startsWith("{")) {
                             DataLine dl = gson.fromJson(json, DataLine.class);
                             if (dl.choices != null && dl.choices.length > 0) {

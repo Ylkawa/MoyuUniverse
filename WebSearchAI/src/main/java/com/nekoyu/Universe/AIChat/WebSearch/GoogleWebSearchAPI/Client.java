@@ -19,7 +19,7 @@ public class Client {
         this.searchEngineId = searchEngineId;
     }
 
-    public SearchResponse search(String query, int page, int pageSize) throws Exception {
+    public SearchResponse search(String query) throws Exception {
         // 构建请求
         HttpUrl url = HttpUrl.parse("https://www.googleapis.com/customsearch/v1")
                 .newBuilder()
@@ -32,8 +32,7 @@ public class Client {
                 .get()
                 .build();
         try (Response response = client.newCall(req).execute()) {
-            SearchResponse searchR = gson.fromJson(response.body().string(), SearchResponse.class);
-            return searchR;
+            return gson.fromJson(response.body().string(), SearchResponse.class);
         }
     }
 
