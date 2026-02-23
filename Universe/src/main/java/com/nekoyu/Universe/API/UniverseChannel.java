@@ -181,7 +181,11 @@ public class UniverseChannel {
             try (OutputStream os = exchange.getResponseBody()) {
                 os.write(Files.readAllBytes(file.toPath()));
             }
-            logger.info("{} ==> {}", file.getAbsolutePath(), exchange.getRemoteAddress());
+            String remoteAddress = exchange.getRemoteAddress().toString();
+            if (exchange.getRequestHeaders().get("X-Forwarded-For") != null) { // 易受攻击点，不应将 Universe Http 端口暴露公网
+                remoteAddress = exchange.getRequestHeaders().get("X-Forwarded-For").get(0);
+            }
+            logger.info("{} <== {}", remoteAddress, file.getAbsolutePath());
         });
     }
 

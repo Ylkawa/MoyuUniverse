@@ -294,7 +294,7 @@ public class OnebotChannel extends MessageChannel {
                                     broadcastMessage(sessionId.toString(), mcm);
                                     CompletableFuture.runAsync(() -> {
                                         try {
-                                            Thread.sleep(300000);
+                                            Thread.sleep(60000);
                                             for (var f : mcm.messageFields) {
                                                 if (f instanceof FileField ff) ff.repost();
                                             }
