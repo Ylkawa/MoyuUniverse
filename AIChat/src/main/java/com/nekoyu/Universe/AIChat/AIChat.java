@@ -221,7 +221,7 @@ public class AIChat extends Law {
                                         } else { // 此处默认非 assistant 即 user
                                             MCMessage msg = new MCMessage();
                                             msg.putMetainfo("role", "user");
-                                            msg.messageFields.add(new TextField(sdf.format(new Date(msg.time * 1000)) + // [时间]
+                                            msg.messageFields.add(new TextField(sdf.format(new Date(ml.get(i).time * 1000)) + // [时间]
                                                     "[" + ml.get(i).id + "]" + // [时间] [消息id]
                                                     ml.get(i).sender.getName() + "(" + ml.get(i).sender.getLocationId() + ")" + ml.get(i).sender.getSex() + // [时间] [消息id] [昵称](用户QQ号)性别
                                                     ": "));  // [时间] [消息id] [昵称](用户 LocationId)性别: [消息内容]
