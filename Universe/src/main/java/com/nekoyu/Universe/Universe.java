@@ -120,7 +120,7 @@ public class Universe {
             Object outboundHttpAddress = universeChannelProp.get("OutboundHttpAddress");
             if (outboundHttpAddress != null) {
                 UniverseChannel.setOutboundHttpAddress(outboundHttpAddress.toString());
-            }
+            } else UniverseChannel.setOutboundHttpAddress("http://127.0.0.1");
             UniverseChannel.load();
         }
 

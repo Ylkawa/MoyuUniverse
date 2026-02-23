@@ -266,9 +266,11 @@ public class OnebotChannel extends MessageChannel {
                                             // 合并转发自定义节点 没做
                                             case "xml" -> {
                                                 mcm.messageFields.add(new MetaField("[XML消息]"));
+                                                logger.debug(ms.data.get("data"));
                                             }
                                             case "json" -> {
                                                 mcm.messageFields.add(new MetaField("[JSON消息]"));
+                                                logger.debug(ms.data.get("data"));
                                             }
                                         }
                                     }
