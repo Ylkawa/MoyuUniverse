@@ -30,12 +30,14 @@ import java.util.concurrent.atomic.AtomicReference;
 
 public class ImageField extends FileField {
     private static final Logger logger = LoggerFactory.getLogger(ImageField.class);
+    Metadata metadata;
     transient private final AtomicReference<Color> mainColor = new AtomicReference<>();
 
     public ImageField(URL url) {
         super(url);
         description = "";
         super.type = "image";
+        metadata = getMetadata();
     }
 
     @Override
@@ -47,7 +49,53 @@ public class ImageField extends FileField {
         } catch (Exception e) {
             descriptionBuilder.append("出错，解析失败");
         }
-        Metadata metadata = getMetadata();
+        descriptionBuilder.append(solveMetadata());
+        descriptionBuilder.append("\n]");
+        description = descriptionBuilder.toString();
+        isSolved = true;
+    }
+
+    public String getAsString() {
+        if (isSolved) return description;
+        else return "[图片]";
+    }
+
+    public Metadata getMetadata() {
+        OkHttpClient client = new OkHttpClient.Builder()
+                .connectTimeout(10, TimeUnit.SECONDS)
+                .readTimeout(30, TimeUnit.SECONDS)
+                .build();
+
+        Request request = new Request.Builder()
+                .url(getUrl())
+                .build();
+
+        try (Response response = client.newCall(request).execute()) {
+            if (!response.isSuccessful() || response.body() == null) {
+                return null;
+            }
+
+            // 直接使用响应体的流读取元数据
+            return ImageMetadataReader.readMetadata(response.body().byteStream());
+        } catch (IOException | ImageProcessingException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    public Color getMainColor() {
+        if (mainColor.get() != null) return mainColor.get();
+        synchronized (mainColor) {
+            try {
+                mainColor.set(ImageUtils.getMainColor(getUrl()));
+                return mainColor.get();
+            } catch (IOException e) {
+                return null;
+            }
+        }
+    }
+
+    public String solveMetadata() {
+        StringBuilder descriptionBuilder = new StringBuilder();
         if (metadata != null) { // 如果EXIF信息存在
             // 尝试解析EXIF信息
             descriptionBuilder.append("\nEXIF信息(部分):");
@@ -112,47 +160,6 @@ public class ImageField extends FileField {
                 }
             }
         }
-        descriptionBuilder.append("\n]");
-        description = descriptionBuilder.toString();
-        isSolved = true;
-    }
-
-    public String getAsString() {
-        if (isSolved) return description;
-        else return "[图片]";
-    }
-
-    public Metadata getMetadata() {
-        OkHttpClient client = new OkHttpClient.Builder()
-                .connectTimeout(10, TimeUnit.SECONDS)
-                .readTimeout(30, TimeUnit.SECONDS)
-                .build();
-
-        Request request = new Request.Builder()
-                .url(getUrl())
-                .build();
-
-        try (Response response = client.newCall(request).execute()) {
-            if (!response.isSuccessful() || response.body() == null) {
-                return null;
-            }
-
-            // 直接使用响应体的流读取元数据
-            return ImageMetadataReader.readMetadata(response.body().byteStream());
-        } catch (IOException | ImageProcessingException e) {
-            throw new RuntimeException(e);
-        }
-    }
-
-    public Color getMainColor() {
-        if (mainColor.get() != null) return mainColor.get();
-        synchronized (mainColor) {
-            try {
-                mainColor.set(ImageUtils.getMainColor(getUrl()));
-                return mainColor.get();
-            } catch (IOException e) {
-                return null;
-            }
-        }
+        return descriptionBuilder.toString();
     }
 }

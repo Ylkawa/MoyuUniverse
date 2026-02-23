@@ -225,11 +225,16 @@ public class AIChat extends Law {
                                                     "[" + ml.get(i).id + "]" + // [时间] [消息id]
                                                     ml.get(i).sender.getName() + "(" + ml.get(i).sender.getLocationId() + ")" + ml.get(i).sender.getSex() + // [时间] [消息id] [昵称](用户QQ号)性别
                                                     ": "));  // [时间] [消息id] [昵称](用户 LocationId)性别: [消息内容]
-                                            for (MsgField mf : ml.get(i).messageFields) {
+                                            for (MsgField mf : ml.get(i).messageFields) { // 这里仅处理了 Text 和 Image 类型，其他的都是交给末屿宇宙的默认方式转换成文本
                                                 if (mf instanceof TextField) {
                                                     msg.messageFields.add(mf);
-                                                } else if (mf instanceof ImageField) {
-                                                    if (sessionCfg.nativeImage) msg.messageFields.add(mf);
+                                                } else if (mf instanceof ImageField imgF) {
+                                                    if (sessionCfg.nativeImage) {
+                                                        msg.messageFields.add(mf);
+                                                        String metadata = imgF.solveMetadata();
+                                                        if (!metadata.isBlank()) msg.messageFields.add(new TextField("{" + metadata + "}"));
+                                                        // 如果 Metadata 存在就追加一条 Metadata 的提示词字段
+                                                    }
                                                 } else msg.messageFields.add(new TextField(mf.getAsString()));
                                             }
                                             openaiMl.add(msg);
