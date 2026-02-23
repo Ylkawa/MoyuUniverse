@@ -1,9 +1,10 @@
 package com.nekoyu.MoyuUniverse.Nya.OnebotAdapter;
 
-import com.google.gson.Gson;
-import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
-import com.google.gson.JsonSyntaxException;
+import com.google.gson.*;
+import com.google.gson.typeadapters.RuntimeTypeAdapterFactory;
+import com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.event.JsonMessages.JsonMessage;
+import com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.event.JsonMessages.com_tencent_miniapp_01;
+import com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.event.JsonMessages.com_tencent_tuwen_lua;
 import com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.event.Message;
 import com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.event.MessageSegment;
 import com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.event.Meta_Event;
@@ -15,14 +16,15 @@ import com.nekoyu.Universe.API.MessageChannel.MessageField.*;
 import com.nekoyu.Universe.API.MessageChannel.MessageField.TextField;
 import com.nekoyu.Universe.API.MessageSession;
 import com.nekoyu.Universe.Universe;
-import com.nekoyu.Universe.Utils.ColorUtils;
 import com.nekoyu.Universe.Utils.ImageUtils;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.Response;
 import org.java_websocket.client.WebSocketClient;
 import org.java_websocket.handshake.ServerHandshake;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.awt.*;
 import java.io.IOException;
 import java.net.MalformedURLException;
 import java.net.URI;
@@ -35,7 +37,19 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class OnebotChannel extends MessageChannel {
+    static final Gson gson;
+    static {
+        gson = new GsonBuilder()
+                .registerTypeAdapterFactory(
+                        RuntimeTypeAdapterFactory.of(JsonMessage.class, "app")
+                                .registerSubtype(com_tencent_miniapp_01.class, "com.tencent.miniapp_01")
+                                .registerSubtype(com_tencent_tuwen_lua.class, "com.tencent.tuwen.lua")
+                )
+                .create();
+    }
+
     WebSocketClient wsConnection;
+    OkHttpClient okHttpClient = new OkHttpClient();
     ExecutorService onMsgEx = Executors.newCachedThreadPool(); // 处理消息事件的线程池
     boolean isReady = true;
     Logger logger = LoggerFactory.getLogger(this.getClass());
@@ -119,7 +133,6 @@ public class OnebotChannel extends MessageChannel {
 
             @Override
             public void onMessage(String s) {
-                Gson gson = new Gson();
                 JsonElement content = gson.fromJson(s, JsonElement.class);
                 if (content.getAsJsonObject().get("post_type") != null) {
                     onMsgEx.submit(() -> {
@@ -204,8 +217,8 @@ public class OnebotChannel extends MessageChannel {
                                             }
                                             case "share" -> {
                                                 try {
-                                                    mcm.messageFields.add(new ShareUriField(ms.data.get("title"), new URI(ms.data.get("url"))));
-                                                } catch (URISyntaxException e) {
+                                                    mcm.messageFields.add(new ShareUrlField(ms.data.get("title"), new URL(ms.data.get("url"))));
+                                                } catch (MalformedURLException e) {
                                                     logger.error("无法以 {} 创建URL对象", ms.data.get("file"), e);
                                                     mcm.messageFields.add(new TextField("[分享链接]"));
                                                 }
@@ -227,16 +240,16 @@ public class OnebotChannel extends MessageChannel {
                                                 switch (ms.data.get("type")) {
                                                     case "163" -> {
                                                         try {
-                                                            mcm.messageFields.add(new ShareUriField("网易云音乐分享", new URI("https://music.163.com/#/song?id=" + ms.data.get("id"))));
-                                                        } catch (URISyntaxException e) {
+                                                            mcm.messageFields.add(new ShareUrlField("网易云音乐分享", new URL("https://music.163.com/#/song?id=" + ms.data.get("id"))));
+                                                        } catch (MalformedURLException e) {
                                                             logger.error("无法以 {} 创建URL对象", ms.data.get("file"), e);
                                                             mcm.messageFields.add(new TextField("[网易云音乐分享]"));
                                                         }
                                                     }
                                                     case "qq" -> {
                                                         try {
-                                                            mcm.messageFields.add(new ShareUriField("QQ音乐分享", new URI("https://y.qq.com/n/ryqq/songDetail/" + ms.data.get("id"))));
-                                                        } catch (URISyntaxException e) {
+                                                            mcm.messageFields.add(new ShareUrlField("QQ音乐分享", new URL("https://y.qq.com/n/ryqq/songDetail/" + ms.data.get("id"))));
+                                                        } catch (MalformedURLException e) {
                                                             logger.error("无法以 {} 创建URL对象", ms.data.get("file"), e);
                                                             mcm.messageFields.add(new TextField("[QQ音乐分享]"));
                                                         }
@@ -246,8 +259,8 @@ public class OnebotChannel extends MessageChannel {
                                                     }
                                                     case "custom" -> {
                                                         try {
-                                                            mcm.messageFields.add(new ShareUriField("音乐分享", new URI(ms.data.get("url"))));
-                                                        } catch (URISyntaxException e) {
+                                                            mcm.messageFields.add(new ShareUrlField("音乐分享", new URL(ms.data.get("url"))));
+                                                        } catch (MalformedURLException e) {
                                                             logger.error("无法以 {} 创建URL对象", ms.data.get("file"), e);
                                                             mcm.messageFields.add(new TextField("音乐分享"));
                                                         }
@@ -269,8 +282,28 @@ public class OnebotChannel extends MessageChannel {
                                                 logger.debug(ms.data.get("data"));
                                             }
                                             case "json" -> {
-                                                mcm.messageFields.add(new MetaField("[JSON消息]"));
-                                                logger.debug(ms.data.get("data"));
+                                                try {
+                                                    JsonMessage jm = gson.fromJson(ms.data.get("data"), JsonMessage.class);
+                                                    if (jm instanceof com_tencent_miniapp_01 card) {
+                                                        mcm.messageFields.add(new ShareUrlField(card.meta.detail_1.title + " - " + card.meta.detail_1.desc, null));
+                                                    } else if (jm instanceof com_tencent_tuwen_lua card) {
+                                                        ShareUrlField shareUrlField = new ShareUrlField("[" + card.meta.news.tag + "]" + card.meta.news.title + " - " + card.meta.news.desc, new URL(card.meta.news.jumpUrl));
+                                                        Request req = new Request.Builder()
+                                                                .url(card.meta.news.preview)
+                                                                .build();
+                                                        try (Response resp = okHttpClient.newCall(req).execute()) {
+                                                            if (resp.isSuccessful() && resp.header("Content-Type").startsWith("image")) shareUrlField.image = new ImageField(new URL(card.meta.news.preview));
+                                                        } catch (IOException e) {
+
+                                                        }
+                                                        mcm.messageFields.add(shareUrlField);
+                                                    }
+                                                } catch (Throwable e) {
+                                                    e.printStackTrace();
+                                                    JsonElement je = gson.fromJson(ms.data.get("data"), JsonElement.class);
+                                                    mcm.messageFields.add(new MetaField(je.getAsJsonObject().get("prompt").getAsString()));
+                                                    logger.debug(ms.data.get("data"));
+                                                }
                                             }
                                         }
                                     }

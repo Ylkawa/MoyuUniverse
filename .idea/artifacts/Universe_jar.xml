@@ -28,6 +28,7 @@
       <element id="extracted-dir" path="$MAVEN_REPOSITORY$/com/adobe/xmp/xmpcore/6.1.11/xmpcore-6.1.11.jar" path-in-jar="/" />
       <element id="module-output" name="AmapAPI" />
       <element id="extracted-dir" path="$MAVEN_REPOSITORY$/org/yaml/snakeyaml/2.4/snakeyaml-2.4.jar" path-in-jar="/" />
+      <element id="extracted-dir" path="$MAVEN_REPOSITORY$/com/google/code/gson/gson-extras/2.13.2-rc1/gson-extras-2.13.2-rc1.jar" path-in-jar="/" />
     </root>
   </artifact>
 </component>

@@ -49,7 +49,7 @@ public class MinecraftConnectSpigot extends JavaPlugin {
                         .registerSubtype(VoiceField.class, "voice")
                         .registerSubtype(FileField.class, "file")
                         .registerSubtype(LocationField.class, "location")
-                        .registerSubtype(ShareUriField.class, "shareUri")
+                        .registerSubtype(ShareUrlField.class, "shareUri")
                         .registerSubtype(ShareContactField.class, "shareContact")
                         .registerSubtype(MetaField.class, "meta")
                         .registerSubtype(AtField.class, "at");
