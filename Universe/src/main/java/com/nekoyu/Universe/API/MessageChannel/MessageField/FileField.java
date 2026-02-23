@@ -1,5 +1,6 @@
 package com.nekoyu.Universe.API.MessageChannel.MessageField;
 
+import com.nekoyu.Universe.API.UniverseChannel;
 import com.nekoyu.Universe.Universe;
 
 import java.io.IOException;
@@ -27,7 +28,7 @@ public class FileField extends MsgField {
         @Override
         public void run() {
             if (reposted) {
-                Universe.UniverseChannel.releaseRepost(url);
+                UniverseChannel.releaseRepost(url);
             }
         }
     }
@@ -58,7 +59,7 @@ public class FileField extends MsgField {
 
     public void repost() throws IOException {
         if (state.reposted) return;
-        URL newUrl = Universe.UniverseChannel.repostFile(state.url);
+        URL newUrl = UniverseChannel.repostFile(state.url);
         state.url = newUrl;
         state.update(newUrl, true);
     }

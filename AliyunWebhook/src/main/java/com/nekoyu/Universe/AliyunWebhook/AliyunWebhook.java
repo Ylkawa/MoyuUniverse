@@ -4,6 +4,7 @@ import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.Multimap;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.nekoyu.Universe.API.UniverseChannel;
 import com.nekoyu.Universe.LawsLoader.Law;
 import com.nekoyu.Universe.Universe;
 
@@ -51,7 +52,7 @@ public class AliyunWebhook extends Law {
 
     @Override
     public void run() {
-        Universe.UniverseChannel.addHttpHandler("/AliyunWebhook/", exchange -> {
+        UniverseChannel.addHttpHandler("/AliyunWebhook/", exchange -> {
             try (BufferedReader reader = new BufferedReader(new InputStreamReader(exchange.getRequestBody(), StandardCharsets.UTF_8))) {
                 StringBuilder response = new StringBuilder();
                 String line;
@@ -91,6 +92,6 @@ public class AliyunWebhook extends Law {
 
     @Override
     public void stop() {
-        Universe.UniverseChannel.removeHttpHandler("/AliyunWebhook/");
+        UniverseChannel.removeHttpHandler("/AliyunWebhook/");
     }
 }

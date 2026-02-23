@@ -3,13 +3,10 @@ package com.nekoyu.Universe.MinecraftConnect;
 import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.Multimap;
 import com.google.gson.Gson;
+import com.nekoyu.Universe.API.*;
 import com.nekoyu.Universe.API.MessageChannel.MCMessage;
 import com.nekoyu.Universe.API.MessageChannel.MessageChannel;
 import com.nekoyu.Universe.API.MessageChannel.MessageChannelListener;
-import com.nekoyu.Universe.API.PlaceHolder;
-import com.nekoyu.Universe.API.Planet;
-import com.nekoyu.Universe.API.UniverseChannelMessage;
-import com.nekoyu.Universe.API.UniverseListener;
 import com.nekoyu.Universe.LawsLoader.Law;
 import com.nekoyu.Universe.Universe;
 import org.yaml.snakeyaml.Yaml;
@@ -69,7 +66,7 @@ public class MinecraftConnectUniverse extends Law implements UniverseListener {
 
     @Override
     public void run() {
-        Universe.UniverseChannel.registerListener("Minecraft-Connect", this);
+        UniverseChannel.registerListener("Minecraft-Connect", this);
         for (Map.Entry<String, String> entry : forwardingStructureToServer.entries()) {
             String target = entry.getValue();
             Universe.MessageChannelManager.listenToSession(entry.getKey(), mcm -> {
@@ -80,14 +77,14 @@ public class MinecraftConnectUniverse extends Law implements UniverseListener {
                 if (mcm.sender.getAvatar() != null) color = mcm.sender.getAvatar().getMainColor();
                 ucm.RGB = new int[]{color.getRed(), color.getGreen(), color.getBlue()};
 
-                Universe.UniverseChannel.broadcast(target, ucm);
+                UniverseChannel.broadcast(target, ucm);
             });
         }
     }
 
     @Override
     public void stop() {
-        Universe.UniverseChannel.unRegisterListener("Minecraft-Connect", this);
+        UniverseChannel.unRegisterListener("Minecraft-Connect", this);
     }
 
     @Override

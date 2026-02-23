@@ -26,30 +26,30 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class UniverseChannel {
-    private WebSocketServer wsServer;
-    private int wsPort;
-    private int httpPort;
-    private final Multimap<String, UniverseListener> internalListeners = ArrayListMultimap.create();
-    private final Multimap<String, String> externalListeners = ArrayListMultimap.create();
-    private final Multimap<String, WebSocket> clientGroup = ArrayListMultimap.create();
-    private String token = null;
+    private static WebSocketServer wsServer;
+    private static int wsPort;
+    private static int httpPort;
+    private static final Multimap<String, UniverseListener> internalListeners = ArrayListMultimap.create();
+    private static final Multimap<String, String> externalListeners = ArrayListMultimap.create();
+    private static final Multimap<String, WebSocket> clientGroup = ArrayListMultimap.create();
+    private static String token = null;
     private static final Logger logger = LoggerFactory.getLogger(UniverseChannel.class);
-    private final Map<String, WebSocket> clientList = new HashMap<>();
-    private HttpServer httpServer = null;
+    private static final Map<String, WebSocket> clientList = new HashMap<>();
+    private static HttpServer httpServer = null;
     private static final Map<String, File> fileMounting = new HashMap<>();
     private static final Map<String, CachedFile> remoteUrlCachedFile = new ConcurrentHashMap<>();
     private static final Map<String, CachedFile> repostUrlCachedFile = new ConcurrentHashMap<>();
-    private String outboundHttpAddress;
+    private static String outboundHttpAddress;
 
-    public void setToken(String token) {
-        this.token = token;
+    public static void setToken(String token) {
+        UniverseChannel.token = token;
     }
 
-    public void setWsPort(int port) {
-        this.wsPort = port;
+    public static void setWsPort(int port) {
+        UniverseChannel.wsPort = port;
     }
 
-    public void load() {
+    public static void load() {
         registerListener("Universe", (planet, message, args, rawJson) -> {
             switch (message) {
                 case "RegisterListener":
@@ -185,7 +185,7 @@ public class UniverseChannel {
         });
     }
 
-    public URL addFileMounting(String mountPath, File file) {
+    public static URL addFileMounting(String mountPath, File file) {
         fileMounting.put(mountPath, file);
         try {
             return new URL(outboundHttpAddress + "/Universe/" + mountPath);
@@ -194,22 +194,22 @@ public class UniverseChannel {
         }
     }
 
-    public void registerListener(String tag, UniverseListener universeListener) {
+    public static void registerListener(String tag, UniverseListener universeListener) {
         internalListeners.put(tag, universeListener);
     }
 
-    public void unRegisterListener(String tag, UniverseListener universeListener) {
+    public static void unRegisterListener(String tag, UniverseListener universeListener) {
         internalListeners.remove(tag, universeListener);
     }
 
-    public void broadcast(String tag, UniverseChannelMessage ucm) {
+    public static void broadcast(String tag, UniverseChannelMessage ucm) {
         String json = new Gson().toJson(ucm);
         for (String id : externalListeners.get(tag)) {
             clientList.get(id).send(json);
         }
     }
 
-    public URL repostFile(URL url) throws IOException {
+    public static URL repostFile(URL url) throws IOException {
         CachedFile cf = remoteUrlCachedFile.get(url.toString());
         if (cf == null) {
             OkHttpClient client = new OkHttpClient();
@@ -251,28 +251,28 @@ public class UniverseChannel {
         return cf.outboundUrl;
     }
 
-    public void releaseRepost(URL url) {
+    public static void releaseRepost(URL url) {
         repostUrlCachedFile.get(url.toString()).release();
     }
 
-    public Collection<WebSocket> listWebSocketConnections() {
+    public static Collection<WebSocket> listWebSocketConnections() {
         return wsServer.getConnections();
     }
 
-    public void setHttpPort(int httpPort) {
-        this.httpPort = httpPort;
+    public static void setHttpPort(int httpPort) {
+        UniverseChannel.httpPort = httpPort;
     }
 
-    public void addHttpHandler(String path, HttpHandler hh) {
+    public static void addHttpHandler(String path, HttpHandler hh) {
         httpServer.createContext(path, hh);
     }
 
-    public void removeHttpHandler(String path) {
+    public static void removeHttpHandler(String path) {
         httpServer.removeContext(path);
     }
 
-    public void setOutboundHttpAddress(String addr) {
-        this.outboundHttpAddress = addr;
+    public static void setOutboundHttpAddress(String addr) {
+        UniverseChannel.outboundHttpAddress = addr;
     }
 
     public static class CachedFile extends File {

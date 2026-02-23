@@ -26,7 +26,6 @@ public class Universe {
     static public Properties universeChannelProp = new Properties();
     static public LawsManager LawsManager;
     static public MessageChannelManager MessageChannelManager = new MessageChannelManager();
-    static public UniverseChannel UniverseChannel = null;
     static public Map<String, Object> Providers = new HashMap<>();
     static public Solver pictureSolver = null;
     static public Solver voiceSolver = null;
@@ -102,7 +101,6 @@ public class Universe {
 
         // 加载宇宙标准消息通道
         if (universeChannelProp.get("Enable").equals("true")) {
-            UniverseChannel = new UniverseChannel();
             Object wsPort = universeChannelProp.get("WsPort");
             if (wsPort != null) {
                 UniverseChannel.setWsPort(Integer.parseInt(wsPort.toString()));
