@@ -2,8 +2,8 @@
   <artifact type="jar" name="WebSearchAI:jar">
     <output-path>$PROJECT_DIR$/out/artifacts/WebSearchAI_jar</output-path>
     <root id="archive" name="WebSearchAI.jar">
-      <element id="module-output" name="WebSearchAI" />
-      <element id="file-copy" path="$PROJECT_DIR$/WebSearchAI/src/main/resources/plug.properties" />
+      <element id="module-output" name="AIChat-Web" />
+      <element id="file-copy" path="$PROJECT_DIR$/AIChat-Web/src/main/resources/plug.properties" />
     </root>
   </artifact>
 </component>

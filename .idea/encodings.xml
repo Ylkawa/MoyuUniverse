@@ -5,6 +5,8 @@
     <file url="file://$PROJECT_DIR$/AIChat-Memory/src/main/resources" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/AIChat-NetTools/src/main/java" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/AIChat-NetTools/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/AIChat-Web/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/AIChat-Web/src/main/resources" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/AIChat/src/main/java" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/AIChat/src/main/resources" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/AliyunWebhook/src/main/java" charset="UTF-8" />
@@ -26,8 +28,6 @@
     <file url="file://$PROJECT_DIR$/Universe/src/main/java" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/Universe/src/main/java/com/nekoyu/Universe/API/UniverseChannel.java" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/Universe/src/main/resources" charset="UTF-8" />
-    <file url="file://$PROJECT_DIR$/WebSearchAI/src/main/java" charset="UTF-8" />
-    <file url="file://$PROJECT_DIR$/WebSearchAI/src/main/resources" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/openaiadapter/src/main/java" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/openaiadapter/src/main/resources" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/src/main/java" charset="UTF-8" />
