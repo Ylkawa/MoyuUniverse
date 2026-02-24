@@ -4,6 +4,7 @@ import com.google.gson.*;
 import com.google.gson.typeadapters.RuntimeTypeAdapterFactory;
 import com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.event.JsonMessages.JsonMessage;
 import com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.event.JsonMessages.com_tencent_miniapp_01;
+import com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.event.JsonMessages.com_tencent_miniapp_lua;
 import com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.event.JsonMessages.com_tencent_tuwen_lua;
 import com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.event.Message;
 import com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.event.MessageSegment;
@@ -44,6 +45,7 @@ public class OnebotChannel extends MessageChannel {
                         RuntimeTypeAdapterFactory.of(JsonMessage.class, "app")
                                 .registerSubtype(com_tencent_miniapp_01.class, "com.tencent.miniapp_01")
                                 .registerSubtype(com_tencent_tuwen_lua.class, "com.tencent.tuwen.lua")
+                                .registerSubtype(com_tencent_miniapp_lua.class, "com.tencent.miniapp.lua")
                 )
                 .create();
     }
@@ -293,10 +295,15 @@ public class OnebotChannel extends MessageChannel {
                                                                 .build();
                                                         try (Response resp = okHttpClient.newCall(req).execute()) {
                                                             if (resp.isSuccessful() && resp.header("Content-Type").startsWith("image")) shareUrlField.image = new ImageField(new URL(card.meta.news.preview));
-                                                        } catch (IOException e) {
+                                                        } catch (IOException ignored) {
 
                                                         }
                                                         mcm.messageFields.add(shareUrlField);
+                                                    } else if (jm instanceof com_tencent_miniapp_lua card) {
+                                                        URL url = null;
+                                                        if (card.meta.miniapp.jumpUrl.startsWith("http")) url = new URL(card.meta.miniapp.jumpUrl);
+                                                        else if (card.meta.miniapp.legacyUrl != null && card.meta.miniapp.legacyUrl.startsWith("http")) url = new URL(card.meta.miniapp.legacyUrl);
+                                                        mcm.messageFields.add(new ShareUrlField("[" + card.meta.miniapp.tag + "]" + card.meta.miniapp.title, url));
                                                     }
                                                 } catch (Throwable e) {
                                                     e.printStackTrace();
