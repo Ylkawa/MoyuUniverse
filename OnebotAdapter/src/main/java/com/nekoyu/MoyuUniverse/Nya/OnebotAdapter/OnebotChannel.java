@@ -29,7 +29,6 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.net.MalformedURLException;
 import java.net.URI;
-import java.net.URISyntaxException;
 import java.net.URL;
 import java.util.HashMap;
 import java.util.Map;
@@ -294,7 +293,8 @@ public class OnebotChannel extends MessageChannel {
                                                                 .url(card.meta.news.preview)
                                                                 .build();
                                                         try (Response resp = okHttpClient.newCall(req).execute()) {
-                                                            if (resp.isSuccessful() && resp.header("Content-Type").startsWith("image")) shareUrlField.image = new ImageField(new URL(card.meta.news.preview));
+                                                            String content_type = resp.header("Content-Type");
+                                                            if (resp.isSuccessful() && content_type != null && content_type.startsWith("image")) shareUrlField.image = new ImageField(new URL(card.meta.news.preview));
                                                         } catch (IOException ignored) {
 
                                                         }
@@ -306,10 +306,9 @@ public class OnebotChannel extends MessageChannel {
                                                         mcm.messageFields.add(new ShareUrlField("[" + card.meta.miniapp.tag + "]" + card.meta.miniapp.title, url));
                                                     }
                                                 } catch (Throwable e) {
-                                                    e.printStackTrace();
                                                     JsonElement je = gson.fromJson(ms.data.get("data"), JsonElement.class);
                                                     mcm.messageFields.add(new MetaField(je.getAsJsonObject().get("prompt").getAsString()));
-                                                    logger.debug(ms.data.get("data"));
+                                                    logger.debug(ms.data.get("data"), e);
                                                 }
                                             }
                                         }
@@ -341,7 +340,6 @@ public class OnebotChannel extends MessageChannel {
                                                 if (f instanceof FileField ff) ff.repost();
                                             }
                                         } catch (IOException | InterruptedException e) {
-                                            e.printStackTrace();
                                             throw new RuntimeException(e);
                                         }
                                     });
@@ -417,15 +415,14 @@ public class OnebotChannel extends MessageChannel {
     @Override
     public int sendMessage(String sessionId, String message) {
         String[] target = sessionId.split("/");
-        switch (target[0]) {
-            case "group":
-                return sendGroupMessage(target[1], message);
-            case "private":
-                return sendPrivateMessage(target[1], message);
-            default:
+        return switch (target[0]) {
+            case "group" -> sendGroupMessage(target[1], message);
+            case "private" -> sendPrivateMessage(target[1], message);
+            default -> {
                 logger.warn("前所未闻的会话ID: {}", sessionId);
-                return -1;
-        }
+                yield -1;
+            }
+        };
     }
 
     /**
