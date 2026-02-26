@@ -27,6 +27,10 @@ public class SearchResult {
     public static class SiteItem extends Item {
         public List<SiteLink> siteLinks;
 
+        public SiteItem() {
+            siteLinks = new ArrayList<>();
+        }
+
         public static class SiteLink {
             public String title;
             public URL link;

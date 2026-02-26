@@ -28,7 +28,6 @@ import java.util.regex.Pattern;
 public class Web extends AIChatPlugin {
     OkHttpClient client;
     Config config;
-    Gson gson = new Gson();
     com.nekoyu.Universe.AIChat.Web.YouTubeAPI.Client ytbClient = null;
     boolean able = true;
     com.nekoyu.Universe.AIChat.Web.SearchAPI.SearchClient searchClient = null;

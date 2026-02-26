@@ -8,6 +8,7 @@ public class Config {
     boolean EnableGoogleSearch;
     boolean EnableYouTubeAPI;
     String SearchEngineID;
+    SearchParam additionalParams = new SearchParam();
 
     public Config() {
         EnableProxy = false;
@@ -16,5 +17,11 @@ public class Config {
         SearchEngineID = "";
         EnableGoogleSearch = true;
         EnableYouTubeAPI = true;
+    }
+
+    private static class SearchParam {
+        String language;
+        String country;
+        String location;
     }
 }
