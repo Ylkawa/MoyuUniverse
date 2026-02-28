@@ -103,7 +103,7 @@ public class SearchResponse {
     }
 
     public static class DetectedExtensions {
-        public int rating;
+        public double rating;
         public int review_by_jennaviles;
     }
 

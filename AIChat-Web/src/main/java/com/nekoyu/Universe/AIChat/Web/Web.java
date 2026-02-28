@@ -1,16 +1,13 @@
 package com.nekoyu.Universe.AIChat.Web;
 
 import com.google.gson.Gson;
-import com.google.gson.JsonSyntaxException;
 import com.nekoyu.Universe.AIChat.AIChat;
 import com.nekoyu.Universe.AIChat.AIChatPlugin;
 import com.nekoyu.Universe.AIChat.Web.BiliBiliAPI.*;
-import com.nekoyu.Universe.AIChat.Web.SearchAPI.Google.SearchResponse;
 import com.nekoyu.Universe.AIChat.Web.SearchAPI.SearchResult;
 import com.nekoyu.Universe.AIChat.Web.YouTubeAPI.CommentThreadListResponse;
 import com.nekoyu.Universe.AIChat.Web.YouTubeAPI.VideoListResponse;
 import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.LLMFunction;
-import okhttp3.HttpUrl;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
@@ -59,6 +56,11 @@ public class Web extends AIChatPlugin {
             if (config.EnableYouTubeAPI)
                 ytbClient = new com.nekoyu.Universe.AIChat.Web.YouTubeAPI.Client(config.GoogleAPIKey);
             ytbClient.setProxy(proxy);
+            switch (config.SearchProvider) {
+                case "SerpApiGoogle" -> searchClient = new com.nekoyu.Universe.AIChat.Web.SearchAPI.SerpApi.GoogleSearch.Client(config.SerpApiKey, proxy);
+                case "Google" -> searchClient = new com.nekoyu.Universe.AIChat.Web.SearchAPI.Google.Client(config.GoogleAPIKey, config.SearchEngineID); // 废了但是还是写一下
+            }
+            searchClient.setSearchParam(config.SearchParam);
         } catch (FileNotFoundException e) {
             config = new Config();
             try (FileWriter fw = new FileWriter("./config/AIChat/Plugins/WebSearch/config.json")) {
@@ -74,8 +76,8 @@ public class Web extends AIChatPlugin {
                 .followRedirects(false) // 不这样设置，短链的重定向会直接跳过去，识别不到
                 .build();
 
-        var dst = new LLMFunction("GoogleSearch",
-                "使用Google的API在全网搜索内容，仅当用户要求或者要回答的内容具有时效性时使用",
+        var dst = new LLMFunction("WebSearch",
+                "全网搜索内容，仅当用户要求或者要回答的内容具有时效性时使用",
                 new LLMFunction.Parameters("object", new String[]{"搜索词"}, new String[]{"搜索词"}),
                 args -> search(args.get("搜索词"))
         );

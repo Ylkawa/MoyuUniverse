@@ -1,0 +1,9 @@
+<component name="ArtifactManager">
+  <artifact type="jar" name="AIChat-Web:jar">
+    <output-path>$PROJECT_DIR$/out/artifacts/AIChat_Web_jar</output-path>
+    <root id="archive" name="AIChat-Web.jar">
+      <element id="module-output" name="AIChat-Web" />
+      <element id="file-copy" path="$PROJECT_DIR$/AIChat-Web/src/main/resources/plug.properties" />
+    </root>
+  </artifact>
+</component>

@@ -110,6 +110,7 @@ public class OpenAIChannel extends LLMProvider {
         }
         cr.stream = true;
         if (extensionalArgs.enable_thinking) cr.enable_thinking = true;
+        logger.debug(gson.toJson(cr));
         CompletionsResponse completions = completions(cr, llmFunctions, bufferCallback, extensionalArgs, 5, responding);
         if (completions.usage.total_tokens > 0)
             logger.info("本次请求消耗 tokens: 输入 {}  输出 {}", completions.usage.prompt_tokens, completions.usage.completion_tokens); // 无言了，百炼的 API 默认不返回 usage
@@ -137,6 +138,7 @@ public class OpenAIChannel extends LLMProvider {
                 String finish_reason = "unfinished";
                 while ((line = source.readUtf8Line()) != null) {
                     if (line.startsWith("data: ")) {
+                        logger.debug(line);
                         String json = line.substring(6).trim();
                         if (json.startsWith("{")) {
                             DataLine dl = gson.fromJson(json, DataLine.class);

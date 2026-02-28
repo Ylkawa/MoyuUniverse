@@ -2,6 +2,7 @@ package com.nekoyu.Universe.AIChat.Web.SearchAPI.SerpApi.GoogleSearch;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonElement;
+import com.nekoyu.Universe.AIChat.Web.Config;
 import com.nekoyu.Universe.AIChat.Web.SearchAPI.SearchClient;
 import com.nekoyu.Universe.AIChat.Web.SearchAPI.SearchResult;
 import okhttp3.HttpUrl;
@@ -12,14 +13,12 @@ import okhttp3.Response;
 import java.io.IOException;
 import java.net.Proxy;
 import java.net.URL;
+import java.util.HashMap;
 import java.util.Map;
 
 public class Client extends SearchClient {
     OkHttpClient client;
     String apiKey;
-    String language = null;
-    String country = null;
-    String location = null;
     static Gson gson = new Gson();
 
     public Client(String apiKey) {
@@ -41,16 +40,16 @@ public class Client extends SearchClient {
                 .addQueryParameter("engine", "google")
                 .addQueryParameter("q", query)
                 .addQueryParameter("api_key", apiKey);
-        if (language != null) urlBuilder.addQueryParameter("hl", language);
-        if (country != null) urlBuilder.addQueryParameter("gl", country);
-        if (location != null) urlBuilder.addQueryParameter("location", location);
+        if (searchParam.language != null) urlBuilder.addQueryParameter("hl", searchParam.language);
+        if (searchParam.country != null) urlBuilder.addQueryParameter("gl", searchParam.country);
+        if (searchParam.location != null) urlBuilder.addQueryParameter("location", searchParam.location);
         Request request = new Request.Builder().url(urlBuilder.build()).build();
         try (Response response = client.newCall(request).execute()) {
             SearchResponse sr = gson.fromJson(response.body().string(), SearchResponse.class);
             SearchResult result = new SearchResult();
 
             result.resultFor = sr.search_information.query_displayed; // 错别字情况会被搜索引擎自动修正，所以有时搜索到的东西不一定等于输入的东西
-            if (sr.knowledge_graph != null) {
+            if (sr.knowledge_graph != null && sr.knowledge_graph.get("breadcrumb") != null) {
                 StringBuilder sb = new StringBuilder();
                 boolean first = true;
                 for (var jao : sr.knowledge_graph.get("breadcrumbs").getAsJsonArray()) {
