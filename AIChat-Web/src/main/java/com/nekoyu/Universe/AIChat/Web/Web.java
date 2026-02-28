@@ -38,7 +38,7 @@ public class Web extends AIChatPlugin {
         getConfigDir();
         Proxy proxy = Proxy.NO_PROXY;
         try {
-            config = new Gson().fromJson(new FileReader("./config/AIChat/Plugins/WebSearch/config.json"), Config.class);
+            config = new Gson().fromJson(new FileReader("./config/AIChat/Plugins/Web/config.json"), Config.class);
             if (config.EnableProxy) {
                 if (config.HttpProxyURI == null || config.HttpProxyURI.isEmpty()) {
                     logger.error("Proxy URI is null or empty");
@@ -63,7 +63,7 @@ public class Web extends AIChatPlugin {
             searchClient.setSearchParam(config.SearchParam);
         } catch (FileNotFoundException e) {
             config = new Config();
-            try (FileWriter fw = new FileWriter("./config/AIChat/Plugins/WebSearch/config.json")) {
+            try (FileWriter fw = new FileWriter("./config/AIChat/Plugins/Web/config.json")) {
                 fw.write(new Gson().toJson(config));
             } catch (IOException ex) {
                 able = false;
