@@ -1,6 +1,5 @@
 package com.nekoyu.Universe.AIChat.Web.SearchAPI.SerpApi.GoogleSearch;
 
-import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 
 import java.util.List;
