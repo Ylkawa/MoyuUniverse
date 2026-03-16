@@ -4,7 +4,7 @@ import com.nekoyu.Universe.API.MessageChannel.MessageField.ImageField;
 
 import javax.annotation.Nullable;
 
-public class SessionInfo {
+public class Session {
     String id;
     String platform;
     String name;

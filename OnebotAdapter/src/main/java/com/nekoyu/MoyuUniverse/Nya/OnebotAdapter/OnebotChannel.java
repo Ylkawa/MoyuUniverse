@@ -30,9 +30,6 @@ import java.io.IOException;
 import java.net.MalformedURLException;
 import java.net.URI;
 import java.net.URL;
-import java.time.Duration;
-import java.time.LocalDateTime;
-import java.time.LocalTime;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -58,7 +55,7 @@ public class OnebotChannel extends MessageChannel {
     URI uri;
     String token;
     Map<String, Callback> syncActions = new ConcurrentHashMap<>(); // Echoes 和 Actions 的映射
-    Map<String, SessionInfo> sessionInfos = new ConcurrentHashMap<>(); // 用户账号列表缓存
+    Map<String, Session> sessionInfos = new ConcurrentHashMap<>(); // 用户账号列表缓存
     boolean good = true; // 实现端健康状态
     boolean online = true; // 实现端在线状态
 
@@ -192,11 +189,11 @@ public class OnebotChannel extends MessageChannel {
                                             }
                                             case "at" -> {
                                                 if (ms.data.get("qq").equals("all")) {
-                                                    SessionInfo sessionInfo = new SessionInfo(); // 假造一个算了
-                                                    sessionInfo.setPlatform("QQ");
-                                                    sessionInfo.setId("all");
-                                                    sessionInfo.setName("全体成员");
-                                                    mcm.messageFields.add(new AtField(sessionInfo));
+                                                    Session session = new Session(); // 假造一个算了
+                                                    session.setPlatform("QQ");
+                                                    session.setId("all");
+                                                    session.setName("全体成员");
+                                                    mcm.messageFields.add(new AtField(session));
                                                 } else {
                                                     var account = getSessionInfo("user/" + ms.data.get("qq"));
                                                     mcm.messageFields.add(new AtField(account));
@@ -325,12 +322,12 @@ public class OnebotChannel extends MessageChannel {
                                         case "group":
                                             Long groupId = message.group_id;
                                             sessionId.append(groupId);
-                                            mcm.sessionInfo = getSessionInfo(sessionId.toString());
+                                            mcm.session = getSessionInfo(sessionId.toString());
                                             break;
                                         case "private":
                                             Long userId = message.user_id;
                                             sessionId.append(userId);
-                                            mcm.sessionInfo = mcm.sender;
+                                            mcm.session = mcm.sender;
                                             break;
                                     }
                                     broadcastMessage(sessionId.toString(), mcm);
@@ -492,14 +489,14 @@ public class OnebotChannel extends MessageChannel {
     }
 
     @Override
-    public SessionInfo getSessionInfo(String sessionId) {
+    public Session getSessionInfo(String sessionId) {
         String[] acc = sessionId.split("/", 2);
         if (!acc[0].equals("private") && !acc[0].equals("user") && !acc[0].equals("group")) {
             logger.error("getSessionInfo() cannot handle {}", sessionId);
             throw new UnsupportedAction("Unsupported session type");
         }
-        SessionInfo sessionInfo = sessionInfos.get(acc[1]);
-        if (sessionInfo == null) {
+        Session session = sessionInfos.get(acc[1]);
+        if (session == null) {
             OBRequest obr = new OBRequest();
             switch (acc[0]) {
                 case "group" -> {
@@ -524,7 +521,7 @@ public class OnebotChannel extends MessageChannel {
                     } catch (MalformedURLException e) {
                         logger.error(e.getMessage(), e);
                     }
-                    sessionInfo = groupInfo;
+                    session = groupInfo;
                 }
                 case "user", "private" -> {
                     var accountInfo = new Account();
@@ -537,12 +534,12 @@ public class OnebotChannel extends MessageChannel {
                     } catch (MalformedURLException e) {
                         logger.error(e.getMessage(), e);
                     }
-                    sessionInfo = accountInfo;
+                    session = accountInfo;
                 }
             }
-            sessionInfos.put(acc[1], sessionInfo);
+            sessionInfos.put(acc[1], session);
         }
-        return sessionInfo;
+        return session;
     }
 
     private interface Callback {

@@ -1,4 +1,4 @@
 package com.nekoyu.Universe.API.MessageChannel;
 
-public class Group extends SessionInfo {
+public class Group extends Session {
 }

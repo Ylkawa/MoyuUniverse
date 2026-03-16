@@ -9,7 +9,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
 public class MCMessage {
-    public SessionInfo sessionInfo;
+    public Session session;
     public Account receiver;
     public Account sender;
     public String messageString;
@@ -105,8 +105,8 @@ public class MCMessage {
             return this;
         }
 
-        public Builder sessionInfo(SessionInfo sessionInfo) {
-            msg.sessionInfo = sessionInfo;
+        public Builder sessionInfo(Session session) {
+            msg.session = session;
             return this;
         }
 

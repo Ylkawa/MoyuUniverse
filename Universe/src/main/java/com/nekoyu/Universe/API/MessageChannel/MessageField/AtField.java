@@ -1,11 +1,11 @@
 package com.nekoyu.Universe.API.MessageChannel.MessageField;
 
-import com.nekoyu.Universe.API.MessageChannel.SessionInfo;
+import com.nekoyu.Universe.API.MessageChannel.Session;
 
 public class AtField extends MsgField {
-    public SessionInfo target;
+    public Session target;
 
-    public AtField(SessionInfo target) {
+    public AtField(Session target) {
         super.type = "at";
         this.target = target;
     }

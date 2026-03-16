@@ -48,7 +48,7 @@ public class MessageChannelManager {
             if (mcm.sender.getAvatar() != null) {
                 fg = ColorUtils.fg(mcm.sender.getAvatar().getMainColor());
             } else logger.debug("sender avatar is null");
-            if (mcm.sessionInfo instanceof Group group) {
+            if (mcm.session instanceof Group group) {
                 Color groupAvatarColor = null;
                 if (group.getAvatar() != null) {
                     groupAvatarColor = group.getAvatar().getMainColor();
@@ -62,7 +62,7 @@ public class MessageChannelManager {
                         mc.ID,
                         ColorUtils.RESET,
                         groupFg,
-                        mcm.sessionInfo.name,
+                        mcm.session.name,
                         ColorUtils.RESET,
                         fg,
                         mcm.sender.name,
@@ -131,17 +131,17 @@ public class MessageChannelManager {
             logger.warn("不存在此Channel {}", target[0]);
             throw new RuntimeException(target[0] + "is not exist");
         } else {
-            SessionInfo sessionInfo = mc.getSessionInfo(target[1]);
+            Session session = mc.getSessionInfo(target[1]);
             String fg = "";
-            if (sessionInfo.avatar != null) {
-                fg = ColorUtils.fg(sessionInfo.avatar.getMainColor());
+            if (session.avatar != null) {
+                fg = ColorUtils.fg(session.avatar.getMainColor());
             }
             messagingLogger.info("{}{}{} {}{}{} <- {}",
                     ColorUtils.fg(mc.mainColor),
                     mc.ID,
                     ColorUtils.RESET,
                     fg,
-                    sessionInfo.name,
+                    session.name,
                     ColorUtils.RESET,
                     message);
             MCMessage mcm = new MCMessage();
@@ -172,7 +172,7 @@ public class MessageChannelManager {
         return messageHistory.get(sessionId);
     }
 
-    public SessionInfo getSessionInfo(String sessionId) {
+    public Session getSessionInfo(String sessionId) {
         String[] split = sessionId.split(":", 2);
         return getChannel(split[0]).getSessionInfo(split[1]);
     }
