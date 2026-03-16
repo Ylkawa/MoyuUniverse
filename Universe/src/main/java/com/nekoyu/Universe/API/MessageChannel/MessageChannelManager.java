@@ -48,10 +48,10 @@ public class MessageChannelManager {
             if (mcm.sender.getAvatar() != null) {
                 fg = ColorUtils.fg(mcm.sender.getAvatar().getMainColor());
             } else logger.debug("sender avatar is null");
-            if (mcm.sessionInfo instanceof GroupInfo groupInfo) {
+            if (mcm.sessionInfo instanceof Group group) {
                 Color groupAvatarColor = null;
-                if (groupInfo.getAvatar() != null) {
-                    groupAvatarColor = groupInfo.getAvatar().getMainColor();
+                if (group.getAvatar() != null) {
+                    groupAvatarColor = group.getAvatar().getMainColor();
                 } else logger.debug("group avatar is null");
                 String groupFg = "";
                 if (groupAvatarColor != null) {

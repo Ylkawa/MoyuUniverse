@@ -30,9 +30,10 @@ import java.io.IOException;
 import java.net.MalformedURLException;
 import java.net.URI;
 import java.net.URL;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.UUID;
+import java.time.Duration;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -105,18 +106,18 @@ public class OnebotChannel extends MessageChannel {
                     AtomicInteger friendCount = new AtomicInteger();
                     friendListReq.data.getAsJsonArray().forEach(friend -> {
                         JsonObject friendObj = friend.getAsJsonObject();
-                        AccountInfo accountInfo = new AccountInfo();
-                        accountInfo.setSex(friendObj.get("sex").getAsString());
-                        accountInfo.setId(friendObj.get("user_id").getAsString());
-                        accountInfo.setName(friendObj.get("nickname").getAsString());
-                        accountInfo.setPlatform("QQ");
+                        Account account = new Account();
+                        account.setSex(friendObj.get("sex").getAsString());
+                        account.setId(friendObj.get("user_id").getAsString());
+                        account.setName(friendObj.get("nickname").getAsString());
+                        account.setPlatform("QQ");
                         try {
-                            accountInfo.setAvatar(new ImageField(new URL("https://q.qlogo.cn/headimg_dl?dst_uin=" + accountInfo.getId() + "&spec=640&img_type=jpg")));
+                            account.setAvatar(new ImageField(new URL("https://q.qlogo.cn/headimg_dl?dst_uin=" + account.getId() + "&spec=640&img_type=jpg")));
                         } catch (MalformedURLException e) {
                             logger.error(e.getMessage(), e);
                         }
                         friendCount.getAndIncrement();
-                        sessionInfos.put(accountInfo.getId(), accountInfo);
+                        sessionInfos.put(account.getId(), account);
                     });
                     OBResponse groupListReq = request(new OBRequest("get_group_list"));
                     int groupCount = groupListReq.data.getAsJsonArray().size();
@@ -147,7 +148,7 @@ public class OnebotChannel extends MessageChannel {
                                     mcm.receiver.setId(String.valueOf(message.self_id));
                                     mcm.receiver.setName(nickname);
                                     mcm.receiver.setPlatform("QQ");
-                                    mcm.sender = (AccountInfo) getSessionInfo("user/" + message.sender.user_id);
+                                    mcm.sender = (Account) getSessionInfo("user/" + message.sender.user_id);
                                     mcm.id = message.message_id;
                                     StringBuilder sessionId = new StringBuilder();
                                     sessionId.append(message.message_type).append("/");
@@ -514,7 +515,7 @@ public class OnebotChannel extends MessageChannel {
             if (resp.status.equals("failed")) throw new RuntimeException("Request Failed");
             switch (acc[0]) {
                 case "group" -> {
-                    var groupInfo = new GroupInfo();
+                    var groupInfo = new Group();
                     groupInfo.setName(resp.data.getAsJsonObject().get("group_name").getAsString());
                     groupInfo.setId(acc[1]);
                     groupInfo.setPlatform("QQ");
@@ -526,7 +527,7 @@ public class OnebotChannel extends MessageChannel {
                     sessionInfo = groupInfo;
                 }
                 case "user", "private" -> {
-                    var accountInfo = new AccountInfo();
+                    var accountInfo = new Account();
                     accountInfo.setName(resp.data.getAsJsonObject().get("nickname").getAsString());
                     accountInfo.setId(acc[1]);
                     accountInfo.setPlatform("QQ");
@@ -546,5 +547,14 @@ public class OnebotChannel extends MessageChannel {
 
     private interface Callback {
         void callback(OBResponse response);
+    }
+
+    public class QQAccount extends Account {
+        public void sendLike(int count) { // Max 10 as default and could be 20 with SVIP
+            OBRequest obr = new OBRequest("send_like");
+            obr.params.put("user_id", getId());
+            obr.params.put("times", count);
+            request(obr);
+        }
     }
 }
