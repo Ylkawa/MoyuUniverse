@@ -23,6 +23,10 @@ import okhttp3.Request;
 import okhttp3.Response;
 import org.java_websocket.client.WebSocketClient;
 import org.java_websocket.handshake.ServerHandshake;
+import org.openqa.selenium.Cookie;
+import org.openqa.selenium.JavascriptExecutor;
+import org.openqa.selenium.chrome.ChromeDriver;
+import org.openqa.selenium.support.ui.WebDriverWait;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -30,6 +34,7 @@ import java.io.IOException;
 import java.net.MalformedURLException;
 import java.net.URI;
 import java.net.URL;
+import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -524,7 +529,7 @@ public class OnebotChannel extends MessageChannel {
                     session = groupInfo;
                 }
                 case "user", "private" -> {
-                    var accountInfo = new Account();
+                    var accountInfo = new QQAccount();
                     accountInfo.setName(resp.data.getAsJsonObject().get("nickname").getAsString());
                     accountInfo.setId(acc[1]);
                     accountInfo.setPlatform("QQ");
@@ -552,6 +557,46 @@ public class OnebotChannel extends MessageChannel {
             obr.params.put("user_id", getId());
             obr.params.put("times", count);
             request(obr);
+        }
+    }
+
+    // 使用Selenium访问和简单操作QZone
+    public class QZone {
+        ChromeDriver driver;
+        // 此处通过请求Onebot API get_cookies 获取cookies初始化会话
+        public QZone() {
+            driver = new ChromeDriver();
+            OBRequest obr = new OBRequest("get_cookies");
+            obr.params.put("domain", "qzone.qq.com");
+            try {
+                var resp = request(obr);
+                String cookiesString = resp.data.get("cookies").getAsString();
+                String bkn = resp.data.get("bkn").getAsString();
+                driver.get("https://qzone.qq.com/");
+                new WebDriverWait(driver, Duration.ofSeconds(10)).until(
+                        webDriver -> Objects.equals(((JavascriptExecutor) webDriver)
+                                .executeScript("return document.readyState"), "complete")
+                ); // 加载完页面就 加 cookies 刷新
+                for (String item : cookiesString.split("; ")) {
+                    String[] key_value = item.split("=");
+                    Cookie cookie = new Cookie(key_value[0], key_value[1]);
+                    driver.manage().addCookie(cookie);
+                }
+                driver.navigate().refresh();
+                // 至此这个模块初始化完毕可以用了
+            } catch (NullPointerException e) {
+                throw new RuntimeException("Failed to initialize QZone instance", e);
+            }
+        }
+
+        // 自动用浏览器翻好友动态页，截取数据包并解析出Feeds
+        public List<Feed> getLatestFeeds() {
+
+        }
+
+        public static class Feed {
+            String key;
+            QQAccount account;
         }
     }
 }

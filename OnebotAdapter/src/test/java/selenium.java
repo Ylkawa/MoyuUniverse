@@ -22,6 +22,11 @@ import java.util.concurrent.ConcurrentHashMap;
 public class selenium {
     static boolean receiving = false;
 
+    /*
+    目前这个测试的行为是：
+    60秒内持续侦测有无“好友动态”的按钮（登录进入主页后左侧可以选择的分类）
+    检测到就开始侦听数据流，截取好友动态相关响应体
+     */
     public static void main(String[] args) {
         Gson gson = new Gson();
 

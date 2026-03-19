@@ -8,7 +8,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * QQ空间Feed解析器（支持广告过滤、评论提取、附图提取及转发动态正文合并）
+ * QQ空间Feed解析器（支持广告过滤、评论提取、附图提取、转发正文合并，评论时间已排除）
  * 依赖：jsoup-1.15.3.jar
  */
 public class FeedParser {
@@ -141,17 +141,30 @@ public class FeedParser {
     private static QZoneFeed.Comment parseComment(Element li) {
         QZoneFeed.Comment comment = new QZoneFeed.Comment();
         comment.setPublisherQQ(li.attr("data-uin"));
+
         Element nickLink = li.selectFirst(".comments-content .nickname");
         if (nickLink != null) comment.setPublisherNick(nickLink.text());
 
+        // 提取评论内容，排除 .comments-op 部分
         Element contentDiv = li.selectFirst(".comments-content");
         if (contentDiv != null) {
             StringBuilder sb = new StringBuilder();
             for (org.jsoup.nodes.Node node : contentDiv.childNodes()) {
-                if (node instanceof TextNode) sb.append(((TextNode) node).text());
-                else if (node instanceof Element) {
+                // 遇到 comments-op 时停止，其后的内容（时间、回复按钮）不加入正文
+                if (node instanceof Element) {
                     Element e = (Element) node;
-                    if (!e.hasClass("nickname") && !e.hasClass("name")) sb.append(e.text());
+                    if (e.hasClass("comments-op")) {
+                        break;
+                    }
+                }
+                if (node instanceof TextNode) {
+                    sb.append(((TextNode) node).text());
+                } else if (node instanceof Element) {
+                    Element e = (Element) node;
+                    // 跳过昵称链接，因为它会在前面单独显示
+                    if (!e.hasClass("nickname") && !e.hasClass("name")) {
+                        sb.append(e.text());
+                    }
                 }
             }
             comment.setContent(sb.toString().trim());
@@ -160,6 +173,7 @@ public class FeedParser {
         Element timeSpan = li.selectFirst(".comments-op .state");
         if (timeSpan != null) comment.setTimeStr(timeSpan.text());
 
+        // 处理嵌套回复
         Element subList = li.selectFirst(".mod-comments-sub > ul");
         if (subList != null) {
             List<QZoneFeed.Comment> replies = new ArrayList<>();
@@ -186,7 +200,6 @@ public class FeedParser {
         private List<Comment> comments;
         private List<String> imageUrls;
 
-        // getters and setters (省略，请自行生成)
         public String getPublisherNick() { return publisherNick; }
         public void setPublisherNick(String publisherNick) { this.publisherNick = publisherNick; }
         public String getPublisherQQ() { return publisherQQ; }
@@ -216,7 +229,6 @@ public class FeedParser {
         public static class Comment {
             private String publisherQQ, publisherNick, content, timeStr;
             private List<Comment> replies;
-            // getters and setters...
             public String getPublisherQQ() { return publisherQQ; }
             public void setPublisherQQ(String publisherQQ) { this.publisherQQ = publisherQQ; }
             public String getPublisherNick() { return publisherNick; }
@@ -228,6 +240,20 @@ public class FeedParser {
             public List<Comment> getReplies() { return replies; }
             public void setReplies(List<Comment> replies) { this.replies = replies; }
         }
+    }
+
+    // ==================== 测试示例 ====================
+    public static void main(String[] args) {
+        // 请将各个示例的完整HTML传入测试
+        String html1 = "..."; // Feed 1
+        QZoneFeed feed1 = parseFeed(html1);
+        if (feed1 != null) printFeed(feed1, "Feed 1");
+
+        String html2 = "..."; // Feed 2
+        QZoneFeed feed2 = parseFeed(html2);
+        if (feed2 != null) printFeed(feed2, "Feed 2");
+
+        // ... 更多示例
     }
 
     private static void printFeed(QZoneFeed feed, String title) {
