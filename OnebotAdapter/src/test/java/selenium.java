@@ -78,6 +78,7 @@ public class selenium {
                             // 清理广告后解析
                             FeedParser.QZoneFeed feed = FeedParser.parseFeed(html);
                             if (feed != null) {
+                                System.out.println(html);
                                 System.out.println("发布者：" + feed.getPublisherNick() + "(" + feed.getPublisherQQ() + ")");
                                 System.out.println("正文：" + feed.getContent());
                                 System.out.println("时间戳：" + feed.getPublishTimestamp());

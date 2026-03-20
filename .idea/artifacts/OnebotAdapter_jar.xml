@@ -7,6 +7,7 @@
         <element id="file-copy" path="$PROJECT_DIR$/OnebotAdapter/src/main/resources/Onebot.json" />
       </element>
       <element id="file-copy" path="$PROJECT_DIR$/OnebotAdapter/src/main/resources/law.yml" />
+      <element id="extracted-dir" path="$MAVEN_REPOSITORY$/org/jsoup/jsoup/1.16.1/jsoup-1.16.1.jar" path-in-jar="/" />
     </root>
   </artifact>
 </component>
