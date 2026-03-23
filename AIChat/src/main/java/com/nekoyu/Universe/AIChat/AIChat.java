@@ -4,11 +4,10 @@ import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.Multimap;
 import com.google.gson.Gson;
 import com.nekoyu.Universe.AIChat.Event.RequestEvent;
-import com.nekoyu.Universe.API.MessageChannel.MCMessage;
+import com.nekoyu.Universe.API.MessageChannel.*;
 import com.nekoyu.Universe.API.MessageChannel.MessageField.ImageField;
 import com.nekoyu.Universe.API.MessageChannel.MessageField.MsgField;
 import com.nekoyu.Universe.API.MessageChannel.MessageField.TextField;
-import com.nekoyu.Universe.API.MessageChannel.MessageList;
 import com.nekoyu.Universe.API.PlaceHolder;
 import com.nekoyu.Universe.API.Providers.LLMProvider.Assistant;
 import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.ExtensionalArgs;
@@ -112,7 +111,8 @@ public class AIChat extends Law {
                     logger.info("已载入AI Chat插件 {}", info.id);
                 } catch (ClassNotFoundException e) {
                     logger.error("AI Chat插件 {} 主类缺失，无法加载({})", info.id, info.mainClass, e);
-                } catch (InvocationTargetException | InstantiationException | IllegalAccessException | NoSuchMethodException e) {
+                } catch (InvocationTargetException | InstantiationException | IllegalAccessException |
+                         NoSuchMethodException e) {
                     logger.error("AI Chat插件 {} 加载失败", info.id, e);
                 }
             }
@@ -127,15 +127,17 @@ public class AIChat extends Law {
 
     private void loadSessionCfg(File configDic) {
         for (File file : configDic.listFiles()) {
-            if (file.getName().toLowerCase().endsWith(".json")) try (InputStreamReader isr = new InputStreamReader(new FileInputStream(file), StandardCharsets.UTF_8)) {
-                SessionConfig sc = gson.fromJson(isr, SessionConfig.class);
-                configs.add(sc);
-                logger.info("载入配置文件 {} ", file.getName());
-            } catch (FileNotFoundException e) {
-                throw new RuntimeException(e);
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            } else if (file.isDirectory()) {
+            if (file.getName().toLowerCase().endsWith(".json"))
+                try (InputStreamReader isr = new InputStreamReader(new FileInputStream(file), StandardCharsets.UTF_8)) {
+                    SessionConfig sc = gson.fromJson(isr, SessionConfig.class);
+                    configs.add(sc);
+                    logger.info("载入配置文件 {} ", file.getName());
+                } catch (FileNotFoundException e) {
+                    throw new RuntimeException(e);
+                } catch (IOException e) {
+                    throw new RuntimeException(e);
+                }
+            else if (file.isDirectory()) {
                 loadSessionCfg(file);
             }
         }
@@ -145,7 +147,7 @@ public class AIChat extends Law {
     public void run() {
         SimpleDateFormat sdf = new SimpleDateFormat("[yyyy-MM-dd HH:mm:ss]");
         for (SessionConfig sessionCfg : configs) {
-            Universe.MessageChannelManager.listenToSession(sessionCfg.SessionId, mcm -> {
+            MCMListener mcmL = mcm -> {
                 if (sessionCfg.Trigger.equals("every") || mcm.messageString.contains(sessionCfg.Keyword) || mcm.level >= 2) {
                     Object provider = Universe.Providers.get(sessionCfg.Provider);
                     if (provider instanceof LLMProvider lp) {
@@ -232,7 +234,8 @@ public class AIChat extends Law {
                                                     if (sessionCfg.nativeImage) {
                                                         msg.messageFields.add(mf);
                                                         String metadata = imgF.solveMetadata();
-                                                        if (!metadata.isBlank()) msg.messageFields.add(new TextField("{" + metadata + "}"));
+                                                        if (!metadata.isBlank())
+                                                            msg.messageFields.add(new TextField("{" + metadata + "}"));
                                                         // 如果 Metadata 存在就追加一条 Metadata 的提示词字段
                                                     }
                                                 } else msg.messageFields.add(new TextField(mf.getAsString()));
@@ -275,7 +278,8 @@ public class AIChat extends Law {
                         else logger.warn("定义的AI服务适配器 {} 无效", sessionCfg.Provider);
                     }
                 }
-            });
+            };
+            Universe.MessageChannelManager.listenToSession(sessionCfg.SessionId, mcmL);
         }
     }
 

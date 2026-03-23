@@ -2,11 +2,10 @@ package com.nekoyu.Universe.MinecraftConnect;
 
 import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.Multimap;
-import com.google.gson.Gson;
 import com.nekoyu.Universe.API.*;
 import com.nekoyu.Universe.API.MessageChannel.MCMessage;
-import com.nekoyu.Universe.API.MessageChannel.MessageChannel;
-import com.nekoyu.Universe.API.MessageChannel.MessageChannelListener;
+import com.nekoyu.Universe.API.MessageChannel.MCPost;
+import com.nekoyu.Universe.API.MessageChannel.MCMListener;
 import com.nekoyu.Universe.LawsLoader.Law;
 import com.nekoyu.Universe.Universe;
 import org.yaml.snakeyaml.Yaml;
@@ -69,7 +68,7 @@ public class MinecraftConnectUniverse extends Law implements UniverseListener {
         UniverseChannel.registerListener("Minecraft-Connect", this);
         for (Map.Entry<String, String> entry : forwardingStructureToServer.entries()) {
             String target = entry.getValue();
-            Universe.MessageChannelManager.listenToSession(entry.getKey(), mcm -> {
+            MCMListener mcl = mcm -> {
                 ForwardChat ucm = new ForwardChat();
                 ucm.message = "ForwardChat";
                 ucm.MCMsg = mcm;
@@ -78,7 +77,8 @@ public class MinecraftConnectUniverse extends Law implements UniverseListener {
                 ucm.RGB = new int[]{color.getRed(), color.getGreen(), color.getBlue()};
 
                 UniverseChannel.broadcast(target, ucm);
-            });
+            };
+            Universe.MessageChannelManager.listenToSession(entry.getKey(), mcl);
         }
     }
 

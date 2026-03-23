@@ -16,8 +16,10 @@ import java.util.Map;
 public class MessageChannelManager {
     int MESSAGE_LIST_MAX_SIZE = 20;
     public Map<String, MessageChannel> MessageChannels = new HashMap<>();
-    Multimap<String, MessageChannelListener> sessionListeners = ArrayListMultimap.create();
-    List<MessageChannelListener> listenersToAll = new ArrayList<>();
+    Multimap<String, MCMListener> sessionListeners = ArrayListMultimap.create();
+    Multimap<String, MCPListener> mcpListeners = ArrayListMultimap.create();
+    List<MCMListener> mcmListenersToAll = new ArrayList<>();
+    List<MCPListener> mcpListenersToAll = new ArrayList<>();
     Logger logger = LoggerFactory.getLogger(getClass());
     Logger messagingLogger = LoggerFactory.getLogger("Messaging");
     Map<String, MessageList> messageHistory = new HashMap<>();
@@ -30,11 +32,19 @@ public class MessageChannelManager {
         return MessageChannels.get(id);
     }
 
-    public void listenToSession(String sessionId, MessageChannelListener mcl) {
+    public void listenToSession(String sessionId, MCMListener mcmL) {
         if (sessionId.equals("*")) {
-            listenersToAll.add(mcl);
+            mcmListenersToAll.add(mcmL);
         } else {
-            sessionListeners.put(sessionId, mcl);
+            sessionListeners.put(sessionId, mcmL);
+        }
+    }
+
+    public void listenToSession(String sessionId, MCPListener mcpL) {
+        if (sessionId.equals("*")) {
+            mcpListenersToAll.add(mcpL);
+        } else {
+            mcpListeners.put(sessionId, mcpL);
         }
     }
 
@@ -85,12 +95,21 @@ public class MessageChannelManager {
             messageList.add(mcm);
             messageList.clean(MESSAGE_LIST_MAX_SIZE);
 
-            for (MessageChannelListener mcl : sessionListeners.get(mcm.sessionId)) {
+            for (MCMListener mcl : sessionListeners.get(mcm.sessionId)) {
                 mcl.onMessage(mcm);
             }
-            for (MessageChannelListener mcl : listenersToAll) {
+            for (MCMListener mcl : mcmListenersToAll) {
                 mcl.onMessage(mcm);
             }
+        }
+    }
+
+    public void onMessage(MessageChannel mc, MCPost mcp) {
+        for (MCPListener mcpListener : mcpListeners.get(mcp.sessionId)) {
+            mcpListener.onMessage(mcp);
+        }
+        for (MCPListener mcpListener : mcpListenersToAll) {
+            mcpListener.onMessage(mcp);
         }
     }
 

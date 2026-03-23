@@ -30,7 +30,9 @@ public class UniverseChannel {
     private static int wsPort;
     private static int httpPort;
     private static final Multimap<String, UniverseListener> internalListeners = ArrayListMultimap.create();
+    private static final Multimap<String, UniverseListener> wildcardInternalListeners = ArrayListMultimap.create();
     private static final Multimap<String, String> externalListeners = ArrayListMultimap.create();
+    private static final Multimap<String, String> wildcardExternalListeners = ArrayListMultimap.create();
     private static final Multimap<String, WebSocket> clientGroup = ArrayListMultimap.create();
     private static String token = null;
     private static final Logger logger = LoggerFactory.getLogger(UniverseChannel.class);
@@ -55,7 +57,13 @@ public class UniverseChannel {
                 case "RegisterListener":
                     List<String> tag = (ArrayList<String>) args.get("Tag");
                     if (tag == null) return;
-                    for (var t : tag) externalListeners.put(t, planet.getID());
+                    for (var t : tag) {
+                        if (isWildcardTag(t)) {
+                            wildcardExternalListeners.put(t, planet.getID());
+                        } else {
+                            externalListeners.put(t, planet.getID());
+                        }
+                    }
                     logger.info("{} 注册了远程消息监听 {}", planet.getID(), tag);
             }
         });
@@ -83,7 +91,9 @@ public class UniverseChannel {
 
             @Override
             public void onClose(WebSocket conn, int code, String reason, boolean remote) {
-                externalListeners.entries().removeIf(entry -> entry.getValue().equals(((HashMap)conn.getAttachment()).get("ID").toString()));
+                String id = ((HashMap) conn.getAttachment()).get("ID").toString();
+                externalListeners.entries().removeIf(entry -> entry.getValue().equals(id));
+                wildcardExternalListeners.entries().removeIf(entry -> entry.getValue().equals(id));
                 logger.info("{} 断开了连接 {}: {}", conn.getRemoteSocketAddress(), code, reason);
             }
 
@@ -99,6 +109,11 @@ public class UniverseChannel {
                     if (ucm.tag != null && ucm.args != null) {
                         for (UniverseListener listener : internalListeners.get(ucm.tag)) {
                             listener.onMessage(sender, ucm.message, ucm.args, rawContent);
+                        }
+                        for (var entry : wildcardInternalListeners.entries()) {
+                            if (matchesTag(entry.getKey(), ucm.tag)) {
+                                entry.getValue().onMessage(sender, ucm.message, ucm.args, rawContent);
+                            }
                         }
                     } else {
                         logger.warn("{} 发送的消息不规范，不会被处理", sender.ID);
@@ -199,17 +214,34 @@ public class UniverseChannel {
     }
 
     public static void registerListener(String tag, UniverseListener universeListener) {
-        internalListeners.put(tag, universeListener);
+        if (isWildcardTag(tag)) {
+            wildcardInternalListeners.put(tag, universeListener);
+        } else {
+            internalListeners.put(tag, universeListener);
+        }
     }
 
     public static void unRegisterListener(String tag, UniverseListener universeListener) {
-        internalListeners.remove(tag, universeListener);
+        if (isWildcardTag(tag)) {
+            wildcardInternalListeners.remove(tag, universeListener);
+        } else {
+            internalListeners.remove(tag, universeListener);
+        }
     }
 
     public static void broadcast(String tag, UniverseChannelMessage ucm) {
         String json = new Gson().toJson(ucm);
-        for (String id : externalListeners.get(tag)) {
-            clientList.get(id).send(json);
+        Set<String> targets = new HashSet<>(externalListeners.get(tag));
+        for (var entry : wildcardExternalListeners.entries()) {
+            if (matchesTag(entry.getKey(), tag)) {
+                targets.add(entry.getValue());
+            }
+        }
+        for (String id : targets) {
+            WebSocket ws = clientList.get(id);
+            if (ws != null) {
+                ws.send(json);
+            }
         }
     }
 
@@ -277,6 +309,31 @@ public class UniverseChannel {
 
     public static void setOutboundHttpAddress(String addr) {
         UniverseChannel.outboundHttpAddress = addr;
+    }
+
+    private static boolean isWildcardTag(String tag) {
+        return tag != null && tag.indexOf('*') >= 0;
+    }
+
+    private static boolean matchesTag(String pattern, String tag) {
+        if (pattern == null || tag == null) return false;
+        if (!isWildcardTag(pattern)) return pattern.equals(tag);
+        if (pattern.equals("*")) return true;
+        String[] parts = pattern.split("\\*", -1);
+        int index = 0;
+        boolean first = true;
+        for (String part : parts) {
+            if (part.isEmpty()) {
+                first = false;
+                continue;
+            }
+            int found = tag.indexOf(part, index);
+            if (found < 0) return false;
+            if (first && !pattern.startsWith("*") && found != 0) return false;
+            index = found + part.length();
+            first = false;
+        }
+        return pattern.endsWith("*") || index == tag.length();
     }
 
     public static class CachedFile extends File {
