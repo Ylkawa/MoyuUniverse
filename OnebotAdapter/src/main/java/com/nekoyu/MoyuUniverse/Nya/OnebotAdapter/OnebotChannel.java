@@ -2,8 +2,6 @@ package com.nekoyu.MoyuUniverse.Nya.OnebotAdapter;
 
 import com.google.gson.*;
 import com.google.gson.typeadapters.RuntimeTypeAdapterFactory;
-import com.google.gson.annotations.SerializedName;
-import com.google.gson.stream.JsonReader;
 import com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.event.JsonMessages.JsonMessage;
 import com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.event.JsonMessages.com_tencent_miniapp_01;
 import com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.event.JsonMessages.com_tencent_miniapp_lua;
@@ -23,28 +21,22 @@ import com.nekoyu.Universe.Utils.ImageUtils;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
-import org.jsoup.Jsoup;
-import org.jsoup.nodes.Document;
-import org.jsoup.nodes.Element;
-import org.jsoup.nodes.TextNode;
-import org.jsoup.select.Elements;
-import org.openqa.selenium.By;
 import org.java_websocket.client.WebSocketClient;
 import org.java_websocket.handshake.ServerHandshake;
+import org.jsoup.nodes.Document;
+import org.jsoup.nodes.Element;
+import org.openqa.selenium.By;
 import org.openqa.selenium.Cookie;
 import org.openqa.selenium.JavascriptExecutor;
+import org.openqa.selenium.WebElement;
 import org.openqa.selenium.chrome.ChromeDriver;
 import org.openqa.selenium.devtools.DevTools;
-import org.openqa.selenium.devtools.v144.network.Network;
-import org.openqa.selenium.devtools.v144.network.model.RequestId;
-import org.openqa.selenium.WebElement;
 import org.openqa.selenium.support.ui.ExpectedConditions;
 import org.openqa.selenium.support.ui.WebDriverWait;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
-import java.io.StringReader;
 import java.net.MalformedURLException;
 import java.net.URI;
 import java.net.URL;
@@ -53,8 +45,6 @@ import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 public class OnebotChannel extends MessageChannel {
     static final Gson gson;
@@ -88,10 +78,6 @@ public class OnebotChannel extends MessageChannel {
                 Thread.sleep(10000);
             } catch (InterruptedException e) {
                 throw new RuntimeException(e);
-            }
-            QZone qZone = new QZone();
-            for (QZone.Feed feed : qZone.getLatestFeeds()) {
-                logger.debug(gson.toJson(feed));
             }
         }).start();
     }
@@ -588,14 +574,13 @@ public class OnebotChannel extends MessageChannel {
         }
     }
 
-    // 使用Selenium访问和简单操作QZone
-    public class QZone {
+    /*
+     使用Selenium访问和简单操作QZone
+     由于Selenium和浏览器进程占用资源过多，请及时释放实例
+     建议搭配try with resources使用
+     */
+    public class QZone implements AutoCloseable {
         ChromeDriver driver;
-        DevTools devTools;
-        ConcurrentHashMap<String, String> requestUrlMap = new ConcurrentHashMap<>();
-        AtomicBoolean receiving = new AtomicBoolean(false);
-        volatile CountDownLatch feedLatch;
-        volatile List<Feed> feedBuffer;
         // 此处通过请求Onebot API get_cookies 获取cookies初始化会话
         public QZone() {
             driver = new ChromeDriver();
@@ -617,497 +602,63 @@ public class OnebotChannel extends MessageChannel {
                             .domain(".qzone.qq.com").build();
                     driver.manage().addCookie(cookie);
                 }
-                driver.get("https://qzone.qq.com/"); // 然后重新打开
-                devTools = driver.getDevTools();
-                devTools.createSession();
-                devTools.send(Network.enable(
-                        Optional.empty(),
-                        Optional.empty(),
-                        Optional.empty(),
-                        Optional.empty(),
-                        Optional.empty()
-                ));
-                devTools.addListener(Network.requestWillBeSent(), request -> {
-                    String requestId = request.getRequestId().toString();
-                    String url = request.getRequest().getUrl();
-                    requestUrlMap.put(requestId, url);
-                });
-                devTools.addListener(Network.loadingFinished(), finished -> {
-                    if (!receiving.get()) return;
-                    try {
-                        RequestId requestId = finished.getRequestId();
-                        String url = requestUrlMap.remove(requestId.toString());
-                        if (url == null) return;
-                        if (!url.startsWith("https://user.qzone.qq.com/proxy/domain/ic2.qzone.qq.com/cgi-bin/feeds/feeds3_html_more?")) {
-                            return;
-                        }
-                        String body = devTools.send(Network.getResponseBody(requestId)).getBody();
-                        String cleaned = MessyDataCleaner.cleanToGsonJson(body);
-                        FeedResponse fr = gson.fromJson(cleaned, FeedResponse.class);
-                        if (fr == null || fr.data == null || fr.data.data == null) return;
-                        for (FeedResponse.Data.Feed f : fr.data.data) {
-                            if (f == null || f.html == null) continue;
-                            FeedParser.QZoneFeed parsed = FeedParser.parseFeed(f.html);
-                            if (parsed == null) continue;
-                            Feed feed = new Feed();
-                            feed.key = f.key;
-                            feed.content = parsed.getContent();
-                            feed.publishTimestamp = parsed.getPublishTimestamp();
-                            feed.device = parsed.getDevice();
-                            feed.retweetCount = parsed.getRetweetCount();
-                            feed.imageUrls = parsed.getImageUrls() == null ? new ArrayList<>() : new ArrayList<>(parsed.getImageUrls());
-                            feed.likeCount = parsed.getLikers() == null ? 0 : parsed.getLikers().size();
-                            feed.commentCount = parsed.getComments() == null ? 0 : parsed.getComments().size();
-                            if (parsed.getPublisherQQ() != null && !parsed.getPublisherQQ().isEmpty()) {
-                                QQAccount account = new QQAccount();
-                                account.setId(parsed.getPublisherQQ());
-                                account.setName(parsed.getPublisherNick());
-                                account.setPlatform("QQ");
-                                try {
-                                    account.setAvatar(new ImageField(new URL("https://q.qlogo.cn/headimg_dl?dst_uin=" + account.getId() + "&spec=640&img_type=jpg")));
-                                } catch (MalformedURLException e) {
-                                    logger.error(e.getMessage(), e);
-                                }
-                                feed.account = account;
-                            }
-                            if (feedBuffer != null) feedBuffer.add(feed);
-                        }
-                        if (feedLatch != null) feedLatch.countDown();
-                    } catch (Exception e) {
-                        logger.debug("Failed to parse QZone feeds response", e);
-                    }
-                });
+                driver.get("https://qzone.qq.com/"); // 然后刷新
                 // 至此这个模块初始化完毕可以用了
             } catch (NullPointerException e) {
                 throw new RuntimeException("Failed to initialize QZone instance", e);
             }
         }
 
-        // 自动用浏览器翻好友动态页，截取数据包并解析出Feeds
-        public List<Feed> getLatestFeeds() {
-            feedBuffer = new CopyOnWriteArrayList<>();
-            feedLatch = new CountDownLatch(1);
-            receiving.set(false);
-            try {
-                WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(60));
-                WebElement element = wait.until(
-                        ExpectedConditions.elementToBeClickable(By.id("tab_menu_friend"))
-                );
-                element.click();
-                receiving.set(true);
-                feedLatch.await(20, TimeUnit.SECONDS);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            } catch (Exception e) {
-                logger.warn("Failed to fetch latest QZone feeds", e);
-            } finally {
-                receiving.set(false);
-            }
-            return new ArrayList<>(feedBuffer);
-        }
-
-        public static class Feed {
-            String key;
-            transient QQAccount account;
-            String content;
-            long publishTimestamp;
-            String device;
-            int retweetCount;
-            int likeCount;
-            int commentCount;
-            List<String> imageUrls;
-        }
-    }
-
-    private static class FeedResponse {
-        int code;
-        int subcode;
-        String message;
-        @SerializedName("default")
-        int default_;
-        Data data;
-
-        public FeedResponse() {
-            this.data = new Data();
-        }
-
-        public static class Data {
-            Main main;
-            LinkedList<Feed> data;
-
-            public Data() {
-                this.main = new Main();
-                this.data = new LinkedList<>();
-            }
-
-            public static class Main {
-                String attach;
-                String searchtype;
-                boolean hasMoreFeeds;
-                String daylist;
-                String uinlist;
-                String error;
-                String hotkey;
-                LinkedList<Object> icGroupData;
-                String host_level;
-                String friend_level;
-                String lastaccesstime;
-                String lastAccessRelateTime;
-                String begintime;
-                String endtime;
-                String dayspac;
-                LinkedList<Object> hidedNameList;
-                String aisortBeginTime;
-                String aisortEndTime;
-                String aisortOffset;
-                String aisortNextTime;
-                String owner_bitmap;
-                String pagenum;
-                String externparam;
-
-                public Main() {
-                    this.icGroupData = new LinkedList<>();
-                    this.hidedNameList = new LinkedList<>();
-                }
-            }
-
-            public static class Feed {
-                String ver;
-                String appid;
-                String typeid;
-                String key;
-                String flag;
-                String dataonly;
-                String titleTemp;
-                String summaryTemp;
-                String feedno;
-                String title;
-                String summary;
-                String appiconid;
-                String clscFold;
-                String abstime;
-                String feedstime;
-                String userHome;
-                String namecardLink;
-                String opuin;
-                String uin;
-                String ouin;
-                String foldFeed;
-                String foldFeedTitle;
-                String showEbtn;
-                String scope;
-                String hideExtend;
-                String nickname;
-                LinkedList<Object> emoji;
-                String remark;
-                String type;
-                String vip;
-                String bitmap;
-                String yybitmap;
-                String info_user_name;
-                String logimg;
-                String bor;
-                String lastFeedBor;
-                String list_bor2;
-                String info_user_display;
-                String upernum;
-                String oprType;
-                String moreflag;
-                String otherflag;
-                String rightflag;
-                SameUser sameuser;
-                LinkedList<Object> uper_isfriend;
-                LinkedList<Object> uperlist;
-                String smallstar;
-                String html;
-                LinkedList<Object> mergeData;
-                String likecnt;
-                String relycnt;
-                String commentcnt;
-
-                public Feed() {
-                    this.emoji = new LinkedList<>();
-                    this.uper_isfriend = new LinkedList<>();
-                    this.uperlist = new LinkedList<>();
-                    this.mergeData = new LinkedList<>();
-                    this.sameuser = new SameUser();
-                }
-            }
-
-            public static class SameUser {
-                // empty
-            }
-        }
-    }
-
-    private static class MessyDataCleaner {
-        private static String getJsonFromJsonP(String jsonp) {
-            if (jsonp == null) return null;
-            String s = jsonp.trim();
-            int l = s.indexOf('(');
-            int r = s.lastIndexOf(')');
-            if (l < 0 || r < 0 || r <= l) return s;
-            return s.substring(l + 1, r).trim();
-        }
-
-        private static final Pattern HEX_ESCAPE = Pattern.compile("\\\\x([0-9A-Fa-f]{2})");
-
-        public static String cleanToGsonJson(String raw) {
-            raw = getJsonFromJsonP(raw);
-            if (raw == null || raw.trim().isEmpty()) {
-                return "{}";
-            }
-
-            String s = raw.replace("\uFEFF", "");
-
-            s = hexToUnicodeEscapes(s);
-
-            s = s.replaceAll("\\bundefined\\b", "null")
-                    .replaceAll("\\bNaN\\b", "null")
-                    .replaceAll("\\bInfinity\\b", "null")
-                    .replaceAll("\\b-Infinity\\b", "null")
-                    .replaceAll("\\bTrue\\b", "true")
-                    .replaceAll("\\bFalse\\b", "false")
-                    .replaceAll("\\bNone\\b", "null");
-
-            s = s.replaceAll(",(?=\\s*[}\\]])", "");
-
-            try {
-                JsonReader reader = new JsonReader(new StringReader(s));
-                reader.setLenient(true);
-                JsonElement element = JsonParser.parseReader(reader);
-                Gson gson = new GsonBuilder()
-                        .disableHtmlEscaping()
-                        .create();
-                return gson.toJson(element);
-            } catch (JsonSyntaxException e) {
-                throw new IllegalArgumentException("Cleaned data still not valid for Gson: " + e.getMessage(), e);
-            }
-        }
-
-        private static String hexToUnicodeEscapes(String input) {
-            Matcher m = HEX_ESCAPE.matcher(input);
-            StringBuilder sb = new StringBuilder(input.length());
-            while (m.find()) {
-                m.appendReplacement(sb, "\\\\u00" + m.group(1).toUpperCase());
-            }
-            m.appendTail(sb);
-            return sb.toString();
-        }
-    }
-
-    private static class FeedParser {
-
-        public static QZoneFeed parseFeed(String html) {
-            Document doc = Jsoup.parseBodyFragment(html);
-            Element feedItem = doc.selectFirst("li.f-single");
-            if (feedItem == null) return null;
-
-            if (isAdvertisement(feedItem)) return null;
-
-            QZoneFeed feed = new QZoneFeed();
-
-            Element userLink = feedItem.selectFirst(".user-pto a");
-            if (userLink != null) {
-                String qq = extractQQFromUrl(userLink.attr("href"));
-                feed.setPublisherQQ(qq);
-            }
-            Element nickElem = feedItem.selectFirst(".f-nick .f-name");
-            if (nickElem != null) {
-                feed.setPublisherNick(nickElem.text());
-            }
-
-            Element dataElem = feedItem.selectFirst("[data-abstime]");
-            if (dataElem != null) {
-                String abstime = dataElem.attr("data-abstime");
-                if (!abstime.isEmpty()) feed.setPublishTimestamp(Long.parseLong(abstime));
-            }
-
-            StringBuilder contentBuilder = new StringBuilder();
-
-            Element feedData = feedItem.selectFirst("i[name=feed_data]");
-            String origUin = feedData != null ? feedData.attr("data-origuin") : "";
-            boolean isRepost = origUin != null && !origUin.isEmpty() && !origUin.equals(feed.getPublisherQQ());
-
-            Element infoDiv = feedItem.selectFirst(".f-info");
-            if (infoDiv != null) {
-                infoDiv.select("a[data-cmd=qz_toggle]").remove();
-                String infoText = infoDiv.text().trim();
-                if (!infoText.isEmpty()) contentBuilder.append(infoText);
-            }
-
-            if (isRepost) {
-                Element txtBox = feedItem.selectFirst(".f-ct-txtimg .txt-box");
-                if (txtBox != null) {
-                    String txtBoxText = txtBox.text().trim();
-                    if (!txtBoxText.isEmpty()) {
-                        if (contentBuilder.length() > 0) contentBuilder.append("\n");
-                        contentBuilder.append(txtBoxText);
+        public List<MCPost> getLatestPosts() {
+            driver.get("https://qzone.qq.com/");
+            WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(30));
+            WebElement element = wait.until(
+                    ExpectedConditions.elementToBeClickable(By.id("tab_menu_friend"))
+            );
+            element.click(); // 点进好友动态的页面
+            wait.until(ExpectedConditions.invisibilityOfElementLocated(
+                    By.className("feed-fn-loading")
+            )); // 等待加载
+            // 好了加载完了
+            List<WebElement> list = driver.findElements(
+                    By.cssSelector("#feed_friend_list li.f-single.f-s-s")
+            ); // 所有的好友动态容器
+            List<MCPost> posts = new ArrayList<>();
+            for (WebElement item : list) {
+                MCPost post = new MCPost();
+                @SuppressWarnings("DataFlowIssue") // 前面列表列出来的怎么可能是null
+                Document doc = org.jsoup.Jsoup.parse(item.getAttribute("outerHTML"));
+                String id = doc.getElementsByClass("f-name q_namecard ").get(0).attr("link").split("_")[1]; // QQ号
+                QQAccount poster;
+                try {
+                    poster = (QQAccount) getSession("user:/" + id);
+                } catch (Exception e) { // 一般直接用统一的获取用户信息的方法，但是如果出问题就fallback到直接填充
+                    poster = new QQAccount();
+                    poster.setId(id);
+                    poster.setPlatform("QQ");
+                    poster.setName(doc.getElementsByClass("f-name q_namecard ").get(0).text());
+                    try {
+                        poster.setAvatar(new ImageField(new URL(doc.selectFirst("div.user-pto img").attr("src"))));
+                    } catch (MalformedURLException ex) {
+                        throw new RuntimeException(ex);
                     }
                 }
+                post.poster = poster;
+                MCMessage mcm = new MCMessage();
+                Element div = doc.selectFirst(".f-info");
+                div.select("br").append("\\n");
+                String text = div.text().replace("\\n", "\n");
+                mcm.messageFields.add(new TextField(text)); // 正文
+                // ...附图
+                // 这个post转换完了，添加到列表去
+                posts.add(post);
             }
-
-            if (!isRepost && contentBuilder.length() == 0) {
-                Element txtBox = feedItem.selectFirst(".f-ct-txtimg .txt-box");
-                if (txtBox != null) contentBuilder.append(txtBox.text().trim());
-            }
-
-            feed.setContent(contentBuilder.toString().trim());
-
-            Element deviceSpan = feedItem.selectFirst(".f-reprint span.phone-style");
-            if (deviceSpan != null) feed.setDevice(deviceSpan.text());
-
-            if (dataElem != null) {
-                String retweet = dataElem.attr("data-retweetcount");
-                if (!retweet.isEmpty()) feed.setRetweetCount(Integer.parseInt(retweet));
-            }
-
-            Elements likeItems = feedItem.select(".f-like-list .user-list a");
-            List<QZoneFeed.Liker> likers = new ArrayList<>();
-            for (Element a : likeItems) {
-                String qq = extractQQFromUrl(a.attr("href"));
-                String nick = a.text();
-                likers.add(new QZoneFeed.Liker(qq, nick));
-            }
-            feed.setLikers(likers);
-
-            Elements commentRoots = feedItem.select(".mod-comments .comments-list > ul > li.comments-item[data-type=commentroot]");
-            List<QZoneFeed.Comment> comments = new ArrayList<>();
-            for (Element rootLi : commentRoots) comments.add(parseComment(rootLi));
-            feed.setComments(comments);
-
-            Elements imgItems = feedItem.select(".img-box a.img-item[data-pickey]");
-            List<String> imageUrls = new ArrayList<>();
-            for (Element a : imgItems) {
-                String pickey = a.attr("data-pickey");
-                if (pickey != null && pickey.contains(",")) {
-                    String[] parts = pickey.split(",", 2);
-                    if (parts.length > 1) {
-                        String url = parts[1].trim().replace("&amp;", "&");
-                        imageUrls.add(url);
-                    }
-                } else {
-                    Element img = a.selectFirst("img");
-                    if (img != null) {
-                        String src = img.attr("src");
-                        if (src != null && !src.isEmpty()) imageUrls.add(src);
-                    }
-                }
-            }
-            feed.setImageUrls(imageUrls);
-
-            return feed;
+            return null;
         }
 
-        private static boolean isAdvertisement(Element feedItem) {
-            if (feedItem.hasClass("f-single-biz")) return true;
-            if (feedItem.selectFirst("[data-advfeed-click-url]") != null) return true;
-            Element dataElem = feedItem.selectFirst("i[name=feed_data][data-fkey]");
-            if (dataElem != null) {
-                String fkey = dataElem.attr("data-fkey");
-                if (fkey != null && fkey.startsWith("advertisement")) return true;
-            }
-            return feedItem.selectFirst(".f-single-top span:contains(广告)") != null;
-        }
-
-        private static QZoneFeed.Comment parseComment(Element li) {
-            QZoneFeed.Comment comment = new QZoneFeed.Comment();
-            comment.setPublisherQQ(li.attr("data-uin"));
-
-            Element nickLink = li.selectFirst(".comments-content .nickname");
-            if (nickLink != null) comment.setPublisherNick(nickLink.text());
-
-            Element contentDiv = li.selectFirst(".comments-content");
-            if (contentDiv != null) {
-                StringBuilder sb = new StringBuilder();
-                for (org.jsoup.nodes.Node node : contentDiv.childNodes()) {
-                    if (node instanceof Element) {
-                        Element e = (Element) node;
-                        if (e.hasClass("comments-op")) {
-                            break;
-                        }
-                    }
-                    if (node instanceof TextNode) {
-                        sb.append(((TextNode) node).text());
-                    } else if (node instanceof Element) {
-                        Element e = (Element) node;
-                        if (!e.hasClass("nickname") && !e.hasClass("name")) {
-                            sb.append(e.text());
-                        }
-                    }
-                }
-                comment.setContent(sb.toString().trim());
-            }
-
-            Element timeSpan = li.selectFirst(".comments-op .state");
-            if (timeSpan != null) comment.setTimeStr(timeSpan.text());
-
-            Element subList = li.selectFirst(".mod-comments-sub > ul");
-            if (subList != null) {
-                List<QZoneFeed.Comment> replies = new ArrayList<>();
-                for (Element replyLi : subList.select("> li.comments-item"))
-                    replies.add(parseComment(replyLi));
-                comment.setReplies(replies);
-            }
-            return comment;
-        }
-
-        private static String extractQQFromUrl(String url) {
-            if (url == null || url.isEmpty()) return "";
-            for (String part : url.split("/"))
-                if (part.matches("\\d+")) return part;
-            return "";
-        }
-
-        public static class QZoneFeed {
-            private String publisherNick, publisherQQ, content, device;
-            private long publishTimestamp;
-            private int retweetCount;
-            private List<Liker> likers;
-            private List<Comment> comments;
-            private List<String> imageUrls;
-
-            public String getPublisherNick() { return publisherNick; }
-            public void setPublisherNick(String publisherNick) { this.publisherNick = publisherNick; }
-            public String getPublisherQQ() { return publisherQQ; }
-            public void setPublisherQQ(String publisherQQ) { this.publisherQQ = publisherQQ; }
-            public long getPublishTimestamp() { return publishTimestamp; }
-            public void setPublishTimestamp(long publishTimestamp) { this.publishTimestamp = publishTimestamp; }
-            public String getContent() { return content; }
-            public void setContent(String content) { this.content = content; }
-            public String getDevice() { return device; }
-            public void setDevice(String device) { this.device = device; }
-            public int getRetweetCount() { return retweetCount; }
-            public void setRetweetCount(int retweetCount) { this.retweetCount = retweetCount; }
-            public List<Liker> getLikers() { return likers; }
-            public void setLikers(List<Liker> likers) { this.likers = likers; }
-            public List<Comment> getComments() { return comments; }
-            public void setComments(List<Comment> comments) { this.comments = comments; }
-            public List<String> getImageUrls() { return imageUrls; }
-            public void setImageUrls(List<String> imageUrls) { this.imageUrls = imageUrls; }
-
-            public static class Liker {
-                private final String qq;
-                private final String nick;
-                public Liker(String qq, String nick) { this.qq = qq; this.nick = nick; }
-                public String getQq() { return qq; }
-                public String getNick() { return nick; }
-            }
-
-            public static class Comment {
-                private String publisherQQ, publisherNick, content, timeStr;
-                private List<Comment> replies;
-                public String getPublisherQQ() { return publisherQQ; }
-                public void setPublisherQQ(String publisherQQ) { this.publisherQQ = publisherQQ; }
-                public String getPublisherNick() { return publisherNick; }
-                public void setPublisherNick(String publisherNick) { this.publisherNick = publisherNick; }
-                public String getContent() { return content; }
-                public void setContent(String content) { this.content = content; }
-                public String getTimeStr() { return timeStr; }
-                public void setTimeStr(String timeStr) { this.timeStr = timeStr; }
-                public List<Comment> getReplies() { return replies; }
-                public void setReplies(List<Comment> replies) { this.replies = replies; }
-            }
+        @Override
+        public void close() throws Exception {
+            driver.close();
         }
     }
 }
