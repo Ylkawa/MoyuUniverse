@@ -16,7 +16,7 @@ public class MCMessage {
     public String sessionId; // 这个sessionId应该是Global SessionId
     public long time;
     public long id;
-    public LinkedList<MsgField> messageFields;
+    public MessageChain messageFields;
     public int level;
     public Map<String, Object> metainfo = new HashMap<>();
     public boolean isRecalled = false;
@@ -28,7 +28,7 @@ public class MCMessage {
     public MCMessage() {
         sender = new Account();
         receiver = new Account();
-        messageFields = new LinkedList<>();
+        messageFields = new MessageChain();
         level = 0;
     }
 
@@ -72,7 +72,7 @@ public class MCMessage {
             }
         }
         for (MsgField msgField : messageFields) {
-            sb.append(msgField.getAsString());
+            sb.append(msgField.toString());
         }
         return sb.toString();
     }

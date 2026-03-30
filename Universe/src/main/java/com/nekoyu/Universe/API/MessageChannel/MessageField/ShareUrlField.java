@@ -14,7 +14,7 @@ public class ShareUrlField extends MsgField {
     }
 
     @Override
-    public String getAsString() {
+    public String toString() {
         return "[分享链接, "+title+": "+uri+"]";
     }
 }

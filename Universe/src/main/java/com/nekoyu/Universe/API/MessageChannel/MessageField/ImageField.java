@@ -55,11 +55,6 @@ public class ImageField extends FileField {
         isSolved = true;
     }
 
-    public String getAsString() {
-        if (isSolved) return description;
-        else return "[图片]";
-    }
-
     public Metadata getMetadata() {
         OkHttpClient client = new OkHttpClient.Builder()
                 .connectTimeout(10, TimeUnit.SECONDS)
@@ -161,5 +156,10 @@ public class ImageField extends FileField {
             }
         }
         return descriptionBuilder.toString();
+    }
+
+    @Override
+    public String toString() {
+        return "[图片]";
     }
 }

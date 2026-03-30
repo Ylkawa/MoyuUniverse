@@ -12,4 +12,9 @@ public class TextField extends MsgField{
     public String getAsString() {
         return text;
     }
+
+    @Override
+    public String toString() {
+        return text;
+    }
 }

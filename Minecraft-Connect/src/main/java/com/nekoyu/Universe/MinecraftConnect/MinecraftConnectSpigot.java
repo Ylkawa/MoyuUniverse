@@ -145,7 +145,7 @@ public class MinecraftConnectSpigot extends JavaPlugin {
                         bc.append(name).append(": ");
                         for (MsgField f : fc.MCMsg.messageFields) {
                             if (f instanceof AtField af) {
-                                TextComponent tc = new TextComponent(f.getAsString());
+                                TextComponent tc = new TextComponent(f.toString());
                                 tc.setColor(net.md_5.bungee.api.ChatColor.YELLOW);
                                 tc.setHoverEvent(
                                         new HoverEvent(
@@ -190,12 +190,12 @@ public class MinecraftConnectSpigot extends JavaPlugin {
                                     tc.setHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, new Text(hover)));
                                     bc.append(tc);
                                 } catch (Exception e) {
-                                    TextComponent tc = new TextComponent(f.getAsString());
+                                    TextComponent tc = new TextComponent(f.toString());
                                     tc.setHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, new Text("[图片]")));
                                     bc.append(tc);
                                 }
                             } else {
-                                TextComponent tc = new TextComponent(f.getAsString());
+                                TextComponent tc = new TextComponent(f.toString());
                                 tc.setColor(net.md_5.bungee.api.ChatColor.WHITE);
                                 tc.setHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, new Text("")));
                                 bc.append(tc);

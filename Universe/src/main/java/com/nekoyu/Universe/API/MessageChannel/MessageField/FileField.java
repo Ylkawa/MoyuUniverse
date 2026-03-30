@@ -43,11 +43,6 @@ public class FileField extends MsgField {
         this.cleanable = cleaner.register(this, state);
     }
 
-    @Override
-    public String getAsString() {
-        return "[文件]";
-    }
-
     public URL getUrl() {
         return state.url;
     }
@@ -62,5 +57,10 @@ public class FileField extends MsgField {
         URL newUrl = UniverseChannel.repostFile(state.url);
         state.url = newUrl;
         state.update(newUrl, true);
+    }
+
+    @Override
+    public String toString() {
+        return "[文件]";
     }
 }

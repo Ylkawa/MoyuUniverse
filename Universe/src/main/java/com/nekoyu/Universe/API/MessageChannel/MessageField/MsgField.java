@@ -10,5 +10,4 @@ public abstract class MsgField {
      * 为大语言模型应用设计的功能
      * @return 本段内容描述
      */
-    public abstract String getAsString();
 }

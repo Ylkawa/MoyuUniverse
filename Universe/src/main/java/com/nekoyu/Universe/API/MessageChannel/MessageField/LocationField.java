@@ -11,7 +11,7 @@ public class LocationField extends MsgField {
     }
 
     @Override
-    public String getAsString() {
+    public String toString() {
         return "[位置分享: 经度: "+lon+", 纬度: "+lat+"]";
     }
 }

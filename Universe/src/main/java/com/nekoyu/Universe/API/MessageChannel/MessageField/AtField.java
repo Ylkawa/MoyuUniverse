@@ -10,7 +10,8 @@ public class AtField extends MsgField {
         this.target = target;
     }
 
-    public String getAsString() {
+    @Override
+    public String toString() {
         return "@"+target.getName();
     }
 }

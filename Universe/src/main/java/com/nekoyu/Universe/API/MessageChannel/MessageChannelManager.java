@@ -2,16 +2,15 @@ package com.nekoyu.Universe.API.MessageChannel;
 
 import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.Multimap;
+import com.nekoyu.Universe.API.MessageChannel.MessageField.MsgField;
 import com.nekoyu.Universe.API.MessageChannel.MessageField.TextField;
 import com.nekoyu.Universe.Utils.ColorUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.awt.*;
-import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.*;
 import java.util.List;
-import java.util.Map;
 
 public class MessageChannelManager {
     int MESSAGE_LIST_MAX_SIZE = 20;
@@ -135,12 +134,18 @@ public class MessageChannelManager {
         mc.setSessionName(split[1], name);
     }
 
+    public void sendMessage(String sessionId, String message) {
+        MessageChain msg = new MessageChain();
+        msg.add(new TextField(message));
+        sendMessage(sessionId, msg);
+    }
+
     /**
      * 发送消息
      * sessionId 必须为全局sessionId
      */
-    public void sendMessage(String sessionId, String message) {
-        if (message.isBlank()) {
+    public void sendMessage(String sessionId, MessageChain message) {
+        if (message.isEmpty()) {
             logger.warn("严肃谴责发空白消息的情况");
             return;
         }
@@ -162,10 +167,10 @@ public class MessageChannelManager {
                     fg,
                     session.name,
                     ColorUtils.RESET,
-                    message);
+                    message.toString());
             MCMessage mcm = new MCMessage();
-            mcm.id = mc.sendMessage(target[1], message.strip()); //将sessionId转换成局部形式传给MessageChannel处理，同时把聊天记录对象传过去
-            mcm.messageFields.add(new TextField(message));
+            mcm.id = mc.sendMessage(target[1], message); //将sessionId转换成局部形式传给MessageChannel处理，同时把聊天记录对象传过去
+            mcm.messageFields = message;
             mcm.time = System.currentTimeMillis() / 1000;
             mcm.sender.id = mc.accountId;
             mcm.sender.name = mc.nickname;

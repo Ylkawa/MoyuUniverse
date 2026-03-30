@@ -2,6 +2,9 @@ package com.nekoyu.MoyuUniverse.Nya.OnebotAdapter;
 
 import com.google.gson.*;
 import com.google.gson.typeadapters.RuntimeTypeAdapterFactory;
+import com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.MsgFields.Image;
+import com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.MsgFields.OBMsgField;
+import com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.MsgFields.Text;
 import com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.event.JsonMessages.JsonMessage;
 import com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.event.JsonMessages.com_tencent_miniapp_01;
 import com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.event.JsonMessages.com_tencent_miniapp_lua;
@@ -93,18 +96,24 @@ public class OnebotChannel extends MessageChannel {
         };
     }
 
-    private int sendGroupMessage(String id, String message) {
+    private int sendGroupMessage(String id, LinkedList<MsgField> message) {
         return sendMessage("group", id, message);
     }
 
-    private int sendPrivateMessage(String id, String message) {
+    private int sendPrivateMessage(String id, LinkedList<MsgField> message) {
         return sendMessage("user", id, message);
     }
 
-    private int sendMessage(String msgType, String id, String message) {
+    private int sendMessage(String msgType, String id, LinkedList<MsgField> message) {
         OBRequest obr = new OBRequest("send_msg");
         obr.params.put(msgType + "_id", id);
-        obr.params.put("message", message);
+        LinkedList<OBMsgField> obMsg = new LinkedList<>();
+        for (MsgField field : message) {
+            if (field instanceof ImageField imgF) {
+                obMsg.add(new Image(imgF.getUrl().toString()));
+            } else obMsg.add(new Text(field.toString()));
+        }
+        obr.params.put("message", obMsg);
 
         return request(obr).data.getAsJsonObject().get("message_id").getAsInt();
     }
@@ -434,7 +443,7 @@ public class OnebotChannel extends MessageChannel {
     }
 
     @Override
-    public int sendMessage(String sessionId, String message) {
+    public int sendMessage(String sessionId, MessageChain message) {
         String[] target = sessionId.split("/");
         return switch (target[0]) {
             case "group" -> sendGroupMessage(target[1], message);

@@ -22,7 +22,8 @@ public class VoiceField extends FileField {
         } catch (IOException ignored) {}
     }
 
-    public String getAsString() {
+    @Override
+    public String toString() {
         if (description != null) return description;
         return "[语音]";
     }

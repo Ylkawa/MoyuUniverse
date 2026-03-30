@@ -10,7 +10,8 @@ public class ShareContactField extends MsgField {
         this.sessionId = sessionId;
     }
 
-    public String getAsString() {
+    @Override
+    public String toString() {
         return "[分享会话: "+sessionId+"]";
     }
 }

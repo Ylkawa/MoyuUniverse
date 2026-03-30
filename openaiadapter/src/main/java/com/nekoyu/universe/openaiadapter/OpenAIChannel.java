@@ -103,7 +103,7 @@ public class OpenAIChannel extends LLMProvider {
                 for (MsgField mf : m.messageFields) {
                     if (mf instanceof ImageField imageField) {
                         message.content.add(new ImageUrlPiece(imageField.getUrl().toString()));
-                    } else message.content.add(new TextPiece(mf.getAsString()));
+                    } else message.content.add(new TextPiece(mf.toString()));
                 }
                 cr.messages.add(message);
             }

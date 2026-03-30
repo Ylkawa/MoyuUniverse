@@ -238,7 +238,7 @@ public class AIChat extends Law {
                                                             msg.messageFields.add(new TextField("{" + metadata + "}"));
                                                         // 如果 Metadata 存在就追加一条 Metadata 的提示词字段
                                                     }
-                                                } else msg.messageFields.add(new TextField(mf.getAsString()));
+                                                } else msg.messageFields.add(new TextField(mf.toString()));
                                             }
                                             openaiMl.add(msg);
                                         }

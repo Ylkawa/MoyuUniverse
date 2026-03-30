@@ -8,7 +8,8 @@ public class VideoField extends FileField {
         super.type = "video";
     }
 
-    public String getAsString() {
+    @Override
+    public String toString() {
         return "[视频]";
     }
 }

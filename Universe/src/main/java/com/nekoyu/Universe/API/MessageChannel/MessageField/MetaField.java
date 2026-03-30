@@ -9,7 +9,7 @@ public class MetaField extends MsgField {
     }
 
     @Override
-    public String getAsString() {
+    public String toString() {
         return "["+meta+"]";
     }
 }
