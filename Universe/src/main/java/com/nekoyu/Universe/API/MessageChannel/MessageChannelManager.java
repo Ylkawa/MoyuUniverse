@@ -150,7 +150,7 @@ public class MessageChannelManager {
             logger.warn("不存在此Channel {}", target[0]);
             throw new RuntimeException(target[0] + "is not exist");
         } else {
-            Session session = mc.getSessionInfo(target[1]);
+            Session session = mc.getSession(target[1]);
             String fg = "";
             if (session.avatar != null) {
                 fg = ColorUtils.fg(session.avatar.getMainColor());
@@ -193,6 +193,6 @@ public class MessageChannelManager {
 
     public Session getSessionInfo(String sessionId) {
         String[] split = sessionId.split(":", 2);
-        return getChannel(split[0]).getSessionInfo(split[1]);
+        return getChannel(split[0]).getSession(split[1]);
     }
 }

@@ -12,12 +12,12 @@ public abstract class MessageChannel {
     public String accountId;
     public String nickname;
 
-    abstract public MessageSession getSession(String sessionId);
+    abstract public MessageSession getChatSession(String sessionId);
     abstract public void load();
     abstract public void stop();
     abstract public int sendMessage(String sessionId, String message);
     abstract public void setSessionName(String sessionId, String name) throws UnsupportedAction;
-    abstract public Session getSessionInfo(String sessionId);
+    abstract public Session getSession(String sessionId);
 
     protected void broadcastMessage(String sessionId, MCMessage message) {
         message.sessionId = ID + ":" + sessionId;

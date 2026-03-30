@@ -30,7 +30,6 @@ import org.openqa.selenium.Cookie;
 import org.openqa.selenium.JavascriptExecutor;
 import org.openqa.selenium.WebElement;
 import org.openqa.selenium.chrome.ChromeDriver;
-import org.openqa.selenium.devtools.DevTools;
 import org.openqa.selenium.support.ui.ExpectedConditions;
 import org.openqa.selenium.support.ui.WebDriverWait;
 import org.slf4j.Logger;
@@ -43,11 +42,13 @@ import java.net.URL;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class OnebotChannel extends MessageChannel {
     static final Gson gson;
+
     static {
         gson = new GsonBuilder()
                 .registerTypeAdapterFactory(
@@ -83,10 +84,10 @@ public class OnebotChannel extends MessageChannel {
     }
 
     @Override
-    public MessageSession getSession(String sessionId) {
+    public MessageSession getChatSession(String sessionId) {
         String[] sessionParam = sessionId.split("/", 2);
         return switch (sessionParam[0]) {
-            case "private" -> message -> sendPrivateMessage(sessionParam[1], message);
+            case "private", "user" -> message -> sendPrivateMessage(sessionParam[1], message);
             case "group" -> message -> sendGroupMessage(sessionParam[1], message);
             default -> null;
         };
@@ -164,7 +165,7 @@ public class OnebotChannel extends MessageChannel {
                                     mcm.receiver.setId(String.valueOf(message.self_id));
                                     mcm.receiver.setName(nickname);
                                     mcm.receiver.setPlatform("QQ");
-                                    mcm.sender = (Account) getSessionInfo("user/" + message.sender.user_id);
+                                    mcm.sender = (Account) getSession("user/" + message.sender.user_id);
                                     mcm.id = message.message_id;
                                     StringBuilder sessionId = new StringBuilder();
                                     sessionId.append(message.message_type).append("/");
@@ -214,7 +215,7 @@ public class OnebotChannel extends MessageChannel {
                                                     session.setName("全体成员");
                                                     mcm.messageFields.add(new AtField(session));
                                                 } else {
-                                                    var account = getSessionInfo("user/" + ms.data.get("qq"));
+                                                    var account = getSession("user/" + ms.data.get("qq"));
                                                     mcm.messageFields.add(new AtField(account));
                                                 }
                                             }
@@ -311,15 +312,18 @@ public class OnebotChannel extends MessageChannel {
                                                                 .build();
                                                         try (Response resp = okHttpClient.newCall(req).execute()) {
                                                             String content_type = resp.header("Content-Type");
-                                                            if (resp.isSuccessful() && content_type != null && content_type.startsWith("image")) shareUrlField.image = new ImageField(new URL(card.meta.news.preview));
+                                                            if (resp.isSuccessful() && content_type != null && content_type.startsWith("image"))
+                                                                shareUrlField.image = new ImageField(new URL(card.meta.news.preview));
                                                         } catch (IOException ignored) {
 
                                                         }
                                                         mcm.messageFields.add(shareUrlField);
                                                     } else if (jm instanceof com_tencent_miniapp_lua card) {
                                                         URL url = null;
-                                                        if (card.meta.miniapp.jumpUrl.startsWith("http")) url = new URL(card.meta.miniapp.jumpUrl);
-                                                        else if (card.meta.miniapp.legacyUrl != null && card.meta.miniapp.legacyUrl.startsWith("http")) url = new URL(card.meta.miniapp.legacyUrl);
+                                                        if (card.meta.miniapp.jumpUrl.startsWith("http"))
+                                                            url = new URL(card.meta.miniapp.jumpUrl);
+                                                        else if (card.meta.miniapp.legacyUrl != null && card.meta.miniapp.legacyUrl.startsWith("http"))
+                                                            url = new URL(card.meta.miniapp.legacyUrl);
                                                         mcm.messageFields.add(new ShareUrlField("[" + card.meta.miniapp.tag + "]" + card.meta.miniapp.title, url));
                                                     }
                                                 } catch (Throwable e) {
@@ -341,7 +345,7 @@ public class OnebotChannel extends MessageChannel {
                                         case "group":
                                             Long groupId = message.group_id;
                                             sessionId.append(groupId);
-                                            mcm.session = getSessionInfo(sessionId.toString());
+                                            mcm.session = getSession(sessionId.toString());
                                             break;
                                         case "private":
                                             Long userId = message.user_id;
@@ -508,10 +512,10 @@ public class OnebotChannel extends MessageChannel {
     }
 
     @Override
-    public Session getSessionInfo(String sessionId) {
+    public Session getSession(String sessionId) {
         String[] acc = sessionId.split("/", 2);
         if (!acc[0].equals("private") && !acc[0].equals("user") && !acc[0].equals("group")) {
-            logger.error("getSessionInfo() cannot handle {}", sessionId);
+            logger.error("getSession() cannot handle {}", sessionId);
             throw new UnsupportedAction("Unsupported session type");
         }
         Session session = sessionInfos.get(acc[1]);
@@ -581,8 +585,16 @@ public class OnebotChannel extends MessageChannel {
      */
     public class QZone implements AutoCloseable {
         ChromeDriver driver;
+
         // 此处通过请求Onebot API get_cookies 获取cookies初始化会话
         public QZone() {
+            String driverPath = System.getProperty("webdriver.chrome.driver");
+            if (driverPath == null || driverPath.isBlank()) {
+                String envDriverPath = System.getenv("CHROMEDRIVER_PATH");
+                if (envDriverPath != null && !envDriverPath.isBlank()) {
+                    System.setProperty("webdriver.chrome.driver", envDriverPath);
+                }
+            }
             driver = new ChromeDriver();
             OBRequest obr = new OBRequest("get_cookies");
             obr.params.put("domain", "qzone.qq.com");
@@ -612,53 +624,136 @@ public class OnebotChannel extends MessageChannel {
         public List<MCPost> getLatestPosts() {
             driver.get("https://qzone.qq.com/");
             WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(30));
-            WebElement element = wait.until(
+            wait.until(
                     ExpectedConditions.elementToBeClickable(By.id("tab_menu_friend"))
-            );
-            element.click(); // 点进好友动态的页面
+            ).click(); // 点进好友动态的页面
             wait.until(ExpectedConditions.invisibilityOfElementLocated(
                     By.className("feed-fn-loading")
-            )); // 等待加载
+            )); // 等待页面加载
             // 好了加载完了
             List<WebElement> list = driver.findElements(
-                    By.cssSelector("#feed_friend_list li.f-single.f-s-s")
+                    By.cssSelector("#feed_friend_list li.f-single.f-s-s:not(.f-single-biz)")
             ); // 所有的好友动态容器
             List<MCPost> posts = new ArrayList<>();
             for (WebElement item : list) {
-                MCPost post = new MCPost();
-                @SuppressWarnings("DataFlowIssue") // 前面列表列出来的怎么可能是null
-                Document doc = org.jsoup.Jsoup.parse(item.getAttribute("outerHTML"));
-                String id = doc.getElementsByClass("f-name q_namecard ").get(0).attr("link").split("_")[1]; // QQ号
-                QQAccount poster;
                 try {
-                    poster = (QQAccount) getSession("user:/" + id);
-                } catch (Exception e) { // 一般直接用统一的获取用户信息的方法，但是如果出问题就fallback到直接填充
-                    poster = new QQAccount();
-                    poster.setId(id);
-                    poster.setPlatform("QQ");
-                    poster.setName(doc.getElementsByClass("f-name q_namecard ").get(0).text());
+                    MCPost post = new MCPost();
+                    @SuppressWarnings("DataFlowIssue") // 前面列表列出来的怎么可能是null
+                    Document doc = org.jsoup.Jsoup.parse(item.getAttribute("outerHTML"));
+                    String poster_id = doc.getElementsByClass("f-name q_namecard ").get(0).attr("link").split("_")[1]; // QQ号
+                    QQAccount poster;
                     try {
-                        poster.setAvatar(new ImageField(new URL(doc.selectFirst("div.user-pto img").attr("src"))));
-                    } catch (MalformedURLException ex) {
-                        throw new RuntimeException(ex);
+                        poster = (QQAccount) getSession("user/" + poster_id);
+                    } catch (Exception e) { // 一般直接用统一的获取用户信息的方法，但是如果出问题就fallback到直接填充
+                        poster = new QQAccount();
+                        poster.setId(poster_id);
+                        poster.setPlatform("QQ");
+                        poster.setName(doc.getElementsByClass("f-name q_namecard ").get(0).text());
+                        try {
+                            poster.setAvatar(new ImageField(new URL(doc.selectFirst("div.user-pto img").attr("src"))));
+                        } catch (MalformedURLException ex) {
+                            throw new RuntimeException(ex);
+                        }
                     }
+                    post.poster = poster;
+                    post.timestamp = Long.parseLong(doc.selectFirst("[name=feed_data]").attr("data-abstime"));
+                    // 正文
+                    Element div = doc.selectFirst(".f-info");
+                    div.select("br").append("\\n"); // 直接转换的话换行会丢失，所以这里用\n代表换行，也就是说这里其实可以被原有的\n注入，不过不想管
+                    String text = div.text().replace("\\n", "\n");
+                    post.messageFields.add(new TextField(text));
+                    // 附图
+                    Element img_box = doc.selectFirst(".img-box");
+                    if (img_box != null) for (Element a : img_box.getElementsByTag("a")) {
+                        String url = a.attr("data-pickey").split(",", 2)[1];
+                        try {
+                            post.messageFields.add(new ImageField(new URL(url)));
+                        } catch (MalformedURLException e) {
+                            logger.error("无法实例化URL: {}", url, e);
+                        }
+                    }
+                    // 点赞列表
+                    Element likes_ele = doc.selectFirst(".user-list");
+                    if (likes_ele != null) {
+                        for (Element li : likes_ele.getElementsByTag("a")) {
+                            Matcher href = Pattern.compile("(?<=/)\\d+$").matcher(li.attr("href"));
+                            href.find();
+                            String liker_id = href.group();
+                            String name = li.text();
+                            if (liker_id.equals(accountId)) name = name.substring(0, name.length() - 1); // 删掉末尾的“、”
+                            QQAccount liker = new QQAccount(); // 这里直接用原地就有的信息，防风控
+                            liker.setId(liker_id);
+                            liker.setPlatform("QQ");
+                            liker.setName(name);
+                            try {
+                                liker.setAvatar(new ImageField(new URL("https://q.qlogo.cn/headimg_dl?dst_uin=" + liker_id + "&spec=640&img_type=jpg")));
+                            } catch (MalformedURLException e) {
+                                logger.error("Failed to load QQ account avatar", e);
+                            }
+                            post.likers.add(liker);
+                        }
+                        Element countEle = likes_ele.selectFirst(".f-like-cnt");
+                        if (countEle == null) post.likeCount = 0;
+                        else {
+                            String countEleText = countEle.text();
+                            if (text.isBlank()) post.likeCount = 0;
+                            else {
+                                String digits = countEleText.replaceAll("\\D+", "");
+                                if (digits.isEmpty()) post.likeCount = 0;
+                                try {
+                                    post.likeCount = Integer.parseInt(digits);
+                                } catch (NumberFormatException e) {
+                                    logger.warn("Failed to parse like count: {}", text, e);
+                                    post.likeCount = 0;
+                                }
+                            }
+                        }
+                    } else logger.debug("likes_ele is null");
+                    // 评论列表
+                    Element comments_list_ele = doc.selectFirst(".comments-list ");
+                    if (comments_list_ele != null) for (Element li : comments_list_ele.getElementsByTag("li")) {
+                        MCMessage comment = new MCMessage();
+                        Element comment_content = li.selectFirst(".comments-content");
+                        comment_content.select(".comments-op").remove();
+                        comment_content.select(".nickname").remove();
+                        String nickname = li.attr("data-nick");
+                        String uin = li.attr("data-uin");
+                        String content = comment_content.text().substring(1);
+                        if (content.startsWith(" ")) content = content.substring(1); // 如果还有空格得再裁一下
+                        comment.sender.setPlatform("QQ");
+                        comment.sender.setName(nickname);
+                        comment.sender.setId(uin);
+                        try {
+                            comment.sender.setAvatar(new ImageField(new URL("https://q.qlogo.cn/headimg_dl?dst_uin=" + uin + "&spec=640&img_type=jpg")));
+                        } catch (MalformedURLException e) {
+                            logger.error("Failed to load QQ account avatar", e);
+                        }
+                        comment.messageFields.add(new TextField(content));
+                        Element img_r = comment_content.selectFirst(".comments-thumbnails"); // 评论的附图
+                        if (img_r != null) for (Element ele : img_r.getElementsByTag("img")) {
+                            try {
+                                comment.messageFields.add(new ImageField(new URL(ele.attr("src"))));
+                            } catch (MalformedURLException e) {
+                                throw new RuntimeException(e);
+                            }
+                        }
+                        post.replies.add(comment);
+                    }
+                    // 这个post转换完了，添加到列表去
+                    posts.add(post);
+                } catch (Throwable e) {
+                    logger.error("Failed to prase", e);
+                    logger.error(item.getAttribute("outerHTML"));
                 }
-                post.poster = poster;
-                MCMessage mcm = new MCMessage();
-                Element div = doc.selectFirst(".f-info");
-                div.select("br").append("\\n");
-                String text = div.text().replace("\\n", "\n");
-                mcm.messageFields.add(new TextField(text)); // 正文
-                // ...附图
-                // 这个post转换完了，添加到列表去
-                posts.add(post);
             }
-            return null;
+            return posts;
         }
 
         @Override
         public void close() throws Exception {
-            driver.close();
+            if (driver != null) {
+                driver.quit();
+            }
         }
     }
 }
