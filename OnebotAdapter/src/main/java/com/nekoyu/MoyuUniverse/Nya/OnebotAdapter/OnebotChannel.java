@@ -559,13 +559,7 @@ public class OnebotChannel extends MessageChannel {
                     var accountInfo = new QQAccount();
                     accountInfo.setName(resp.data.getAsJsonObject().get("nickname").getAsString());
                     accountInfo.setId(acc[1]);
-                    accountInfo.setPlatform("QQ");
                     accountInfo.setSex(resp.data.getAsJsonObject().get("sex").getAsString());
-                    try {
-                        accountInfo.setAvatar(new ImageField(new URL("https://q.qlogo.cn/headimg_dl?dst_uin=" + accountInfo.getId() + "&spec=640&img_type=jpg")));
-                    } catch (MalformedURLException e) {
-                        logger.error(e.getMessage(), e);
-                    }
                     session = accountInfo;
                 }
             }
@@ -584,6 +578,20 @@ public class OnebotChannel extends MessageChannel {
             obr.params.put("user_id", getId());
             obr.params.put("times", count);
             request(obr);
+        }
+
+        public QQAccount() {
+            super.setPlatform("QQ");
+        }
+
+        @Override
+        public void setId(String id) {
+            super.setId(id);
+            try {
+                setAvatar(new ImageField(new URL("https://q.qlogo.cn/headimg_dl?dst_uin=" + id + "&spec=640&img_type=jpg")));
+            } catch (MalformedURLException e) {
+                throw new RuntimeException(e);
+            }
         }
     }
 
@@ -656,13 +664,7 @@ public class OnebotChannel extends MessageChannel {
                     } catch (Exception e) { // 一般直接用统一的获取用户信息的方法，但是如果出问题就fallback到直接填充
                         poster = new QQAccount();
                         poster.setId(poster_id);
-                        poster.setPlatform("QQ");
                         poster.setName(doc.getElementsByClass("f-name q_namecard ").get(0).text());
-                        try {
-                            poster.setAvatar(new ImageField(new URL(doc.selectFirst("div.user-pto img").attr("src"))));
-                        } catch (MalformedURLException ex) {
-                            throw new RuntimeException(ex);
-                        }
                     }
                     post.poster = poster;
                     post.timestamp = Long.parseLong(doc.selectFirst("[name=feed_data]").attr("data-abstime"));
@@ -692,13 +694,7 @@ public class OnebotChannel extends MessageChannel {
                             if (liker_id.equals(accountId)) name = name.substring(0, name.length() - 1); // 删掉末尾的“、”
                             QQAccount liker = new QQAccount(); // 这里直接用原地就有的信息，防风控
                             liker.setId(liker_id);
-                            liker.setPlatform("QQ");
                             liker.setName(name);
-                            try {
-                                liker.setAvatar(new ImageField(new URL("https://q.qlogo.cn/headimg_dl?dst_uin=" + liker_id + "&spec=640&img_type=jpg")));
-                            } catch (MalformedURLException e) {
-                                logger.error("Failed to load QQ account avatar", e);
-                            }
                             post.likers.add(liker);
                         }
                         Element countEle = likes_ele.selectFirst(".f-like-cnt");
