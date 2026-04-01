@@ -15,6 +15,8 @@ import com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.event.Notice;
 import com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.event.Notices.FriendRecall;
 import com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.event.Notices.GroupRecall;
 import com.nekoyu.Universe.API.MessageChannel.*;
+import com.nekoyu.Universe.API.MessageChannel.Features.Administration;
+import com.nekoyu.Universe.API.MessageChannel.Features.SessionChat;
 import com.nekoyu.Universe.API.MessageChannel.MessageField.*;
 import com.nekoyu.Universe.API.MessageChannel.MessageField.TextField;
 import com.nekoyu.Universe.API.MessageSession;
@@ -48,7 +50,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-public class OnebotChannel extends MessageChannel {
+public class OnebotChannel extends MessageChannel implements SessionChat,Administration {
     static final Gson gson;
 
     static {
@@ -605,6 +607,36 @@ public class OnebotChannel extends MessageChannel {
      */
     public class QZone implements AutoCloseable {
         ChromeDriver driver;
+        Deque<Task> tasks = new ArrayDeque<>(); // 使用队列机制逐个执行任务
+
+        public static class Task {
+            enum Type {
+                fetchPosts, sendLike, sendComment
+            }
+            Type type;
+
+            public static class FetchPosts extends Task {
+                public FetchPosts() {
+                    type = Type.fetchPosts;
+                }
+            }
+            public static class SendLikeTask extends Task {
+                String postKey;
+                public SendLikeTask(String postKey) {
+                    type = Type.sendLike;
+                    this.postKey = postKey;
+                }
+            }
+            public static class SendCommentTask extends Task {
+                String postKey;
+                String comment;
+                public SendCommentTask(String postKey, String comment) {
+                    type = Type.sendComment;
+                    this.postKey = postKey;
+                    this.comment = comment;
+                }
+            }
+        }
 
         // 此处通过请求Onebot API get_cookies 获取cookies初始化会话
         public QZone() {
@@ -641,7 +673,7 @@ public class OnebotChannel extends MessageChannel {
             }
         }
 
-        public List<MCPost> getLatestPosts() {
+        public void fetchLatestPosts() {
             driver.get("https://qzone.qq.com/");
             WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(30));
             wait.until(
@@ -669,6 +701,7 @@ public class OnebotChannel extends MessageChannel {
                         poster.setId(poster_id);
                         poster.setName(doc.getElementsByClass("f-name q_namecard ").get(0).text());
                     }
+                    post.sessionId = "post/" + poster_id;
                     post.poster = poster;
                     post.timestamp = Long.parseLong(doc.selectFirst("[name=feed_data]").attr("data-abstime"));
                     // 正文
@@ -754,7 +787,6 @@ public class OnebotChannel extends MessageChannel {
                     logger.error(item.getAttribute("outerHTML"));
                 }
             }
-            return posts;
         }
 
         @Override

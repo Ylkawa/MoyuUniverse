@@ -8,7 +8,7 @@ import java.awt.*;
 import java.util.LinkedList;
 
 public abstract class MessageChannel {
-    public Color mainColor = new Color(255, 255, 255);
+    public Color mainColor = Color.WHITE; // 默认主题色就是白色
     public String type;
     public final String ID;
     public String accountId;
@@ -17,8 +17,6 @@ public abstract class MessageChannel {
     abstract public MessageSession getChatSession(String sessionId);
     abstract public void load();
     abstract public void stop();
-    abstract public int sendMessage(String sessionId, MessageChain message);
-    abstract public void setSessionName(String sessionId, String name) throws UnsupportedAction;
     abstract public Session getSession(String sessionId);
 
     protected void broadcastMessage(String sessionId, MCMessage message) {

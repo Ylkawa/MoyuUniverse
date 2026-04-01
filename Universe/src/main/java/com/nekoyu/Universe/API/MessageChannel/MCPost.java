@@ -27,8 +27,4 @@ public class MCPost {
         replies = new ArrayList<>();
         messageFields = new LinkedList<>();
     }
-
-    public Account getPoster() {
-        return poster;
-    }
 }
