@@ -761,14 +761,10 @@ public class OnebotChannel extends MessageChannel implements SessionChat,Adminis
                         String uin = li.attr("data-uin");
                         String content = comment_content.text().substring(1);
                         if (content.startsWith(" ")) content = content.substring(1); // 如果还有空格得再裁一下
-                        comment.sender.setPlatform("QQ");
-                        comment.sender.setName(nickname);
-                        comment.sender.setId(uin);
-                        try {
-                            comment.sender.setAvatar(new ImageField(new URL("https://q.qlogo.cn/headimg_dl?dst_uin=" + uin + "&spec=640&img_type=jpg")));
-                        } catch (MalformedURLException e) {
-                            logger.error("Failed to load QQ account avatar", e);
-                        }
+                        QQAccount commentSender = new QQAccount();
+                        commentSender.setName(nickname);
+                        commentSender.setId(uin);
+                        comment.sender = commentSender;
                         comment.messageFields.add(new TextField(content));
                         Element img_r = comment_content.selectFirst(".comments-thumbnails"); // 评论的附图
                         if (img_r != null) for (Element ele : img_r.getElementsByTag("img")) {

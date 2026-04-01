@@ -204,6 +204,9 @@ public class UniverseChannel {
         });
     }
 
+    /*
+    将本地文件映射到 /Universe/ 下，返回值为映射到的公网访问地址
+     */
     public static URL addFileMounting(String mountPath, File file) {
         fileMounting.put(mountPath, file);
         try {
