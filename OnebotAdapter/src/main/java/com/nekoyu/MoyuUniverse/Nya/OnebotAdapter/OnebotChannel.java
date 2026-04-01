@@ -3,14 +3,13 @@ package com.nekoyu.MoyuUniverse.Nya.OnebotAdapter;
 import com.google.gson.*;
 import com.google.gson.typeadapters.RuntimeTypeAdapterFactory;
 import com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.MsgFields.Image;
-import com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.MsgFields.OBMsgField;
 import com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.MsgFields.Text;
 import com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.event.JsonMessages.JsonMessage;
 import com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.event.JsonMessages.com_tencent_miniapp_01;
 import com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.event.JsonMessages.com_tencent_miniapp_lua;
 import com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.event.JsonMessages.com_tencent_tuwen_lua;
 import com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.event.Message;
-import com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.event.MessageSegment;
+import com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.MsgFields.MessageSegment;
 import com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.event.Meta_Event;
 import com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.event.Notice;
 import com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.event.Notices.FriendRecall;
@@ -107,7 +106,7 @@ public class OnebotChannel extends MessageChannel {
     private int sendMessage(String msgType, String id, LinkedList<MsgField> message) {
         OBRequest obr = new OBRequest("send_msg");
         obr.params.put(msgType + "_id", id);
-        LinkedList<OBMsgField> obMsg = new LinkedList<>();
+        LinkedList<MessageSegment> obMsg = new LinkedList<>();
         for (MsgField field : message) {
             if (field instanceof ImageField imgF) {
                 obMsg.add(new Image(imgF.getUrl().toString()));
@@ -501,6 +500,10 @@ public class OnebotChannel extends MessageChannel {
             latch.await();
         } catch (InterruptedException e) {
             logger.error(e.getMessage(), e);
+        }
+
+        if (obrResponse[0].status.equals("failed")) {
+            throw new OBException(obrResponse[0].retcode, obrResponse[0].message);
         }
 
         return obrResponse[0];

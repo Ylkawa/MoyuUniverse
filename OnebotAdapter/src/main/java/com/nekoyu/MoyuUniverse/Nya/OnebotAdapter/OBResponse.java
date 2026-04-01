@@ -5,7 +5,8 @@ import com.google.gson.JsonElement;
 @SuppressWarnings("SpellCheckingInspection")
 public class OBResponse {
     String status;
-    String retcode;
+    int retcode;
     JsonElement data;
     String echo;
+    String message;
 }

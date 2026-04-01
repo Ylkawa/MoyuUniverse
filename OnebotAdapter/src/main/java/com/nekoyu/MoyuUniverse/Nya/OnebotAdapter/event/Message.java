@@ -1,5 +1,7 @@
 package com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.event;
 
+import com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.MsgFields.MessageSegment;
+
 import java.util.List;
 
 public class Message {
