@@ -145,7 +145,7 @@ public class MessageChannelManager {
      * sessionId 必须为全局sessionId
      */
     public void sendMessage(String sessionId, MessageChain message) {
-        if (message.isEmpty()) {
+        if (message.isEmpty() && message.toString().isEmpty()) {
             logger.warn("严肃谴责发空白消息的情况");
             return;
         }
