@@ -16,6 +16,7 @@ import com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.event.Notices.FriendRecall;
 import com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.event.Notices.GroupRecall;
 import com.nekoyu.Universe.API.MessageChannel.*;
 import com.nekoyu.Universe.API.MessageChannel.Features.Administration;
+import com.nekoyu.Universe.API.MessageChannel.Features.PostChat;
 import com.nekoyu.Universe.API.MessageChannel.Features.SessionChat;
 import com.nekoyu.Universe.API.MessageChannel.MessageField.*;
 import com.nekoyu.Universe.API.MessageChannel.MessageField.TextField;
@@ -46,11 +47,10 @@ import java.net.URL;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.*;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-public class OnebotChannel extends MessageChannel implements SessionChat,Administration {
+public class OnebotChannel extends MessageChannel implements SessionChat,PostChat,Administration {
     static final Gson gson;
 
     static {
@@ -72,7 +72,7 @@ public class OnebotChannel extends MessageChannel implements SessionChat,Adminis
     URI uri;
     String token;
     Map<String, Callback> syncActions = new ConcurrentHashMap<>(); // Echoes 和 Actions 的映射
-    Map<String, Session> sessionInfos = new ConcurrentHashMap<>(); // 用户账号列表缓存
+    Map<String, Session> cachedSessions = new ConcurrentHashMap<>(); // 用户账号列表缓存
     boolean good = true; // 实现端健康状态
     boolean online = true; // 实现端在线状态
 
@@ -130,24 +130,26 @@ public class OnebotChannel extends MessageChannel implements SessionChat,Adminis
 
                 syncRequest(new OBRequest("get_login_info"), response -> {
                     OBResponse friendListReq = request(new OBRequest("get_friend_list"));
-                    AtomicInteger friendCount = new AtomicInteger();
-                    friendListReq.data.getAsJsonArray().forEach(friend -> {
+                    JsonArray friendsList = friendListReq.data.getAsJsonArray();
+                    int friendCount = friendsList.size();
+                    friendsList.forEach(friend -> {
                         JsonObject friendObj = friend.getAsJsonObject();
-                        Account account = new Account();
+                        QQAccount account = new QQAccount();
                         account.setSex(friendObj.get("sex").getAsString());
                         account.setId(friendObj.get("user_id").getAsString());
                         account.setName(friendObj.get("nickname").getAsString());
-                        account.setPlatform("QQ");
-                        try {
-                            account.setAvatar(new ImageField(new URL("https://q.qlogo.cn/headimg_dl?dst_uin=" + account.getId() + "&spec=640&img_type=jpg")));
-                        } catch (MalformedURLException e) {
-                            logger.error(e.getMessage(), e);
-                        }
-                        friendCount.getAndIncrement();
-                        sessionInfos.put(account.getId(), account);
+                        cachedSessions.put(account.getId(), account);
                     });
                     OBResponse groupListReq = request(new OBRequest("get_group_list"));
-                    int groupCount = groupListReq.data.getAsJsonArray().size();
+                    JsonArray groupList = groupListReq.data.getAsJsonArray();
+                    int groupCount = groupList.size();
+                    groupList.forEach(group -> {
+                        JsonObject groupObj = group.getAsJsonObject();
+                        QQGroup groupInfo = new QQGroup();
+                        groupInfo.setName(groupObj.get("group_name").getAsString());
+                        groupInfo.setId(groupObj.get("group_id").getAsString());
+                        cachedSessions.put(groupInfo.getId(), groupInfo);
+                    });
                     JsonObject responseData = response.data.getAsJsonObject();
                     nickname = responseData.get("nickname").getAsString();
                     accountId = responseData.get("user_id").getAsString();
@@ -156,7 +158,7 @@ public class OnebotChannel extends MessageChannel implements SessionChat,Adminis
                     } catch (IOException e) {
                         throw new RuntimeException(e);
                     }
-                    logger.info("{} 登录的 QQ号 为 {} ({}), {} 个好友  {} 个群聊", ID, nickname, accountId, friendCount.get(), groupCount);
+                    logger.info("{} 登录的 QQ号 为 {} ({}), {} 个好友  {} 个群聊", ID, nickname, accountId, friendCount, groupCount);
                 });
             }
 
@@ -534,7 +536,7 @@ public class OnebotChannel extends MessageChannel implements SessionChat,Adminis
             logger.error("getSession() cannot handle {}", sessionId);
             throw new UnsupportedAction("Unsupported session type");
         }
-        Session session = sessionInfos.get(acc[1]);
+        Session session = cachedSessions.get(acc[1]);
         if (session == null) {
             OBRequest obr = new OBRequest();
             switch (acc[0]) {
@@ -551,15 +553,9 @@ public class OnebotChannel extends MessageChannel implements SessionChat,Adminis
             if (resp.status.equals("failed")) throw new RuntimeException("Request Failed");
             switch (acc[0]) {
                 case "group" -> {
-                    var groupInfo = new Group();
+                    var groupInfo = new QQGroup();
                     groupInfo.setName(resp.data.getAsJsonObject().get("group_name").getAsString());
                     groupInfo.setId(acc[1]);
-                    groupInfo.setPlatform("QQ");
-                    try {
-                        groupInfo.setAvatar(new ImageField(new URL("https://p.qlogo.cn/gh/" + acc[1] + "/" + acc[1] + "/0")));
-                    } catch (MalformedURLException e) {
-                        logger.error(e.getMessage(), e);
-                    }
                     session = groupInfo;
                 }
                 case "user", "private" -> {
@@ -570,9 +566,14 @@ public class OnebotChannel extends MessageChannel implements SessionChat,Adminis
                     session = accountInfo;
                 }
             }
-            sessionInfos.put(acc[1], session);
+            cachedSessions.put(acc[1], session);
         }
         return session;
+    }
+
+    @Override
+    public void replyPost(String sessionId, MessageChain message) {
+
     }
 
     private interface Callback {
@@ -599,6 +600,25 @@ public class OnebotChannel extends MessageChannel implements SessionChat,Adminis
             } catch (MalformedURLException e) {
                 throw new RuntimeException(e);
             }
+        }
+    }
+
+    public class QQGroup extends Group {
+        public QQGroup() {
+            super.setPlatform("QQ");
+        }
+
+        public void setId(String id) {
+            super.setId(id);
+            try {
+                super.setAvatar(new ImageField(new URL("https://p.qlogo.cn/gh/" + id + "/" + id + "/0")));
+            } catch (MalformedURLException e) {
+                throw new RuntimeException(e);
+            }
+        }
+
+        public void setName(String name) {
+            setSessionName("group/" + getId(), name);
         }
     }
 
@@ -691,6 +711,7 @@ public class OnebotChannel extends MessageChannel implements SessionChat,Adminis
             List<MCPost> posts = new ArrayList<>();
             for (WebElement item : list) {
                 try {
+                    String key = null;
                     MCPost post = new MCPost();
                     @SuppressWarnings("DataFlowIssue") // 前面列表列出来的怎么可能是null
                     Document doc = org.jsoup.Jsoup.parse(item.getAttribute("outerHTML"));
@@ -703,7 +724,6 @@ public class OnebotChannel extends MessageChannel implements SessionChat,Adminis
                         poster.setId(poster_id);
                         poster.setName(doc.getElementsByClass("f-name q_namecard ").get(0).text());
                     }
-                    post.sessionId = "post/" + poster_id;
                     post.poster = poster;
                     post.timestamp = Long.parseLong(doc.selectFirst("[name=feed_data]").attr("data-abstime"));
                     // 正文
@@ -714,13 +734,17 @@ public class OnebotChannel extends MessageChannel implements SessionChat,Adminis
                     // 附图
                     Element img_box = doc.selectFirst(".img-box");
                     if (img_box != null) for (Element a : img_box.getElementsByTag("a")) {
-                        String url = a.attr("data-pickey").split(",", 2)[1];
+                        String[] split = a.attr("data-pickey").split(",", 2);
+                        String url = split[1];
                         try {
                             post.messageFields.add(new ImageField(new URL(url)));
                         } catch (MalformedURLException e) {
                             logger.error("无法实例化URL: {}", url, e);
                         }
                     }
+                    // 基本信息
+                    Element data_ele = doc.selectFirst(".qz_summary i.none");
+                    key = data_ele.attr("data-tid");
                     // 点赞列表
                     Element likes_ele = doc.selectFirst(".user-list");
                     if (likes_ele != null) {
@@ -780,6 +804,8 @@ public class OnebotChannel extends MessageChannel implements SessionChat,Adminis
                     }
                     // 这个post转换完了，添加到列表去
                     posts.add(post);
+                    // 广播到宇宙
+                    broadcastMessage("post/" + post.poster.getId() + key, post);
                 } catch (Throwable e) {
                     logger.error("Failed to prase", e);
                     logger.error(item.getAttribute("outerHTML"));

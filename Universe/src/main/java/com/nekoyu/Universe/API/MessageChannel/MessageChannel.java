@@ -24,6 +24,11 @@ public abstract class MessageChannel {
         Universe.MessageChannelManager.onMessage(this, message);
     }
 
+    protected void broadcastMessage(String sessionId, MCPost message) {
+        message.sessionId = ID + ":" + sessionId;
+        Universe.MessageChannelManager.onMessage(this, message);
+    }
+
     public MessageChannel(String id) {
         this.ID = id;
     }
