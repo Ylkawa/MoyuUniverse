@@ -96,10 +96,18 @@ public class MessageChannelManager {
             messageList.clean(MESSAGE_LIST_MAX_SIZE);
 
             for (MCMListener mcl : sessionListeners.get(mcm.sessionId)) {
-                mcl.onMessage(mcm);
+                try {
+                    mcl.onMessage(mcm);
+                } catch (Exception e) {
+                    logger.error("{} 处理消息时出错", mcl, e);
+                }
             }
             for (MCMListener mcl : mcmListenersToAll) {
-                mcl.onMessage(mcm);
+                try {
+                    mcl.onMessage(mcm);
+                } catch (Exception e) {
+                    logger.error("{} 处理消息时出错", mcl, e);
+                }
             }
         }
     }
@@ -150,45 +158,41 @@ public class MessageChannelManager {
     public void sendMessage(String sessionId, MessageChain message) {
         String[] target = sessionId.split(":");
         MessageChannel mc = getChannel(target[0]);
+        if (mc == null) throw new RuntimeException("不存在此MessageChannel");
         if (mc instanceof SessionChat sc) {
             if (message.isEmpty() && message.toString().isEmpty()) {
                 logger.warn("严肃谴责发空白消息的情况");
                 return;
             }
-            if (sc == null) {
-                logger.warn("不存在此Channel {}", target[0]);
-                throw new RuntimeException(target[0] + "is not exist");
-            } else {
-                Session session = mc.getSession(target[1]);
-                String fg = "";
-                if (session.avatar != null) {
-                    fg = ColorUtils.fg(session.avatar.getMainColor());
-                }
-                messagingLogger.info("{}{}{} {}{}{} <- {}",
-                        ColorUtils.fg(mc.mainColor),
-                        mc.ID,
-                        ColorUtils.RESET,
-                        fg,
-                        session.name,
-                        ColorUtils.RESET,
-                        message.toString());
-                MCMessage mcm = new MCMessage();
-                mcm.id = sc.sendMessage(target[1], message); //将sessionId转换成局部形式传给MessageChannel处理，同时把聊天记录对象传过去
-                mcm.messageFields = message;
-                mcm.time = System.currentTimeMillis() / 1000;
-                mcm.sender.id = mc.accountId;
-                mcm.sender.name = mc.nickname;
-                mcm.universe = true;
-                // 应该没别的必须的参数了，留空算了
-
-                MessageList messageList = messageHistory.get(sessionId);
-                if (messageList == null) {
-                    messageList = new MessageList();
-                    messageHistory.put(sessionId, messageList);
-                }
-                messageList.add(mcm);
-                messageList.clean(20);
+            Session session = mc.getSession(target[1]);
+            String fg = "";
+            if (session.avatar != null) {
+                fg = ColorUtils.fg(session.avatar.getMainColor());
             }
+            messagingLogger.info("{}{}{} {}{}{} <- {}",
+                    ColorUtils.fg(mc.mainColor),
+                    mc.ID,
+                    ColorUtils.RESET,
+                    fg,
+                    session.name,
+                    ColorUtils.RESET,
+                    message.toString());
+            MCMessage mcm = new MCMessage();
+            mcm.id = sc.sendMessage(target[1], message); //将sessionId转换成局部形式传给MessageChannel处理，同时把聊天记录对象传过去
+            mcm.messageFields = message;
+            mcm.time = System.currentTimeMillis() / 1000;
+            mcm.sender.id = mc.accountId;
+            mcm.sender.name = mc.nickname;
+            mcm.universe = true;
+            // 应该没别的必须的参数了，留空算了
+
+            MessageList messageList = messageHistory.get(sessionId);
+            if (messageList == null) {
+                messageList = new MessageList();
+                messageHistory.put(sessionId, messageList);
+            }
+            messageList.add(mcm);
+            messageList.clean(20);
         } else throw new UnsupportedAction(mc.ID + " doesn't support session chat");
     }
 

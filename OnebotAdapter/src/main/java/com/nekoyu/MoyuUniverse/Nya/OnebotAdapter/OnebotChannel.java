@@ -195,6 +195,8 @@ public class OnebotChannel extends MessageChannel implements SessionChat,Adminis
                                                 } catch (MalformedURLException e) {
                                                     logger.error("无法以 {} 创建URL对象", ms.data.get("file"), e);
                                                     mcm.messageFields.add(new TextField("[图片]"));
+                                                } catch (RuntimeException e) {
+                                                    logger.error(e.getMessage(), e);
                                                 }
                                             }
                                             // 放不进去文本，先这样
@@ -371,7 +373,7 @@ public class OnebotChannel extends MessageChannel implements SessionChat,Adminis
                                                 if (f instanceof FileField ff) ff.repost();
                                             }
                                         } catch (IOException | InterruptedException e) {
-                                            throw new RuntimeException(e);
+                                            logger.error("转储文件失败", e);
                                         }
                                     });
                                 }

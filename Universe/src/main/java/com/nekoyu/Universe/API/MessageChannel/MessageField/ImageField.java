@@ -18,7 +18,6 @@ import okhttp3.Response;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import javax.annotation.Nullable;
 import java.awt.*;
 import java.io.IOException;
 import java.math.RoundingMode;
@@ -31,6 +30,7 @@ import java.util.concurrent.atomic.AtomicReference;
 public class ImageField extends FileField {
     private static final Logger logger = LoggerFactory.getLogger(ImageField.class);
     Metadata metadata;
+    String solvedMetadataString = null;
     transient private final AtomicReference<Color> mainColor = new AtomicReference<>();
 
     public ImageField(URL url) {
@@ -90,6 +90,7 @@ public class ImageField extends FileField {
     }
 
     public String solveMetadata() {
+        if (solvedMetadataString != null) return solvedMetadataString;
         StringBuilder descriptionBuilder = new StringBuilder();
         if (metadata != null) { // 如果EXIF信息存在
             // 尝试解析EXIF信息
@@ -155,6 +156,7 @@ public class ImageField extends FileField {
                 }
             }
         }
+        solvedMetadataString = descriptionBuilder.toString();
         return descriptionBuilder.toString();
     }
 

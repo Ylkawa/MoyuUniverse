@@ -162,7 +162,7 @@ public class AIChat extends Law {
                             } // 为assistant添加指定的tools // 如果不存在这个tool就不添加
                         }
                         // 决定让 AI 发言
-                        MessageList ml = Universe.MessageChannelManager.getMessageHistory(sessionCfg.SessionId);
+                        MessageList ml = (MessageList) Universe.MessageChannelManager.getMessageHistory(sessionCfg.SessionId).clone();
                         // 设置 System Prompt
                         // 先让插件处理事件 插件提供局部的PlaceHolder
                         var reqEv = new RequestEvent();
@@ -264,7 +264,7 @@ public class AIChat extends Law {
                                     });
                                     mcm.reply(respTokens.toString());
                                 } catch (Exception e) {
-                                    e.printStackTrace();
+                                    logger.error(e.getMessage(), e);
                                 }
                             } else {
                                 logger.error("消息解析超时");
