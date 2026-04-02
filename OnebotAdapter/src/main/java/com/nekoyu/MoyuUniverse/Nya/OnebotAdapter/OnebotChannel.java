@@ -50,7 +50,7 @@ import java.util.concurrent.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-public class OnebotChannel extends MessageChannel implements SessionChat,PostChat,Administration {
+public class OnebotChannel extends MessageChannel implements SessionChat, PostChat, Administration {
     static final Gson gson;
 
     static {
@@ -627,14 +627,16 @@ public class OnebotChannel extends MessageChannel implements SessionChat,PostCha
      由于Selenium和浏览器进程占用资源过多，请及时释放实例
      建议搭配try with resources使用
      */
-    public class QZone implements AutoCloseable {
+    public class QZone {
         ChromeDriver driver;
-        Deque<Task> tasks = new ArrayDeque<>(); // 使用队列机制逐个执行任务
+        private volatile boolean workerRunning = false;
+        final BlockingDeque<Task> tasks = new LinkedBlockingDeque<>(); // 使用队列机制逐个执行任务
 
         public static class Task {
             enum Type {
                 fetchPosts, sendLike, sendComment
             }
+
             Type type;
 
             public static class FetchPosts extends Task {
@@ -642,16 +644,20 @@ public class OnebotChannel extends MessageChannel implements SessionChat,PostCha
                     type = Type.fetchPosts;
                 }
             }
+
             public static class SendLikeTask extends Task {
                 String postKey;
+
                 public SendLikeTask(String postKey) {
                     type = Type.sendLike;
                     this.postKey = postKey;
                 }
             }
+
             public static class SendCommentTask extends Task {
                 String postKey;
                 String comment;
+
                 public SendCommentTask(String postKey, String comment) {
                     type = Type.sendComment;
                     this.postKey = postKey;
@@ -660,8 +666,21 @@ public class OnebotChannel extends MessageChannel implements SessionChat,PostCha
             }
         }
 
+        public void addTask(Task task) {
+            synchronized (tasks) {
+                tasks.addLast(task);
+
+                // 如果没有 worker 在跑，就启动一个
+                if (!workerRunning) {
+                    workerRunning = true;
+                    init();
+                    new Thread(this::process).start();
+                }
+            }
+        }
+
         // 此处通过请求Onebot API get_cookies 获取cookies初始化会话
-        public QZone() {
+        public void init() {
             String driverPath = System.getProperty("webdriver.chrome.driver");
             if (driverPath == null || driverPath.isBlank()) {
                 String envDriverPath = System.getenv("CHROMEDRIVER_PATH");
@@ -692,6 +711,30 @@ public class OnebotChannel extends MessageChannel implements SessionChat,PostCha
                 // 至此这个模块初始化完毕可以用了
             } catch (NullPointerException e) {
                 throw new RuntimeException("Failed to initialize QZone instance", e);
+            }
+        }
+
+        public void process() {
+            Task task;
+            while (true) {
+                while ((task = tasks.pollFirst()) != null) {
+                    switch (task.type) {
+                        case fetchPosts -> fetchLatestPosts();
+                        case sendLike -> {
+                        }
+                        case sendComment -> {
+                        }
+                    }
+                }
+                for (int i = 0; i <= 600; i++) { // 等待新任务如果没有就退出了
+                    if (!tasks.isEmpty()) break;
+                    else if (i == 600) return;
+                    try {
+                        Thread.sleep(1000);
+                    } catch (InterruptedException e) {
+                        throw new RuntimeException(e);
+                    }
+                }
             }
         }
 
@@ -813,10 +856,10 @@ public class OnebotChannel extends MessageChannel implements SessionChat,PostCha
             }
         }
 
-        @Override
-        public void close() throws Exception {
+        public void release() throws Exception {
             if (driver != null) {
                 driver.quit();
+                driver = null;
             }
         }
     }
