@@ -617,7 +617,7 @@ public class OnebotChannel extends MessageChannel implements SessionChat,PostCha
             }
         }
 
-        public void setName(String name) {
+        public void administration_setName(String name) {
             setSessionName("group/" + getId(), name);
         }
     }
