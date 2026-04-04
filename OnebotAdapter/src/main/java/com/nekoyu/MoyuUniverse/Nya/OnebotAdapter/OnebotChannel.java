@@ -35,6 +35,7 @@ import org.openqa.selenium.Cookie;
 import org.openqa.selenium.JavascriptExecutor;
 import org.openqa.selenium.WebElement;
 import org.openqa.selenium.chrome.ChromeDriver;
+import org.openqa.selenium.interactions.Actions;
 import org.openqa.selenium.support.ui.ExpectedConditions;
 import org.openqa.selenium.support.ui.WebDriverWait;
 import org.slf4j.Logger;
@@ -656,9 +657,9 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
 
             public static class SendCommentTask extends Task {
                 String postKey;
-                String comment;
+                MessageChain comment;
 
-                public SendCommentTask(String postKey, String comment) {
+                public SendCommentTask(String postKey, MessageChain comment) {
                     type = Type.sendComment;
                     this.postKey = postKey;
                     this.comment = comment;
@@ -718,17 +719,20 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
             Task task;
             while (true) {
                 while ((task = tasks.pollFirst()) != null) {
-                    switch (task.type) {
-                        case fetchPosts -> fetchLatestPosts();
-                        case sendLike -> {
-                        }
-                        case sendComment -> {
-                        }
+                    if (task instanceof Task.FetchPosts) {
+                        fetchLatestPosts();
+                    } else if (task instanceof Task.SendCommentTask sendCommentTask) {
+
+                    } else if (task instanceof Task.SendLikeTask sendLikeTask) {
+                        sendLike(sendLikeTask.postKey);
                     }
                 }
                 for (int i = 0; i <= 600; i++) { // 等待新任务如果没有就退出了
                     if (!tasks.isEmpty()) break;
-                    else if (i == 600) return;
+                    else if (i == 600) {
+                        release();
+                        return;
+                    }
                     try {
                         Thread.sleep(1000);
                     } catch (InterruptedException e) {
@@ -856,7 +860,29 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
             }
         }
 
-        public void release() throws Exception {
+        public void sendLike(String key) {
+            // 通过模拟点击按钮点赞
+            WebElement btn = driver.findElement(By.cssSelector(
+                    "div.f-item[data-key='" + key + "'] .qz_like_btn_v3"
+            ));
+
+            driver.executeScript(
+                    "arguments[0].scrollIntoView({block: 'center'});", btn
+            );
+
+            // 用 Actions 模拟点击
+            new Actions(driver)
+                    .moveToElement(btn)
+                    .pause(Duration.ofMillis(100))
+                    .click()
+                    .perform();
+        }
+
+        public void sendComment(String key, MessageChain comment) {
+
+        }
+
+        public void release() {
             if (driver != null) {
                 driver.quit();
                 driver = null;
