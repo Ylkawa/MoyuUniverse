@@ -73,6 +73,7 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
     Map<String, Session> cachedSessions = new ConcurrentHashMap<>(); // 用户账号列表缓存
     boolean good = true; // 实现端健康状态
     boolean online = true; // 实现端在线状态
+    QZone qZone = new QZone();
 
     public OnebotChannel(String id) {
         super(id);
@@ -570,8 +571,21 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
     }
 
     @Override
-    public void replyPost(String sessionId, MessageChain message) {
+    public void sendLike(String sessionId) {
+        String[] split = sessionId.split("/");
+        qZone.addTask(new QZone.Task.SendLikeTask(split[split.length - 1]));
+    }
 
+    @Override
+    public void replyPost(String sessionId, MessageChain message) {
+        String[] split = sessionId.split("/");
+        qZone.addTask(new QZone.Task.SendCommentTask(split[split.length - 1], message));
+    }
+
+    @Override
+    public void repost(String sessionId, MessageChain message) {
+        String[] split = sessionId.split("/");
+        qZone.addTask(new QZone.Task.RepostTask(split[split.length - 1], message));
     }
 
     private interface Callback {
@@ -626,13 +640,14 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
      建议搭配try with resources使用
      */
     public class QZone {
+        List<String> availablePostKeys = new ArrayList<>();
         ChromeDriver driver;
         private volatile boolean workerRunning = false;
         final BlockingDeque<Task> tasks = new LinkedBlockingDeque<>(); // 使用队列机制逐个执行任务
 
         public static class Task {
             enum Type {
-                fetchPosts, sendLike, sendComment
+                fetchPosts, sendLike, sendComment, repost
             }
 
             Type type;
@@ -660,6 +675,17 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
                     type = Type.sendComment;
                     this.postKey = postKey;
                     this.comment = comment;
+                }
+            }
+
+            public static class RepostTask extends Task {
+                String postKey;
+                MessageChain repostMsg;
+
+                public RepostTask(String postKey, MessageChain repostMsg) {
+                    type = Type.repost;
+                    this.postKey = postKey;
+                    this.repostMsg = repostMsg;
                 }
             }
         }
@@ -719,9 +745,16 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
                     if (task instanceof Task.FetchPosts) {
                         fetchLatestPosts();
                     } else if (task instanceof Task.SendCommentTask sendCommentTask) {
-
+                        sendComment(sendCommentTask.postKey, sendCommentTask.comment);
                     } else if (task instanceof Task.SendLikeTask sendLikeTask) {
                         sendLike(sendLikeTask.postKey);
+                    } else if (task instanceof Task.RepostTask repostTask) {
+                        repost(repostTask.postKey, repostTask.repostMsg);
+                    }
+                    try {
+                        Thread.sleep(2000 + new Random().nextInt(1000));
+                    } catch (InterruptedException e) {
+                        throw new RuntimeException(e);
                     }
                 }
                 for (int i = 0; i <= 600; i++) { // 等待新任务如果没有就退出了
@@ -788,6 +821,7 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
                     // 基本信息
                     Element data_ele = doc.selectFirst(".qz_summary i.none");
                     key = data_ele.attr("data-tid");
+                    availablePostKeys.add(key);
                     // 点赞列表
                     Element likes_ele = doc.selectFirst(".user-list");
                     if (likes_ele != null) {
@@ -873,30 +907,56 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
         }
 
         public void sendComment(String key, MessageChain comment) {
-            // 1. 找到正文块（有 data-key）
-            WebElement likeBtn = driver.findElement(By.cssSelector(
+            // 找到正文块（有 data-key）
+            WebElement data_ele = driver.findElement(By.cssSelector(
                     "div.f-item.f-s-i[data-key='" + key + "']"
             ));
 
-            // 2. 往上找到 li（整条动态）
-            WebElement li = likeBtn.findElement(By.xpath("./ancestor::li"));
+            // 往上找到 li（整条动态）
+            WebElement li = data_ele.findElement(By.xpath("./ancestor::li"));
 
-            // 3. 在这个 li 里找评论输入框
+            // 在这个 li 里找评论输入框
             WebElement textInput = li.findElement(By.cssSelector(
                     ".textinput[contenteditable='true']"
             ));
 
-            // 4. 点击输入框
+            // 点击输入框
             textInput.click();
 
-            // 5. 输入评论内容
+            // 输入评论内容
             textInput.sendKeys(comment.toString());
 
-            // 6. 发送（通常是 Ctrl + Enter）
+            // 发送（Ctrl + Enter）
+            textInput.sendKeys(Keys.CONTROL, Keys.ENTER);
+        }
+
+        public void repost(String key, MessageChain repostMsg) {
+            // 找到正文块（有 data-key）
+            WebElement data_ele = driver.findElement(By.cssSelector(
+                    "div.f-item.f-s-i[data-key='" + key + "']"
+            ));
+
+            // 往上找到 li（整条动态）
+            WebElement li = data_ele.findElement(By.xpath("./ancestor::li"));
+
+            // 在这个 li 里找评论输入框
+            WebElement repostBtn = li.findElement(By.cssSelector(
+                    ".textinput[contenteditable='true']"
+            ));
+
+            // 点击输入框
+            repostBtn.click();
+
+            WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(10));
+            WebElement textInput = wait.until(
+                    ExpectedConditions.elementToBeClickable(By.cssSelector(".qz_dialog_layer_main div.textinput.textarea.c_tx2[contenteditable=\\\"true\\\"]"))
+            );
+            textInput.sendKeys(repostMsg.toString()); // 只支持单文字
             textInput.sendKeys(Keys.CONTROL, Keys.ENTER);
         }
 
         public void release() {
+            availablePostKeys.clear();
             if (driver != null) {
                 driver.quit();
                 driver = null;
