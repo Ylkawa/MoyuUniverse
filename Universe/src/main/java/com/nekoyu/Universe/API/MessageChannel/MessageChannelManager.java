@@ -196,7 +196,8 @@ public class MessageChannelManager {
         } else throw new UnsupportedAction(mc.ID + " doesn't support session chat");
     }
 
-    public void replyPost() {
+    public void replyPost(String sessionId, MessageChain message) {
+        logger.error("快别reply了没写完");
         // TODO PostChat 相关
     }
 

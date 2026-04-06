@@ -30,10 +30,7 @@ import org.java_websocket.client.WebSocketClient;
 import org.java_websocket.handshake.ServerHandshake;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
-import org.openqa.selenium.By;
-import org.openqa.selenium.Cookie;
-import org.openqa.selenium.JavascriptExecutor;
-import org.openqa.selenium.WebElement;
+import org.openqa.selenium.*;
 import org.openqa.selenium.chrome.ChromeDriver;
 import org.openqa.selenium.interactions.Actions;
 import org.openqa.selenium.support.ui.ExpectedConditions;
@@ -852,7 +849,7 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
                     // 这个post转换完了，添加到列表去
                     posts.add(post);
                     // 广播到宇宙
-                    broadcastMessage("post/" + post.poster.getId() + key, post);
+                    broadcastMessage("post/" + post.poster.getId() + "/" + key, post);
                 } catch (Throwable e) {
                     logger.error("Failed to prase", e);
                     logger.error(item.getAttribute("outerHTML"));
@@ -879,7 +876,27 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
         }
 
         public void sendComment(String key, MessageChain comment) {
+            // 1. 找到正文块（有 data-key）
+            WebElement likeBtn = driver.findElement(By.cssSelector(
+                    "div.f-item.f-s-i[data-key='" + key + "']"
+            ));
 
+            // 2. 往上找到 li（整条动态）
+            WebElement li = likeBtn.findElement(By.xpath("./ancestor::li"));
+
+            // 3. 在这个 li 里找评论输入框
+            WebElement textInput = li.findElement(By.cssSelector(
+                    ".textinput[contenteditable='true']"
+            ));
+
+            // 4. 点击输入框
+            textInput.click();
+
+            // 5. 输入评论内容
+            textInput.sendKeys(comment.toString());
+
+            // 6. 发送（通常是 Ctrl + Enter）
+            textInput.sendKeys(Keys.CONTROL, Keys.ENTER);
         }
 
         public void release() {

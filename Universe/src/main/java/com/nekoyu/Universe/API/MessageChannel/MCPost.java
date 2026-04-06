@@ -1,6 +1,7 @@
 package com.nekoyu.Universe.API.MessageChannel;
 
 import com.nekoyu.Universe.API.MessageChannel.MessageField.MsgField;
+import com.nekoyu.Universe.Universe;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
@@ -26,5 +27,9 @@ public class MCPost {
         reposts = new ArrayList<>();
         replies = new ArrayList<>();
         messageFields = new LinkedList<>();
+    }
+
+    public void reply(MessageChain message) {
+        Universe.MessageChannelManager.replyPost(sessionId, message);
     }
 }
