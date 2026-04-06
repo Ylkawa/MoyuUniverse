@@ -3,6 +3,7 @@ package com.nekoyu.Universe.API.MessageChannel;
 import com.nekoyu.Universe.API.MessageChannel.MessageField.ImageField;
 
 import javax.annotation.Nullable;
+import java.awt.*;
 
 public class Session {
     String id;
@@ -10,6 +11,7 @@ public class Session {
     String name;
     @Nullable
     ImageField avatar;
+    transient Color color;
 
     public String getId() {
         return id;
@@ -45,5 +47,14 @@ public class Session {
 
     public String getLocationId() {
         return platform + ":user/" + id;
+    }
+
+    public Color getColor() {
+        if (color == null) {
+            if (avatar != null) {
+                color = avatar.getMainColor();
+            } else color = Color.WHITE;
+        }
+        return color;
     }
 }

@@ -752,10 +752,9 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
             List<WebElement> list = driver.findElements(
                     By.cssSelector("#feed_friend_list li.f-single.f-s-s:not(.f-single-biz)")
             ); // 所有的好友动态容器
-            List<MCPost> posts = new ArrayList<>();
             for (WebElement item : list) {
                 try {
-                    String key = null;
+                    String key;
                     MCPost post = new MCPost();
                     @SuppressWarnings("DataFlowIssue") // 前面列表列出来的怎么可能是null
                     Document doc = org.jsoup.Jsoup.parse(item.getAttribute("outerHTML"));
@@ -846,8 +845,6 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
                         }
                         post.replies.add(comment);
                     }
-                    // 这个post转换完了，添加到列表去
-                    posts.add(post);
                     // 广播到宇宙
                     broadcastMessage("post/" + post.poster.getId() + "/" + key, post);
                 } catch (Throwable e) {

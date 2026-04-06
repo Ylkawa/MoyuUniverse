@@ -18,8 +18,6 @@ public class MessageChannelManager {
     public Map<String, MessageChannel> MessageChannels = new HashMap<>();
     Multimap<String, MCMListener> sessionListeners = ArrayListMultimap.create();
     Multimap<String, MCPListener> mcpListeners = ArrayListMultimap.create();
-    List<MCMListener> mcmListenersToAll = new ArrayList<>();
-    List<MCPListener> mcpListenersToAll = new ArrayList<>();
     Logger logger = LoggerFactory.getLogger(getClass());
     Logger messagingLogger = LoggerFactory.getLogger("Messaging");
     Map<String, MessageList> messageHistory = new HashMap<>();
@@ -33,19 +31,7 @@ public class MessageChannelManager {
     }
 
     public void listenToSession(String sessionId, MCMListener mcmL) {
-        if (sessionId.equals("*")) {
-            mcmListenersToAll.add(mcmL);
-        } else {
-            sessionListeners.put(sessionId, mcmL);
-        }
-    }
-
-    public void listenToSession(String sessionId, MCPListener mcpL) {
-        if (sessionId.equals("*")) {
-            mcpListenersToAll.add(mcpL);
-        } else {
-            mcpListeners.put(sessionId, mcpL);
-        }
+        sessionListeners.put(sessionId, mcmL);
     }
 
     /**
@@ -102,21 +88,25 @@ public class MessageChannelManager {
                     logger.error("{} 处理消息时出错", mcl, e);
                 }
             }
-            for (MCMListener mcl : mcmListenersToAll) {
-                try {
-                    mcl.onMessage(mcm);
-                } catch (Exception e) {
-                    logger.error("{} 处理消息时出错", mcl, e);
-                }
-            }
         }
     }
 
     public void onMessage(MessageChannel mc, MCPost mcp) {
+        String preview = mcp.messageFields.toString();
+        preview = preview.replaceAll("\n", " ");
+        if (preview.length() > 20) preview = preview.substring(0, 20) + "...";
+        logger.info(
+                "{}{}{}[POST]{}{}{}({}): {}",
+                mc.mainColor,
+                mc.ID,
+                ColorUtils.RESET,
+                ColorUtils.fg(mcp.poster.getColor()),
+                mcp.poster.name,
+                ColorUtils.RESET,
+                mcp.poster.id,
+                preview
+        );
         for (MCPListener mcpListener : mcpListeners.get(mcp.sessionId)) {
-            mcpListener.onMessage(mcp);
-        }
-        for (MCPListener mcpListener : mcpListenersToAll) {
             mcpListener.onMessage(mcp);
         }
     }
