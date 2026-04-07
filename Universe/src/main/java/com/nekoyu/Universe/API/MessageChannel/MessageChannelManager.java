@@ -103,7 +103,7 @@ public class MessageChannelManager {
         if (preview.length() > 20) preview = preview.substring(0, 20) + "...";
         logger.info(
                 "{}{}{}[POST]{}{}{}({}): {}",
-                mc.mainColor,
+                ColorUtils.fg(mc.mainColor),
                 mc.ID,
                 ColorUtils.RESET,
                 ColorUtils.fg(mcp.poster.getColor()),

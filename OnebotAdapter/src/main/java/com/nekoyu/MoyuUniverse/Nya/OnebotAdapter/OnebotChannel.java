@@ -446,6 +446,7 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
     public void stop() {
         isReady = false;
         wsConnection.close();
+        qZone.release();
     }
 
     @Override
@@ -642,10 +643,12 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
      建议搭配try with resources使用
      */
     public class QZone {
+        public static final Random RANDOM = new Random();
         List<String> availablePostKeys = new ArrayList<>();
         ChromeDriver driver;
         private volatile boolean workerRunning = false;
         final BlockingDeque<Task> tasks = new LinkedBlockingDeque<>(); // 使用队列机制逐个执行任务
+        private long lastFetch = System.currentTimeMillis();
 
         public static class Task {
             enum Type {
@@ -733,7 +736,6 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
                             .domain(".qzone.qq.com").build();
                     driver.manage().addCookie(cookie);
                 }
-                driver.get("https://qzone.qq.com/"); // 然后刷新
                 // 至此这个模块初始化完毕可以用了
             } catch (NullPointerException e) {
                 throw new RuntimeException("Failed to initialize QZone instance", e);
@@ -754,7 +756,7 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
                         repost(repostTask.postKey, repostTask.repostMsg);
                     }
                     try {
-                        Thread.sleep(2000 + new Random().nextInt(1000));
+                        Thread.sleep(2000 + RANDOM.nextInt(1000));
                     } catch (InterruptedException e) {
                         throw new RuntimeException(e);
                     }
@@ -784,20 +786,54 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
                     By.className("feed-fn-loading")
             )); // 等待页面加载
             try {
-                Thread.sleep(5000); // 等五秒钟，等待更多帖子被加载进页面
+                Thread.sleep(5000); // 等五秒钟
             } catch (InterruptedException e) {
                 throw new RuntimeException(e);
             }
             // 好了加载完了
             List<WebElement> list = driver.findElements(
                     By.cssSelector("#feed_friend_list li.f-single.f-s-s:not(.f-single-biz)")
-            ); // 所有的好友动态容器
+            );
+            int numOfPost = list.size();
+            boolean directExitLoop = false;
+            while (Long.parseLong(list.get(list.size() - 1).findElement(By.cssSelector("[name=feed_data]")).getAttribute("data-abstime")) * 1000 > lastFetch) { // 一直往下面翻直到翻到上一次看到的地方
+                driver.executeScript("window.scrollTo(0, document.body.scrollHeight);");
+                for (int i = 0; i < 5; i++) {
+                    list = driver.findElements(
+                            By.cssSelector("#feed_friend_list li.f-single.f-s-s:not(.f-single-biz)")
+                    );
+                    if (numOfPost != list.size()) {
+                        numOfPost = list.size();
+                        break;
+                    }
+                    if (i == 4) directExitLoop = true; // 等了五下还没加载出新的，放弃继续加载
+                }
+                if (directExitLoop) break;
+            }
+            // 如果好友动态被折叠就挨个先展开全文一下
+            for (WebElement item : driver.findElements(By.cssSelector("div.f-info.qz_info_cut > a[data-cmd=qz_toggle]"))) {
+                driver.executeScript(
+                        "arguments[0].scrollIntoView({block: 'center'});", item
+                );
+                item.click();
+                try {
+                    Thread.sleep(4000 + RANDOM.nextInt(2000));
+                } catch (InterruptedException e) {
+                    throw new RuntimeException(e);
+                }
+            }
+            // 所有的好友动态容器
             for (WebElement item : list) {
                 try {
+                    Document doc = org.jsoup.Jsoup.parse(item.getAttribute("outerHTML"));
+                    long timestamp = Long.parseLong(doc.selectFirst("[name=feed_data]").attr("data-abstime"));
+                    if (timestamp*1000 < lastFetch) {
+                        lastFetch = System.currentTimeMillis(); // 标记一下这一次最新动态是这个时间
+                        return;
+                    }
                     String key;
                     MCPost post = new MCPost();
                     @SuppressWarnings("DataFlowIssue") // 前面列表列出来的怎么可能是null
-                    Document doc = org.jsoup.Jsoup.parse(item.getAttribute("outerHTML"));
                     String poster_id = doc.getElementsByClass("f-name q_namecard ").get(0).attr("link").split("_")[1]; // QQ号
                     QQAccount poster;
                     try {
@@ -808,7 +844,7 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
                         poster.setName(doc.getElementsByClass("f-name q_namecard ").get(0).text());
                     }
                     post.poster = poster;
-                    post.timestamp = Long.parseLong(doc.selectFirst("[name=feed_data]").attr("data-abstime"));
+                    post.timestamp = timestamp;
                     // 正文
                     Element div = doc.selectFirst(".f-info");
                     if (div != null) {
@@ -818,14 +854,21 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
                     }
                     // 附图
                     Element img_box = doc.selectFirst(".img-box");
-                    if (img_box != null) for (Element a : img_box.getElementsByTag("a")) {
-                        String[] split = a.attr("data-pickey").split(",", 2);
-                        String url = split[1];
-                        try {
-                            post.messageFields.add(new ImageField(new URL(url)));
-                        } catch (MalformedURLException e) {
-                            logger.error("无法实例化URL: {}", url, e);
+                    if (img_box != null) {
+                        List<ImageField> imgs = new ArrayList<>();
+                        for (Element a : img_box.getElementsByTag("a")) {
+                            String[] split = a.attr("data-pickey").split(",", 2);
+                            String url = split[1];
+                            try {
+                                imgs.add(new ImageField(new URL(url)));
+                            } catch (MalformedURLException e) {
+                                imgs.clear();
+                                for (Element img : img_box.getElementsByTag("img")) {
+                                    imgs.add(new ImageField(new URL(img.attr("src"))));
+                                }
+                            }
                         }
+                        post.messageFields.addAll(imgs);
                     }
                     // 基本信息
                     Element data_ele = doc.selectFirst(".qz_summary i.none");
