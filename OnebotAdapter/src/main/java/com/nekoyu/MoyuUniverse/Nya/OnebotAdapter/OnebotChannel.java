@@ -158,6 +158,8 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
                         throw new RuntimeException(e);
                     }
                     logger.info("{} 登录的 QQ号 为 {} ({}), {} 个好友  {} 个群聊", ID, nickname, accountId, friendCount, groupCount);
+
+                    qZone.addTask(new QZone.Task.FetchPosts());
                 });
             }
 
@@ -781,6 +783,11 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
             wait.until(ExpectedConditions.invisibilityOfElementLocated(
                     By.className("feed-fn-loading")
             )); // 等待页面加载
+            try {
+                Thread.sleep(5000); // 等五秒钟，等待更多帖子被加载进页面
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            }
             // 好了加载完了
             List<WebElement> list = driver.findElements(
                     By.cssSelector("#feed_friend_list li.f-single.f-s-s:not(.f-single-biz)")
@@ -804,9 +811,11 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
                     post.timestamp = Long.parseLong(doc.selectFirst("[name=feed_data]").attr("data-abstime"));
                     // 正文
                     Element div = doc.selectFirst(".f-info");
-                    div.select("br").append("\\n"); // 直接转换的话换行会丢失，所以这里用\n代表换行，也就是说这里其实可以被原有的\n注入，不过不想管
-                    String text = div.text().replace("\\n", "\n");
-                    post.messageFields.add(new TextField(text));
+                    if (div != null) {
+                        div.select("br").append("\\n"); // 直接转换的话换行会丢失，所以这里用\n代表换行，也就是说这里其实可以被原有的\n注入，不过不想管
+                        String text = div.text().replace("\\n", "\n");
+                        post.messageFields.add(new TextField(text));
+                    }
                     // 附图
                     Element img_box = doc.selectFirst(".img-box");
                     if (img_box != null) for (Element a : img_box.getElementsByTag("a")) {
@@ -840,14 +849,14 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
                         if (countEle == null) post.likeCount = 0;
                         else {
                             String countEleText = countEle.text();
-                            if (text.isBlank()) post.likeCount = 0;
+                            if (countEleText.isBlank()) post.likeCount = 0;
                             else {
                                 String digits = countEleText.replaceAll("\\D+", "");
                                 if (digits.isEmpty()) post.likeCount = 0;
                                 try {
                                     post.likeCount = Integer.parseInt(digits);
                                 } catch (NumberFormatException e) {
-                                    logger.warn("Failed to parse like count: {}", text, e);
+                                    logger.warn("Failed to parse like count: {}", countEleText, e);
                                     post.likeCount = 0;
                                 }
                             }
