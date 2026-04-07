@@ -11,13 +11,13 @@ import org.slf4j.LoggerFactory;
 
 import java.awt.*;
 import java.util.*;
-import java.util.List;
+import java.util.regex.Pattern;
 
 public class MessageChannelManager {
     int MESSAGE_LIST_MAX_SIZE = 20;
     public Map<String, MessageChannel> MessageChannels = new HashMap<>();
     Multimap<String, MCMListener> sessionListeners = ArrayListMultimap.create();
-    Multimap<String, MCPListener> mcpListeners = ArrayListMultimap.create();
+    Multimap<String, MCPListener> postListeners = ArrayListMultimap.create();
     Logger logger = LoggerFactory.getLogger(getClass());
     Logger messagingLogger = LoggerFactory.getLogger("Messaging");
     Map<String, MessageList> messageHistory = new HashMap<>();
@@ -30,8 +30,12 @@ public class MessageChannelManager {
         return MessageChannels.get(id);
     }
 
-    public void listenToSession(String sessionId, MCMListener mcmL) {
-        sessionListeners.put(sessionId, mcmL);
+    public void listenToSession(String regex, MCMListener mcmL) {
+        sessionListeners.put(regex, mcmL);
+    }
+
+    public void listenToPost(String regex, MCPListener mcpL) {
+        postListeners.put(regex, mcpL);
     }
 
     /**
@@ -81,11 +85,13 @@ public class MessageChannelManager {
             messageList.add(mcm);
             messageList.clean(MESSAGE_LIST_MAX_SIZE);
 
-            for (MCMListener mcl : sessionListeners.get(mcm.sessionId)) {
-                try {
-                    mcl.onMessage(mcm);
-                } catch (Exception e) {
-                    logger.error("{} 处理消息时出错", mcl, e);
+            for (String regex : sessionListeners.keySet()) {
+                if (Pattern.matches(regex, mcm.sessionId)) for (MCMListener mcmL : sessionListeners.get(regex)) {
+                    try {
+                        mcmL.onMessage(mcm);
+                    } catch (Exception e) {
+                        logger.error("{} 处理消息时出错", mcmL, e);
+                    }
                 }
             }
         }
@@ -106,8 +112,15 @@ public class MessageChannelManager {
                 mcp.poster.id,
                 preview
         );
-        for (MCPListener mcpListener : mcpListeners.get(mcp.sessionId)) {
-            mcpListener.onMessage(mcp);
+
+        for (String regex : postListeners.keySet()) {
+            if (Pattern.matches(regex, mcp.sessionId)) for (MCPListener mcpL : postListeners.get(regex)) {
+                try {
+                    mcpL.onMessage(mcp);
+                } catch (Exception e) {
+                    logger.error("{} 处理消息时出错", mcpL, e);
+                }
+            }
         }
     }
 
@@ -159,6 +172,7 @@ public class MessageChannelManager {
             if (session.avatar != null) {
                 fg = ColorUtils.fg(session.avatar.getMainColor());
             }
+            //noinspection UnnecessaryToStringCall
             messagingLogger.info("{}{}{} {}{}{} <- {}",
                     ColorUtils.fg(mc.mainColor),
                     mc.ID,
