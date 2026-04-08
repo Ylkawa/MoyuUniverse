@@ -723,8 +723,7 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
             try {
                 var resp = request(obr);
                 String cookiesString = resp.data.getAsJsonObject().get("cookies").getAsString();
-                String bkn = resp.data.getAsJsonObject().get("bkn").getAsString(); // 不知道有什么用
-                logger.debug(cookiesString);
+//                String bkn = resp.data.getAsJsonObject().get("bkn").getAsString(); // 不知道有什么用
                 driver.get("https://qzone.qq.com/"); // 先打开这个页面
                 new WebDriverWait(driver, Duration.ofSeconds(10)).until(
                         webDriver -> Objects.equals(((JavascriptExecutor) webDriver)
@@ -785,6 +784,7 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
             wait.until(ExpectedConditions.invisibilityOfElementLocated(
                     By.className("feed-fn-loading")
             )); // 等待页面加载
+            logger.debug("page loaded");
             try {
                 Thread.sleep(5000); // 等五秒钟
             } catch (InterruptedException e) {
@@ -797,6 +797,7 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
             int numOfPost = list.size();
             boolean directExitLoop = false;
             while (Long.parseLong(list.get(list.size() - 1).findElement(By.cssSelector("[name=feed_data]")).getAttribute("data-abstime")) * 1000 > lastFetch) { // 一直往下面翻直到翻到上一次看到的地方
+                logger.debug("rolling page to get more posts");
                 driver.executeScript("window.scrollTo(0, document.body.scrollHeight);");
                 for (int i = 0; i < 5; i++) {
                     list = driver.findElements(
@@ -806,7 +807,10 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
                         numOfPost = list.size();
                         break;
                     }
-                    if (i == 4) directExitLoop = true; // 等了五下还没加载出新的，放弃继续加载
+                    if (i == 4) {
+                        logger.debug("unable to roll page");
+                        directExitLoop = true; // 等了五下还没加载出新的，放弃继续加载
+                    }
                 }
                 if (directExitLoop) break;
             }
@@ -816,6 +820,7 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
                         "arguments[0].scrollIntoView({block: 'center'});", item
                 );
                 item.click();
+                logger.debug("unfolded a post");
                 try {
                     Thread.sleep(4000 + RANDOM.nextInt(2000));
                 } catch (InterruptedException e) {
@@ -823,12 +828,14 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
                 }
             }
             // 所有的好友动态容器
+            logger.debug("start to fetch");
             for (WebElement item : list) {
                 try {
                     Document doc = org.jsoup.Jsoup.parse(item.getAttribute("outerHTML"));
                     long timestamp = Long.parseLong(doc.selectFirst("[name=feed_data]").attr("data-abstime"));
                     if (timestamp*1000 < lastFetch) {
                         lastFetch = System.currentTimeMillis(); // 标记一下这一次最新动态是这个时间
+                        logger.debug("fetched");
                         return;
                     }
                     String key;
