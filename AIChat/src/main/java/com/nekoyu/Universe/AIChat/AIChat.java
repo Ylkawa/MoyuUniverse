@@ -29,6 +29,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.jar.JarFile;
+import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
 
@@ -39,7 +40,7 @@ public class AIChat extends Law {
     static Multimap<String, LLMFunction> llmFunctions = ArrayListMultimap.create();
     List<AIChatPlugin> aiChatPlugins = new ArrayList<>();
     Config globalCfg;
-    Memory Memory = new Memory();
+    Memory MEMORY = new Memory();
 
     @Override
     public boolean prepare() {
@@ -288,20 +289,22 @@ public class AIChat extends Law {
                         Assistant assistant = lp.newAssistant(sessionCfg.Model);
                         // 生成记忆这种应该不需要tool
                         assistant.setSystemPrompt("""
-                                你不与用户对话，只负责记忆的构建，用户角色的输入内容为用户发布的帖子，请以第三人称口吻分条目输出对用户的关键记忆，尝试分析用户行文和说话习惯，要求各条目独立于其他条目，保证打乱之后能以原意解读
+                                你不与用户对话，只负责记忆的构建，用户角色的输入内容为用户的聊天记录或者用户发布的帖子，请以第三人称口吻分条目输出对用户的关键记忆，尝试分析用户行文和说话习惯，要求各条目独立于其他条目，保证打乱之后能以原意解读
                                 包括：近期用户经历的事情、用户心理状态
                                 为避免生成的记忆不符合真实情况，请只输出可以确定的内容，并及时移除不再有用的记忆、修改有误的记忆
                                 
-                                Assistant的输出应当严格遵循此格式，记忆条目ID和记忆修改时间会自动一并分配并写入：
+                                Assistant的输出应当严格遵循此格式 且不应自行添加多余参数，记忆条目ID和记忆修改时间会自动一并分配并写入：
                                 
-                                NEW: [要新增的记忆]
-                                UPDATE [记忆条目ID]: [修改后的记忆内容]
+                                [目标LocationId]NEW: [要新增的记忆]
+                                [目标LocationId]UPDATE [记忆条目ID]: [修改后的记忆内容]
                                 DELETE [要删除的记忆条目ID]
                                 
                                 例如：
-                                NEW: 用户是一个Java阵营开发者
+                                NEW[Universe:group/12435678]: 群聊主要讨论人工智能大语言模型应用开发
                                 UPDATE 12: 用户比较喜欢VOCALOID的音乐
-                                DELETE 3""");
+                                DELETE 3
+                                
+                                LocationId定义记忆条目的作用域，作用在user上的记忆则user出现的场景生效，作用在group上则对此群聊生效""");
                         var reqEv = new RequestEvent();
                         MessageList ml = new MessageList();
                         MCMessage msg = new MCMessage();
@@ -329,13 +332,19 @@ public class AIChat extends Law {
                             StringBuilder respTokens = new StringBuilder();
                             assistant.completions(ml, extensionalArgs, outputs -> respTokens.append(outputs));
                             for (var line : respTokens.toString().split("\n")) {
-                                // TODO: Fill it
                                 if (line.toUpperCase().startsWith("UPDATE")) {
-
+                                    Matcher matcher = Pattern.compile("^UPDATE (?<MemKey>\\d+): (?<Content>.+)").matcher(line);
+                                    int memKey = Integer.parseInt(matcher.group("MemKey"));
+                                    String content = matcher.group("Content");
+                                    MEMORY.updateMemory(memKey, content);
                                 } else if (line.toUpperCase().startsWith("DELETE")) {
-
+                                    Matcher matcher = Pattern.compile("^DELETE (?<MemKey>\\d+)").matcher(line);
+                                    MEMORY.deleteMemory(matcher.group("MemKey"));
                                 } else if (line.toUpperCase().startsWith("NEW")) {
-
+                                    Matcher matcher = Pattern.compile("^NEW\\[(?<LocationId>[^]]+)]: (?<Content>.+)").matcher(line);
+                                    String locationId = matcher.group("LocationId");
+                                    String content = matcher.group("Content");
+                                    MEMORY.newMemory(locationId, content);
                                 }
                             }
                         } catch (IOException e) {
@@ -361,8 +370,19 @@ public class AIChat extends Law {
         llmFunctions.put(toolName, tool);
     }
 
+    // TODO: Fill it
     public class Memory {
-        public void updateMemory(String locationId, int mem_key, String value) {
+        public void newMemory(String locationId, String content) {
+            String sql = """
+                    """;
+        }
+
+        public void updateMemory(int memKey, String content) {
+            String sql = """
+                    """;
+        }
+
+        public void deleteMemory(String memKey) {
             String sql = """
                     """;
         }
