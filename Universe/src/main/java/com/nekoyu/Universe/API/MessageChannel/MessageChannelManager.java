@@ -98,8 +98,8 @@ public class MessageChannelManager {
     }
 
     public void onMessage(MessageChannel mc, MCPost mcp) {
-        String preview = mcp.messageFields.toString();
-        preview = preview.replaceAll("\n", " ");
+        mcp.messageString = mcp.messageFields.toString();
+        String preview = mcp.messageString.replaceAll("\n", " ");
         if (preview.length() > 20) preview = preview.substring(0, 20) + "...";
         logger.info(
                 "{}{}{}[POST]{}{}{}({}): {}",
@@ -149,7 +149,7 @@ public class MessageChannelManager {
     }
 
     public void sendMessage(String sessionId, String message) {
-        MessageChain msg = new MessageChain();
+        MFChain msg = new MFChain();
         msg.add(new TextField(message));
         sendMessage(sessionId, msg);
     }
@@ -158,7 +158,7 @@ public class MessageChannelManager {
      * 发送消息
      * sessionId 必须为全局sessionId
      */
-    public void sendMessage(String sessionId, MessageChain message) {
+    public void sendMessage(String sessionId, MFChain message) {
         String[] target = sessionId.split(":");
         MessageChannel mc = getChannel(target[0]);
         if (mc == null) throw new RuntimeException("不存在此MessageChannel");
@@ -200,7 +200,7 @@ public class MessageChannelManager {
         } else throw new UnsupportedAction(mc.ID + " doesn't support session chat");
     }
 
-    public void replyPost(String sessionId, MessageChain message) {
+    public void replyPost(String sessionId, MFChain message) {
         logger.error("快别reply了没写完");
         // TODO PostChat 相关
     }

@@ -450,7 +450,7 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
     }
 
     @Override
-    public int sendMessage(String sessionId, MessageChain message) {
+    public int sendMessage(String sessionId, MFChain message) {
         String[] target = sessionId.split("/");
         return switch (target[0]) {
             case "group" -> sendGroupMessage(target[1], message);
@@ -580,13 +580,13 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
     }
 
     @Override
-    public void replyPost(String sessionId, MessageChain message) {
+    public void replyPost(String sessionId, MFChain message) {
         String[] split = sessionId.split("/");
         qZone.addTask(new QZone.Task.SendCommentTask(split[split.length - 1], message));
     }
 
     @Override
-    public void repost(String sessionId, MessageChain message) {
+    public void repost(String sessionId, MFChain message) {
         String[] split = sessionId.split("/");
         qZone.addTask(new QZone.Task.RepostTask(split[split.length - 1], message));
     }
@@ -674,9 +674,9 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
 
             public static class SendCommentTask extends Task {
                 String postKey;
-                MessageChain comment;
+                MFChain comment;
 
-                public SendCommentTask(String postKey, MessageChain comment) {
+                public SendCommentTask(String postKey, MFChain comment) {
                     type = Type.sendComment;
                     this.postKey = postKey;
                     this.comment = comment;
@@ -685,9 +685,9 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
 
             public static class RepostTask extends Task {
                 String postKey;
-                MessageChain repostMsg;
+                MFChain repostMsg;
 
-                public RepostTask(String postKey, MessageChain repostMsg) {
+                public RepostTask(String postKey, MFChain repostMsg) {
                     type = Type.repost;
                     this.postKey = postKey;
                     this.repostMsg = repostMsg;
@@ -965,7 +965,7 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
                     .perform();
         }
 
-        public void sendComment(String key, MessageChain comment) {
+        public void sendComment(String key, MFChain comment) {
             // 找到正文块（有 data-key）
             WebElement data_ele = driver.findElement(By.cssSelector(
                     "div.f-item.f-s-i[data-key='" + key + "']"
@@ -989,7 +989,7 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
             textInput.sendKeys(Keys.CONTROL, Keys.ENTER);
         }
 
-        public void repost(String key, MessageChain repostMsg) {
+        public void repost(String key, MFChain repostMsg) {
             // 找到正文块（有 data-key）
             WebElement data_ele = driver.findElement(By.cssSelector(
                     "div.f-item.f-s-i[data-key='" + key + "']"

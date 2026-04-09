@@ -7,7 +7,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 
-public class MessageChain extends LinkedList<MsgField> {
+public class MFChain extends LinkedList<MsgField> {
     public String solveAll(boolean description) {
         var sb = new StringBuilder();
         if (description) {

@@ -29,6 +29,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.jar.JarFile;
+import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
 
 public class AIChat extends Law {
@@ -38,6 +39,7 @@ public class AIChat extends Law {
     static Multimap<String, LLMFunction> llmFunctions = ArrayListMultimap.create();
     List<AIChatPlugin> aiChatPlugins = new ArrayList<>();
     Config globalCfg;
+    Memory Memory = new Memory();
 
     @Override
     public boolean prepare() {
@@ -147,7 +149,7 @@ public class AIChat extends Law {
     public void run() {
         SimpleDateFormat sdf = new SimpleDateFormat("[yyyy-MM-dd HH:mm:ss]");
         for (SessionConfig sessionCfg : configs) {
-            MCMListener mcmL = mcm -> {
+            Universe.MessageChannelManager.listenToSession(sessionCfg.SessionId, mcm -> {
                 if (sessionCfg.Trigger.equals("every") || mcm.messageString.contains(sessionCfg.Keyword) || mcm.level >= 2) {
                     Object provider = Universe.Providers.get(sessionCfg.Provider);
                     if (provider instanceof LLMProvider lp) {
@@ -278,8 +280,73 @@ public class AIChat extends Law {
                         else logger.warn("定义的AI服务适配器 {} 无效", sessionCfg.Provider);
                     }
                 }
-            };
-            Universe.MessageChannelManager.listenToSession(sessionCfg.SessionId, mcmL);
+            });
+            Universe.MessageChannelManager.listenToPost("sessionCfg", mcp -> {
+                if (sessionCfg.Trigger.equals("every") || mcp.messageString.contains(sessionCfg.Keyword) || mcp.level >= 2) {
+                    Object provider = Universe.Providers.get(sessionCfg.Provider);
+                    if (provider instanceof LLMProvider lp) {
+                        Assistant assistant = lp.newAssistant(sessionCfg.Model);
+                        // 生成记忆这种应该不需要tool
+                        assistant.setSystemPrompt("""
+                                你不与用户对话，只负责记忆的构建，用户角色的输入内容为用户发布的帖子，请以第三人称口吻分条目输出对用户的关键记忆，尝试分析用户行文和说话习惯，要求各条目独立于其他条目，保证打乱之后能以原意解读
+                                包括：近期用户经历的事情、用户心理状态
+                                为避免生成的记忆不符合真实情况，请只输出可以确定的内容，并及时移除不再有用的记忆、修改有误的记忆
+                                
+                                Assistant的输出应当严格遵循此格式，记忆条目ID和记忆修改时间会自动一并分配并写入：
+                                
+                                NEW: [要新增的记忆]
+                                UPDATE [记忆条目ID]: [修改后的记忆内容]
+                                DELETE [要删除的记忆条目ID]
+                                
+                                例如：
+                                NEW: 用户是一个Java阵营开发者
+                                UPDATE 12: 用户比较喜欢VOCALOID的音乐
+                                DELETE 3""");
+                        var reqEv = new RequestEvent();
+                        MessageList ml = new MessageList();
+                        MCMessage msg = new MCMessage();
+                        msg.putMetainfo("role", "user");
+                        msg.sender = mcp.poster;
+                        msg.messageFields = mcp.messageFields;
+                        ml.add(msg);
+
+                        reqEv.placeholders.put("TIME", sdf.format(new Date(System.currentTimeMillis())));
+                        for (var plug : aiChatPlugins) {
+                            try {
+                                plug.onRequest(reqEv);
+                            } catch (Exception e) {
+                                logger.debug("{} 在处理 RequestEvent 发生错误", plug.id, e);
+                            }
+                        }
+
+                        // Extensional Args
+                        ExtensionalArgs extensionalArgs = new ExtensionalArgs();
+                        extensionalArgs.placeholders.put("_LocationID", mcp.getLocationId());
+                        extensionalArgs.enable_thinking = sessionCfg.enable_thinking;
+
+                        // 接收响应 tokens
+                        try {
+                            StringBuilder respTokens = new StringBuilder();
+                            assistant.completions(ml, extensionalArgs, outputs -> respTokens.append(outputs));
+                            for (var line : respTokens.toString().split("\n")) {
+                                // TODO: Fill it
+                                if (line.toUpperCase().startsWith("UPDATE")) {
+
+                                } else if (line.toUpperCase().startsWith("DELETE")) {
+
+                                } else if (line.toUpperCase().startsWith("NEW")) {
+
+                                }
+                            }
+                        } catch (IOException e) {
+                            logger.error("生成失败", e);
+                        }
+                    } else {
+                        if (provider == null) logger.warn("无此适配器 {}", sessionCfg.Provider);
+                        else logger.warn("定义的AI服务适配器 {} 无效", sessionCfg.Provider);
+                    }
+                }
+            });
         }
     }
 
@@ -292,5 +359,12 @@ public class AIChat extends Law {
 
     public static void registerFunction(String toolName, LLMFunction tool) {
         llmFunctions.put(toolName, tool);
+    }
+
+    public class Memory {
+        public void updateMemory(String locationId, int mem_key, String value) {
+            String sql = """
+                    """;
+        }
     }
 }

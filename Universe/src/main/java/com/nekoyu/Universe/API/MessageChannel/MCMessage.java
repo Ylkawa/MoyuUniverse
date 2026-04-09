@@ -16,8 +16,8 @@ public class MCMessage {
     public String sessionId; // 这个sessionId应该是Global SessionId
     public long time;
     public long id;
-    public MessageChain messageFields;
-    public int level;
+    public MFChain messageFields;
+    public int level = 0;
     public Map<String, Object> metainfo = new HashMap<>();
     public boolean isRecalled = false;
     /**
@@ -28,7 +28,7 @@ public class MCMessage {
     public MCMessage() {
         sender = new Account();
         receiver = new Account();
-        messageFields = new MessageChain();
+        messageFields = new MFChain();
         level = 0;
     }
 

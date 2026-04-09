@@ -1,18 +1,18 @@
 package com.nekoyu.Universe.API.MessageChannel;
 
-import com.nekoyu.Universe.API.MessageChannel.MessageField.MsgField;
 import com.nekoyu.Universe.Universe;
 
 import javax.annotation.Nullable;
 import java.util.ArrayList;
-import java.util.LinkedList;
 import java.util.List;
 
 public class MCPost {
     public String sessionId;
+    public int level = 0;
     public Account poster;
     public long timestamp = 0;
-    public MessageChain messageFields;
+    public MFChain messageFields;
+    public String messageString;
     @Nullable
     public MCPost repost; // 如果这个帖子是转载自某个帖子，则在此处指向原帖子，此值不保证提供
     public List<Account> likers; // 部分点赞者
@@ -26,10 +26,14 @@ public class MCPost {
         likers = new ArrayList<>();
         reposts = new ArrayList<>();
         replies = new ArrayList<>();
-        messageFields = new MessageChain();
+        messageFields = new MFChain();
     }
 
-    public void reply(MessageChain message) {
+    public void reply(MFChain message) {
         Universe.MessageChannelManager.replyPost(sessionId, message);
+    }
+
+    public String getLocationId() {
+        return poster.platform + ":" + sessionId.split(":")[1];
     }
 }
