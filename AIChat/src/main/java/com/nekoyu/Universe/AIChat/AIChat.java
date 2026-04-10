@@ -391,12 +391,13 @@ public class AIChat extends Law {
             config.setUsername(sqlConfig.user);
             config.setPassword(sqlConfig.password);
             ds = new HikariDataSource(config);
+            initTable();
         }
 
         public void newMemory(String locationId, String content) {
             try (var conn = ds.getConnection();
                  PreparedStatement p = conn.prepareStatement("""
-                         INSERT INTO memory(location_id, content)
+                         INSERT INTO memories(location_id, content)
                          values (?, ?)""")
             ) {
                 p.setString(1, locationId);
@@ -410,7 +411,7 @@ public class AIChat extends Law {
         public void updateMemory(int memKey, String content) {
             try (var conn = ds.getConnection();
                  PreparedStatement p = conn.prepareStatement("""
-                         UPDATE memory
+                         UPDATE memories
                          SET content = (?)
                          WHERE mem_key = (?)""")
             ) {
@@ -425,7 +426,7 @@ public class AIChat extends Law {
         public void deleteMemory(int memKey) {
             try (var conn = ds.getConnection();
                  PreparedStatement p = conn.prepareStatement("""
-                         DELETE FROM memory
+                         DELETE FROM memories
                          WHERE mem_key = (?)""")
             ) {
                 p.setInt(1, memKey);
@@ -435,6 +436,22 @@ public class AIChat extends Law {
             }
         }
 
-        // TODO: 做一个判断数据表是否准备好的逻辑，如果不存在自动创建
+        public void initTable() {
+            try (var conn = ds.getConnection();
+                 PreparedStatement p = conn.prepareStatement("""
+                 CREATE TABLE IF NOT EXISTS memories (
+                     mem_key INT AUTO_INCREMENT PRIMARY KEY,
+                     location_id VARCHAR(255) NOT NULL,
+                     content TEXT NOT NULL,
+                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                     INDEX idx_location_id (location_id)
+                 )""")
+            ) {
+                p.execute();
+            } catch (SQLException e) {
+                throw new RuntimeException(e);
+            }
+        }
     }
 }
