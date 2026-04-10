@@ -349,7 +349,7 @@ public class AIChat extends Law {
                                         MEMORY.updateMemory(memKey, content);
                                     } else if (line.toUpperCase().startsWith("DELETE")) {
                                         Matcher matcher = Pattern.compile("^DELETE (?<MemKey>\\d+)").matcher(line);
-                                        MEMORY.deleteMemory(matcher.group("MemKey"));
+                                        MEMORY.deleteMemory(Integer.parseInt(matcher.group("MemKey")));
                                     } else if (line.toUpperCase().startsWith("NEW")) {
                                         Matcher matcher = Pattern.compile("^NEW \\[(?<LocationId>[^]]+)]: (?<Content>.+)").matcher(line);
                                         String locationId = matcher.group("LocationId");
