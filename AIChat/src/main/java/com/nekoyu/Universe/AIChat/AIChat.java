@@ -15,14 +15,19 @@ import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.LLMFunction;
 import com.nekoyu.Universe.API.Providers.LLMProvider.LLMProvider;
 import com.nekoyu.Universe.LawsLoader.Law;
 import com.nekoyu.Universe.Universe;
+import com.zaxxer.hikari.HikariConfig;
+import com.zaxxer.hikari.HikariDataSource;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import javax.annotation.Nullable;
 import java.io.*;
 import java.lang.reflect.InvocationTargetException;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.nio.charset.StandardCharsets;
+import java.sql.PreparedStatement;
+import java.sql.SQLException;
 import java.text.SimpleDateFormat;
 import java.util.*;
 import java.util.concurrent.ExecutorService;
@@ -40,7 +45,8 @@ public class AIChat extends Law {
     static Multimap<String, LLMFunction> llmFunctions = ArrayListMultimap.create();
     List<AIChatPlugin> aiChatPlugins = new ArrayList<>();
     Config globalCfg;
-    Memory MEMORY = new Memory();
+    @Nullable
+    Memory MEMORY = null;
 
     @Override
     public boolean prepare() {
@@ -53,13 +59,16 @@ public class AIChat extends Law {
         if (!toolsCFGDic.exists()) toolsCFGDic.mkdir();
         loadSessionCfg(sessionCFGDic);
 
-        // 从这里开始重写
         try (Reader reader = new InputStreamReader(
                 new FileInputStream("./config/AIChat/config.json"), StandardCharsets.UTF_8)) {
             globalCfg = gson.fromJson(reader, Config.class);
+            if (globalCfg.SQLConfig != null) {
+                MEMORY = new Memory(globalCfg.SQLConfig);
+            }
         } catch (IOException e) {
             // 没找到配置文件，所以新建一个配置文件
             globalCfg = new Config();
+            globalCfg.SQLConfig = new Config.SQLConfig();
             globalCfg.Prompt = ""; // 默认的System_prompt，这里留白了没写
             try (FileWriter fw = new FileWriter("./config/AIChat/config.json")) {
                 fw.write(gson.toJson(globalCfg)); //写入
@@ -286,69 +295,71 @@ public class AIChat extends Law {
                 if (sessionCfg.Trigger.equals("every") || mcp.messageString.contains(sessionCfg.Keyword) || mcp.level >= 2) {
                     Object provider = Universe.Providers.get(sessionCfg.Provider);
                     if (provider instanceof LLMProvider lp) {
-                        Assistant assistant = lp.newAssistant(sessionCfg.Model);
-                        // 生成记忆这种应该不需要tool
-                        assistant.setSystemPrompt("""
-                                你不与用户对话，只负责记忆的构建，用户角色的输入内容为用户的聊天记录或者用户发布的帖子，请以第三人称口吻分条目输出对用户的关键记忆，尝试分析用户行文和说话习惯，要求各条目独立于其他条目，保证打乱之后能以原意解读
-                                包括：近期用户经历的事情、用户心理状态
-                                为避免生成的记忆不符合真实情况，请只输出可以确定的内容，并及时移除不再有用的记忆、修改有误的记忆
-                                
-                                Assistant的输出应当严格遵循此格式 且不应自行添加多余参数，记忆条目ID和记忆修改时间会自动一并分配并写入：
-                                
-                                [目标LocationId]NEW: [要新增的记忆]
-                                [目标LocationId]UPDATE [记忆条目ID]: [修改后的记忆内容]
-                                DELETE [要删除的记忆条目ID]
-                                
-                                例如：
-                                NEW[Universe:group/12435678]: 群聊主要讨论人工智能大语言模型应用开发
-                                UPDATE 12: 用户比较喜欢VOCALOID的音乐
-                                DELETE 3
-                                
-                                LocationId定义记忆条目的作用域，作用在user上的记忆则user出现的场景生效，作用在group上则对此群聊生效""");
-                        var reqEv = new RequestEvent();
-                        MessageList ml = new MessageList();
-                        MCMessage msg = new MCMessage();
-                        msg.putMetainfo("role", "user");
-                        msg.sender = mcp.poster;
-                        msg.messageFields = mcp.messageFields;
-                        ml.add(msg);
+                        if (MEMORY != null) {
+                            Assistant assistant = lp.newAssistant(sessionCfg.Model);
+                            // 生成记忆这种应该不需要tool
+                            assistant.setSystemPrompt("""
+                                    你不与用户对话，只负责记忆的构建，用户角色的输入内容为用户的聊天记录或者用户发布的帖子，请以第三人称口吻分条目输出对用户的关键记忆，尝试分析用户行文和说话习惯，要求各条目独立于其他条目，保证打乱之后能以原意解读
+                                    包括：近期用户经历的事情、用户心理状态
+                                    为避免生成的记忆不符合真实情况，请只输出可以确定的内容，并及时移除不再有用的记忆、修改有误的记忆
+                                    
+                                    Assistant的输出应当严格遵循此格式 且不应自行添加多余参数，记忆条目ID和记忆修改时间会自动一并分配并写入：
+                                    
+                                    NEW [目标LocationId]: [要新增的记忆]
+                                    UPDATE [记忆条目ID]: [修改后的记忆内容]
+                                    DELETE [要删除的记忆条目ID]
+                                    
+                                    例如：
+                                    NEW[Universe:group/12435678]: 群聊主要讨论人工智能大语言模型应用开发
+                                    UPDATE 12: 用户比较喜欢VOCALOID的音乐
+                                    DELETE 3
+                                    
+                                    LocationId定义记忆条目的作用域，作用在user上的记忆则user出现的场景生效，作用在group上则对此群聊生效""");
+                            var reqEv = new RequestEvent();
+                            MessageList ml = new MessageList();
+                            MCMessage msg = new MCMessage();
+                            msg.putMetainfo("role", "user");
+                            msg.sender = mcp.poster;
+                            msg.messageFields = mcp.messageFields;
+                            ml.add(msg);
 
-                        reqEv.placeholders.put("TIME", sdf.format(new Date(System.currentTimeMillis())));
-                        for (var plug : aiChatPlugins) {
-                            try {
-                                plug.onRequest(reqEv);
-                            } catch (Exception e) {
-                                logger.debug("{} 在处理 RequestEvent 发生错误", plug.id, e);
-                            }
-                        }
-
-                        // Extensional Args
-                        ExtensionalArgs extensionalArgs = new ExtensionalArgs();
-                        extensionalArgs.placeholders.put("_LocationID", mcp.getLocationId());
-                        extensionalArgs.enable_thinking = sessionCfg.enable_thinking;
-
-                        // 接收响应 tokens
-                        try {
-                            StringBuilder respTokens = new StringBuilder();
-                            assistant.completions(ml, extensionalArgs, outputs -> respTokens.append(outputs));
-                            for (var line : respTokens.toString().split("\n")) {
-                                if (line.toUpperCase().startsWith("UPDATE")) {
-                                    Matcher matcher = Pattern.compile("^UPDATE (?<MemKey>\\d+): (?<Content>.+)").matcher(line);
-                                    int memKey = Integer.parseInt(matcher.group("MemKey"));
-                                    String content = matcher.group("Content");
-                                    MEMORY.updateMemory(memKey, content);
-                                } else if (line.toUpperCase().startsWith("DELETE")) {
-                                    Matcher matcher = Pattern.compile("^DELETE (?<MemKey>\\d+)").matcher(line);
-                                    MEMORY.deleteMemory(matcher.group("MemKey"));
-                                } else if (line.toUpperCase().startsWith("NEW")) {
-                                    Matcher matcher = Pattern.compile("^NEW\\[(?<LocationId>[^]]+)]: (?<Content>.+)").matcher(line);
-                                    String locationId = matcher.group("LocationId");
-                                    String content = matcher.group("Content");
-                                    MEMORY.newMemory(locationId, content);
+                            reqEv.placeholders.put("TIME", sdf.format(new Date(System.currentTimeMillis())));
+                            for (var plug : aiChatPlugins) {
+                                try {
+                                    plug.onRequest(reqEv);
+                                } catch (Exception e) {
+                                    logger.debug("{} 在处理 RequestEvent 发生错误", plug.id, e);
                                 }
                             }
-                        } catch (IOException e) {
-                            logger.error("生成失败", e);
+
+                            // Extensional Args
+                            ExtensionalArgs extensionalArgs = new ExtensionalArgs();
+                            extensionalArgs.placeholders.put("_LocationID", mcp.getLocationId());
+                            extensionalArgs.enable_thinking = sessionCfg.enable_thinking;
+
+                            // 接收响应 tokens
+                            try {
+                                StringBuilder respTokens = new StringBuilder();
+                                assistant.completions(ml, extensionalArgs, outputs -> respTokens.append(outputs));
+                                for (var line : respTokens.toString().split("\n")) {
+                                    if (line.toUpperCase().startsWith("UPDATE")) {
+                                        Matcher matcher = Pattern.compile("^UPDATE (?<MemKey>\\d+): (?<Content>.+)").matcher(line);
+                                        int memKey = Integer.parseInt(matcher.group("MemKey"));
+                                        String content = matcher.group("Content");
+                                        MEMORY.updateMemory(memKey, content);
+                                    } else if (line.toUpperCase().startsWith("DELETE")) {
+                                        Matcher matcher = Pattern.compile("^DELETE (?<MemKey>\\d+)").matcher(line);
+                                        MEMORY.deleteMemory(matcher.group("MemKey"));
+                                    } else if (line.toUpperCase().startsWith("NEW")) {
+                                        Matcher matcher = Pattern.compile("^NEW \\[(?<LocationId>[^]]+)]: (?<Content>.+)").matcher(line);
+                                        String locationId = matcher.group("LocationId");
+                                        String content = matcher.group("Content");
+                                        MEMORY.newMemory(locationId, content);
+                                    }
+                                }
+                            } catch (IOException e) {
+                                logger.error("生成失败", e);
+                            }
                         }
                     } else {
                         if (provider == null) logger.warn("无此适配器 {}", sessionCfg.Provider);
@@ -370,21 +381,60 @@ public class AIChat extends Law {
         llmFunctions.put(toolName, tool);
     }
 
-    // TODO: Fill it
     public class Memory {
+        HikariDataSource ds;
+
+        public Memory(Config.SQLConfig sqlConfig) {
+            HikariConfig config = new HikariConfig();
+            config.setDriverClassName("com.mysql.cj.jdbc.Driver");
+            config.setJdbcUrl(sqlConfig.url);
+            config.setUsername(sqlConfig.user);
+            config.setPassword(sqlConfig.password);
+            ds = new HikariDataSource(config);
+        }
+
         public void newMemory(String locationId, String content) {
-            String sql = """
-                    """;
+            try (var conn = ds.getConnection();
+                 PreparedStatement p = conn.prepareStatement("""
+                         INSERT INTO memory(location_id, content)
+                         values (?, ?)""")
+            ) {
+                p.setString(1, locationId);
+                p.setString(2, content);
+                p.execute();
+            } catch (SQLException e) {
+                throw new RuntimeException(e);
+            }
         }
 
         public void updateMemory(int memKey, String content) {
-            String sql = """
-                    """;
+            try (var conn = ds.getConnection();
+                 PreparedStatement p = conn.prepareStatement("""
+                         UPDATE memory
+                         SET content = (?)
+                         WHERE mem_key = (?)""")
+            ) {
+                p.setString(1, content);
+                p.setInt(2, memKey);
+                p.executeUpdate();
+            } catch (SQLException e) {
+                throw new RuntimeException(e);
+            }
         }
 
-        public void deleteMemory(String memKey) {
-            String sql = """
-                    """;
+        public void deleteMemory(int memKey) {
+            try (var conn = ds.getConnection();
+                 PreparedStatement p = conn.prepareStatement("""
+                         DELETE FROM memory
+                         WHERE mem_key = (?)""")
+            ) {
+                p.setInt(1, memKey);
+                p.executeUpdate();
+            } catch (SQLException e) {
+                throw new RuntimeException(e);
+            }
         }
+
+        // TODO: 做一个判断数据表是否准备好的逻辑，如果不存在自动创建
     }
 }
