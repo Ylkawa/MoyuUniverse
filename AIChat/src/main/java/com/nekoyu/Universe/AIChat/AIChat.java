@@ -27,6 +27,7 @@ import java.net.URL;
 import java.net.URLClassLoader;
 import java.nio.charset.StandardCharsets;
 import java.sql.PreparedStatement;
+import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.text.SimpleDateFormat;
 import java.util.*;
@@ -340,7 +341,7 @@ public class AIChat extends Law {
                             // 接收响应 tokens
                             try {
                                 StringBuilder respTokens = new StringBuilder();
-                                assistant.completions(ml, extensionalArgs, outputs -> respTokens.append(outputs));
+                                assistant.completions(ml, extensionalArgs, respTokens::append);
                                 for (var line : respTokens.toString().split("\n")) {
                                     if (line.toUpperCase().startsWith("UPDATE")) {
                                         Matcher matcher = Pattern.compile("^UPDATE (?<MemKey>\\d+): (?<Content>.+)").matcher(line);
@@ -436,22 +437,66 @@ public class AIChat extends Law {
             }
         }
 
+        public List<MemObj> getMemories(List<String> locIds) {
+            if (locIds == null || locIds.isEmpty()) {
+                return List.of();
+            }
+
+            String placeholders = String.join(",", Collections.nCopies(locIds.size(), "?"));
+
+            String sql = "SELECT location_id, mem_key, value FROM memories WHERE location_id IN (" + placeholders + ")";
+
+            List<MemObj> result = new ArrayList<>();
+
+            try (var conn = ds.getConnection();
+                 PreparedStatement ps = conn.prepareStatement(sql)) {
+
+                // 绑定参数
+                for (int i = 0; i < locIds.size(); i++) {
+                    ps.setString(i + 1, locIds.get(i));
+                }
+
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) {
+                        MemObj obj = new MemObj();
+                        obj.locationId = rs.getString("location_id");
+                        obj.memKey = rs.getInt("mem_key");
+                        obj.content = rs.getString("content");
+                        result.add(obj);
+                    }
+                }
+
+            } catch (SQLException e) {
+                throw new RuntimeException(e);
+            }
+
+            return result;
+        }
+
         public void initTable() {
             try (var conn = ds.getConnection();
                  PreparedStatement p = conn.prepareStatement("""
-                 CREATE TABLE IF NOT EXISTS memories (
+                     CREATE TABLE IF NOT EXISTS memories (
                      mem_key INT AUTO_INCREMENT PRIMARY KEY,
                      location_id VARCHAR(255) NOT NULL,
                      content TEXT NOT NULL,
                      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                      INDEX idx_location_id (location_id)
-                 )""")
+                     )""")
             ) {
                 p.execute();
             } catch (SQLException e) {
                 throw new RuntimeException(e);
             }
+        }
+
+        public static class MemObj {
+            int memKey;
+            String locationId;
+            String content;
+            long createdAt;
+            long updatedAt;
         }
     }
 }
