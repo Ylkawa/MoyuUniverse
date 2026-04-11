@@ -3,6 +3,7 @@ package com.nekoyu.Universe.AIChat;
 import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.Multimap;
 import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
 import com.nekoyu.Universe.AIChat.Event.RequestEvent;
 import com.nekoyu.Universe.API.MessageChannel.*;
 import com.nekoyu.Universe.API.MessageChannel.MessageField.ImageField;
@@ -65,10 +66,14 @@ public class AIChat extends Law {
         try (Reader reader = new InputStreamReader(
                 new FileInputStream("./config/AIChat/config.json"), StandardCharsets.UTF_8)) {
             globalCfg = gson.fromJson(reader, Config.class);
-            if (globalCfg.SQLConfig != null) {
+            if (globalCfg.SQLConfig != null && globalCfg.SQLConfig.url != null) {
                 MEMORY = new Memory(globalCfg.SQLConfig);
             }
         } catch (IOException e) {
+            Gson gson = new GsonBuilder()
+                    .serializeNulls()
+                    .setPrettyPrinting()
+                    .create();
             // 没找到配置文件，所以新建一个配置文件
             globalCfg = new Config();
             globalCfg.SQLConfig = new Config.SQLConfig();
@@ -401,6 +406,7 @@ public class AIChat extends Law {
             config.setPassword(sqlConfig.password);
             ds = new HikariDataSource(config);
             initTable();
+            logger.info("记忆模块加载成功");
         }
 
         public void newMemory(String locationId, String content) {
