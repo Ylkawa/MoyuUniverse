@@ -324,6 +324,19 @@ public class AIChat extends Law {
                                     LocationId定义记忆条目的作用域，作用在user上的记忆则user出现的场景生效，作用在group上则对此群聊生效""");
                             var reqEv = new RequestEvent();
                             MessageList ml = new MessageList();
+                            MCMessage previousMemory = new MCMessage();
+                            previousMemory.putMetainfo("role", "user");
+                            previousMemory.messageFields.add(new TextField("先前的记忆条目：\n\n"));
+                            List<Memory.MemObj> memories = MEMORY.getMemories(new ArrayList<>() {{
+                                add(mcp.getLocationId());
+                            }});
+                            if (memories.isEmpty()) {
+                                previousMemory.messageFields.add(new TextField("（无记忆条目）"));
+                            } else {
+                                for (Memory.MemObj memObj : memories) {
+                                    previousMemory.messageFields.add(new TextField(memObj.toString() + "\n"));
+                                }
+                            }
                             MCMessage msg = new MCMessage();
                             msg.putMetainfo("role", "user");
                             msg.messageFields.add(new TextField(mcp.poster.getName() + " (" + mcp.poster.getLocationId() + ") [" + formatTimestamp(System.currentTimeMillis()) + "]:\n\n"));
@@ -515,6 +528,11 @@ public class AIChat extends Law {
             String content;
             long createdAt;
             long updatedAt;
+
+            @Override
+            public String toString() {
+                return "(" + memKey +  ")" + formatTimestamp(updatedAt * 1000) + " [" + locationId + "]: " + content;
+            }
         }
     }
 }
