@@ -1,14 +1,24 @@
-<?xml version="1.0" encoding="UTF-8"?>
 <Configuration status="WARN">
     <Appenders>
         <Console name="Console" target="SYSTEM_OUT">
             <PatternLayout pattern="%d{HH:mm:ss} %highlight{%-5level}{FATAL=red, ERROR=red, WARN=yellow, INFO=green} %style{[%logger{1}]}{#808080} - %msg%n" />
         </Console>
+        <RollingFile name="File"
+                     fileName="log/app.log"
+                     filePattern="log/app-%d{yyyy-MM-dd}.log.gz">
+            <PatternLayout pattern="%d{yyyy-MM-dd HH:mm:ss} %-5level [%logger{1}] - %msg%n"/>
+            <Policies>
+                <TimeBasedTriggeringPolicy interval="1"/>
+            </Policies>
+        </RollingFile>
     </Appenders>
 
     <Loggers>
+        <Logger name="com.zaxxer.hikari" level="warn"/> <!-- HikariCP不是调试目标，所以过滤掉 -->
+
         <Root level="info">
-            <AppenderRef ref="Console" />
+            <AppenderRef ref="Console"/>
+            <AppenderRef ref="File"/>
         </Root>
     </Loggers>
 </Configuration>
