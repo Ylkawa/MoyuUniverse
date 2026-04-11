@@ -29,7 +29,9 @@ import java.nio.charset.StandardCharsets;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.text.SimpleDateFormat;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -158,7 +160,6 @@ public class AIChat extends Law {
 
     @Override
     public void run() {
-        SimpleDateFormat sdf = new SimpleDateFormat("[yyyy-MM-dd HH:mm:ss]");
         for (SessionConfig sessionCfg : configs) {
             Universe.MessageChannelManager.listenToSession(sessionCfg.SessionId, mcm -> {
                 if (sessionCfg.Trigger.equals("every") || mcm.messageString.contains(sessionCfg.Keyword) || mcm.level >= 2) {
@@ -188,7 +189,7 @@ public class AIChat extends Law {
                                 logger.debug("{} 在处理 RequestEvent 发生错误", plug.id, e);
                             }
                         }
-                        reqEv.placeholders.put("TIME", sdf.format(new Date(System.currentTimeMillis())));
+                        reqEv.placeholders.put("TIME", formatTimestamp(System.currentTimeMillis()));
                         reqEv.placeholders.put("SESSION_LOCATION_ID", mcm.getLocationId());
                         reqEv.placeholders.put("ACCOUNT_NICKNAME", mcm.receiver.getName());
                         reqEv.placeholders.put("SESSION_PROMPT", PlaceHolder.replace(sessionCfg.Prompt, reqEv.placeholders));
@@ -236,7 +237,7 @@ public class AIChat extends Law {
                                         } else { // 此处默认非 assistant 即 user
                                             MCMessage msg = new MCMessage();
                                             msg.putMetainfo("role", "user");
-                                            msg.messageFields.add(new TextField(sdf.format(new Date(ml.get(i).time * 1000)) + // [时间]
+                                            msg.messageFields.add(new TextField(formatTimestamp((ml.get(i).time * 1000)) + // [时间]
                                                     "[" + ml.get(i).id + "]" + // [时间] [消息id]
                                                     ml.get(i).sender.getName() + "(" + ml.get(i).sender.getLocationId() + ")" + ml.get(i).sender.getSex() + // [时间] [消息id] [昵称](用户QQ号)性别
                                                     ": "));  // [时间] [消息id] [昵称](用户 LocationId)性别: [消息内容]
@@ -296,7 +297,7 @@ public class AIChat extends Law {
                 if (sessionCfg.Trigger.equals("every") || mcp.messageString.contains(sessionCfg.Keyword) || mcp.level >= 2) {
                     Object provider = Universe.Providers.get(sessionCfg.Provider);
                     if (provider instanceof LLMProvider lp) {
-                        if (MEMORY != null) {
+                        if (MEMORY != null && MEMORY.available()) {
                             Assistant assistant = lp.newAssistant(sessionCfg.Model);
                             // 生成记忆这种应该不需要tool
                             assistant.setSystemPrompt("""
@@ -320,11 +321,11 @@ public class AIChat extends Law {
                             MessageList ml = new MessageList();
                             MCMessage msg = new MCMessage();
                             msg.putMetainfo("role", "user");
-                            msg.sender = mcp.poster;
+                            msg.messageFields.add(new TextField(mcp.poster.getName() + " (" + mcp.poster.getLocationId() + ") [" + formatTimestamp(System.currentTimeMillis()) + "]:\n\n"));
+                            // name(locationId)[2026-04-11 12:19:44]:\n\n
                             msg.messageFields = mcp.messageFields;
                             ml.add(msg);
-
-                            reqEv.placeholders.put("TIME", sdf.format(new Date(System.currentTimeMillis())));
+                            reqEv.placeholders.put("TIME", formatTimestamp(System.currentTimeMillis()));
                             for (var plug : aiChatPlugins) {
                                 try {
                                     plug.onRequest(reqEv);
@@ -380,6 +381,13 @@ public class AIChat extends Law {
 
     public static void registerFunction(String toolName, LLMFunction tool) {
         llmFunctions.put(toolName, tool);
+    }
+
+    public static String formatTimestamp(long ts) {
+        return Instant.ofEpochMilli(ts)
+                .atZone(ZoneId.systemDefault())
+                .toLocalDateTime()
+                .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
     }
 
     public class Memory {
@@ -489,6 +497,10 @@ public class AIChat extends Law {
             } catch (SQLException e) {
                 throw new RuntimeException(e);
             }
+        }
+
+        public boolean available() {
+            return ds.isRunning();
         }
 
         public static class MemObj {

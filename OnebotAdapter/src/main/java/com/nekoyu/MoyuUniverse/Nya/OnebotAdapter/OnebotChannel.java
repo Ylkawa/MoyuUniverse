@@ -32,6 +32,7 @@ import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
 import org.openqa.selenium.*;
 import org.openqa.selenium.chrome.ChromeDriver;
+import org.openqa.selenium.chrome.ChromeOptions;
 import org.openqa.selenium.interactions.Actions;
 import org.openqa.selenium.support.ui.ExpectedConditions;
 import org.openqa.selenium.support.ui.WebDriverWait;
@@ -158,8 +159,6 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
                         throw new RuntimeException(e);
                     }
                     logger.info("{} 登录的 QQ号 为 {} ({}), {} 个好友  {} 个群聊", ID, nickname, accountId, friendCount, groupCount);
-
-                    qZone.addTask(new QZone.Task.FetchPosts());
                 });
             }
 
@@ -650,6 +649,14 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
         final BlockingDeque<Task> tasks = new LinkedBlockingDeque<>(); // 使用队列机制逐个执行任务
         private long lastFetch = System.currentTimeMillis();
 
+        public QZone() {
+            Executors.newSingleThreadScheduledExecutor().scheduleAtFixedRate(() -> {
+                if (online && tasks.isEmpty()) {
+                    addTask(new Task.FetchPosts());
+                }
+            }, 1, 1, TimeUnit.HOURS);
+        }
+
         public static class Task {
             enum Type {
                 fetchPosts, sendLike, sendComment, repost
@@ -717,7 +724,12 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
                     System.setProperty("webdriver.chrome.driver", envDriverPath);
                 }
             }
-            driver = new ChromeDriver();
+            ChromeOptions options = new ChromeOptions(); // headless
+            options.addArguments("--headless=new");
+            options.addArguments("--no-sandbox");
+            options.addArguments("--disable-dev-shm-usage");
+            options.addArguments("--disable-gpu");
+            driver = new ChromeDriver(options);
             OBRequest obr = new OBRequest("get_cookies");
             obr.params.put("domain", "qzone.qq.com");
             try {
