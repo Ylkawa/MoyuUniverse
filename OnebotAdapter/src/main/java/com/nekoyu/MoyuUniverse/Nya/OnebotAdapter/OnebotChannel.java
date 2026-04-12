@@ -75,6 +75,8 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
     boolean good = true; // 实现端健康状态
     boolean online = true; // 实现端在线状态
     QZone qZone = new QZone();
+    private static final ScheduledExecutorService scheduler =
+            Executors.newSingleThreadScheduledExecutor();
 
     public OnebotChannel(String id) {
         super(id);
@@ -430,7 +432,7 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
             @Override
             public void onClose(int i, String s, boolean b) {
                 if (i != -1) logger.warn("{} 断开连接", ID);
-                Executors.newSingleThreadScheduledExecutor().schedule(() -> reload(), 10, TimeUnit.SECONDS);
+                scheduler.schedule(() -> reload(), 10, TimeUnit.SECONDS);
             }
 
             @Override
