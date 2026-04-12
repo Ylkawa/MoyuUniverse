@@ -158,6 +158,7 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
                     } catch (IOException e) {
                         throw new RuntimeException(e);
                     }
+                    loginAccount = (QQAccount) getSession("user/" +  accountId);
                     logger.info("{} 登录的 QQ号 为 {} ({}), {} 个好友  {} 个群聊", ID, nickname, accountId, friendCount, groupCount);
                 });
             }

@@ -184,9 +184,10 @@ public class MessageChannelManager {
             MCMessage mcm = new MCMessage();
             mcm.id = sc.sendMessage(target[1], message); //将sessionId转换成局部形式传给MessageChannel处理，同时把聊天记录对象传过去
             mcm.messageFields = message;
+            mcm.sessionId = sessionId;
+            mcm.session = session;
             mcm.time = System.currentTimeMillis() / 1000;
-            mcm.sender.id = mc.accountId;
-            mcm.sender.name = mc.nickname;
+            mcm.sender = mc.loginAccount;
             mcm.universe = true;
             // 应该没别的必须的参数了，留空算了
 

@@ -13,6 +13,7 @@ public abstract class MessageChannel {
     public final String ID;
     public String accountId;
     public String nickname;
+    public Account loginAccount;
 
     abstract public MessageSession getChatSession(String sessionId);
     abstract public void load();
