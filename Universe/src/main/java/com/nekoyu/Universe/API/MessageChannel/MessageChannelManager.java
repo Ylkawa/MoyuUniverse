@@ -203,12 +203,12 @@ public class MessageChannelManager {
     }
 
     public void replyPost(String sessionId, MFChain message) {
-        logger.error("快别reply了没写完");
-        // TODO PostChat 相关
+        String[] split = sessionId.split(":");
+        if (getChannel(split[0]) instanceof PostChat pc) pc.replyPost(split[1], message);
     }
     public void sendLikeToPost(String sessionId) {
         String[] split = sessionId.split(":", 2);
-        if (getChannel(split[0]) instanceof PostChat pc) pc.sendLike(sessionId);
+        if (getChannel(split[0]) instanceof PostChat pc) pc.sendLike(split[1]);
         else logger.warn("target channel is not support send like operation");
     }
 
