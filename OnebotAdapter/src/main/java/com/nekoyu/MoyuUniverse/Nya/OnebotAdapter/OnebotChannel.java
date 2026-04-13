@@ -968,6 +968,8 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
                     "div.f-item[data-key='" + key + "'] .qz_like_btn_v3"
             ));
 
+            if (Objects.equals(btn.getAttribute("data-islike"), "1")) return; // 点过了，直接return
+
             driver.executeScript(
                     "arguments[0].scrollIntoView({block: 'center'});", btn
             );

@@ -378,6 +378,7 @@ public class AIChat extends Law {
                                         MEMORY.newMemory(locationId, content);
                                     }
                                 }
+                                mcp.sendLike();
                             } catch (IOException e) {
                                 logger.error("生成失败", e);
                             }

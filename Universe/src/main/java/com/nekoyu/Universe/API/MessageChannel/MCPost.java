@@ -29,6 +29,9 @@ public class MCPost {
         messageFields = new MFChain();
     }
 
+    public void sendLike() {
+        Universe.MessageChannelManager.sendLikeToPost(sessionId);
+    }
     public void reply(MFChain message) {
         Universe.MessageChannelManager.replyPost(sessionId, message);
     }

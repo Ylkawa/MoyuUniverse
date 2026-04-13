@@ -3,6 +3,7 @@ package com.nekoyu.Universe.API.MessageChannel;
 import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.Multimap;
 import com.nekoyu.Universe.API.MessageChannel.Features.Administration;
+import com.nekoyu.Universe.API.MessageChannel.Features.PostChat;
 import com.nekoyu.Universe.API.MessageChannel.Features.SessionChat;
 import com.nekoyu.Universe.API.MessageChannel.MessageField.TextField;
 import com.nekoyu.Universe.Utils.ColorUtils;
@@ -204,6 +205,11 @@ public class MessageChannelManager {
     public void replyPost(String sessionId, MFChain message) {
         logger.error("快别reply了没写完");
         // TODO PostChat 相关
+    }
+    public void sendLikeToPost(String sessionId) {
+        String[] split = sessionId.split(":", 2);
+        if (getChannel(split[0]) instanceof PostChat pc) pc.sendLike(sessionId);
+        else logger.warn("target channel is not support send like operation");
     }
 
     /**
