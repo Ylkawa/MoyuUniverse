@@ -657,7 +657,7 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
                 if (online && tasks.isEmpty()) {
                     addTask(new Task.FetchPosts());
                 }
-            }, 1, 1, TimeUnit.HOURS);
+            }, 1, 60, TimeUnit.MINUTES);
         }
 
         public static class Task {
@@ -720,6 +720,7 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
 
         // 此处通过请求Onebot API get_cookies 获取cookies初始化会话
         public void init() {
+            logger.debug("create chrome instance");
             String driverPath = System.getProperty("webdriver.chrome.driver");
             if (driverPath == null || driverPath.isBlank()) {
                 String envDriverPath = System.getenv("CHROMEDRIVER_PATH");
@@ -732,7 +733,13 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
             options.addArguments("--no-sandbox");
             options.addArguments("--disable-dev-shm-usage");
             options.addArguments("--disable-gpu");
+            options.addArguments("--disable-extensions");
+            options.addArguments("--window-size=1920,1080");
+
+            // 这个按情况开
+            options.addArguments("--blink-settings=imagesEnabled=false");
             driver = new ChromeDriver(options);
+            logger.debug("get driver");
             OBRequest obr = new OBRequest("get_cookies");
             obr.params.put("domain", "qzone.qq.com");
             try {
@@ -740,6 +747,7 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
                 String cookiesString = resp.data.getAsJsonObject().get("cookies").getAsString();
 //                String bkn = resp.data.getAsJsonObject().get("bkn").getAsString(); // 不知道有什么用
                 driver.get("https://qzone.qq.com/"); // 先打开这个页面
+                logger.debug("open qzone");
                 new WebDriverWait(driver, Duration.ofSeconds(10)).until(
                         webDriver -> Objects.equals(((JavascriptExecutor) webDriver)
                                 .executeScript("return document.readyState"), "complete")
@@ -751,6 +759,7 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
                     driver.manage().addCookie(cookie);
                 }
                 // 至此这个模块初始化完毕可以用了
+                logger.debug("instance created");
             } catch (NullPointerException e) {
                 throw new RuntimeException("Failed to initialize QZone instance", e);
             }
@@ -791,6 +800,7 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
         }
 
         public void fetchLatestPosts() {
+            logger.debug("begin fetching latest posts");
             driver.get("https://qzone.qq.com/");
             WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(30));
             wait.until(
@@ -850,7 +860,7 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
                     long timestamp = Long.parseLong(doc.selectFirst("[name=feed_data]").attr("data-abstime"));
                     if (timestamp*1000 < lastFetch) {
                         lastFetch = System.currentTimeMillis(); // 标记一下这一次最新动态是这个时间
-                        logger.debug("fetched");
+                        logger.debug("fetched all new post");
                         return;
                     }
                     String key;

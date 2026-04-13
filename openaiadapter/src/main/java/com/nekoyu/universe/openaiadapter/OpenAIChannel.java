@@ -116,7 +116,6 @@ public class OpenAIChannel extends LLMProvider {
     }
 
     public CompletionsResponse completions(CompletionsRequest completionsRequest, Map<String, LLMFunction> llmFunctions, BufferCallback bufferCallback, ExtensionalArgs extensionalArgs, int timeout, CompletionsResponse responding) throws IOException {
-        logger.debug(gson.toJson(completionsRequest));
         boolean outputted = false;
         if (timeout <= 1) { // 超时时，禁用所有tool，进行最后一次请求，避免死循环
             completionsRequest.tools = null;
