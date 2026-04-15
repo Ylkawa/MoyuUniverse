@@ -177,9 +177,7 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
                                     MCMessage mcm = new MCMessage();
                                     // 标注消息的基本信息
                                     mcm.time = message.time;
-                                    mcm.receiver.setId(String.valueOf(message.self_id));
-                                    mcm.receiver.setName(nickname);
-                                    mcm.receiver.setPlatform("QQ");
+                                    mcm.receiver = loginAccount;
                                     mcm.sender = (Account) getSession("user/" + message.sender.user_id);
                                     mcm.id = message.message_id;
                                     StringBuilder sessionId = new StringBuilder();

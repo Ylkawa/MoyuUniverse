@@ -10,7 +10,7 @@ import java.util.concurrent.TimeUnit;
 
 public class MCMessage {
     public Session session;
-    public Account receiver;
+    public Account receiver; // 始终为处理这个消息的消息通道的账号
     public Account sender;
     public String messageString;
     public String sessionId; // 这个sessionId应该是Global SessionId
@@ -42,39 +42,7 @@ public class MCMessage {
      * @return 此条消息内容（纯文本形式）
      */
     public String solveAll(boolean description) {
-        var sb = new StringBuilder();
-        if (description) {
-            int solvedPic = 0;
-            ExecutorService executor = Executors.newCachedThreadPool();
-            // 逆序遍历
-            for (int i = messageFields.size() - 1; i >= 0; i--) {
-                MsgField msgField = messageFields.get(i);
-                switch (msgField.type) {
-                    case "image" -> {
-                        if (!msgField.isSolved && solvedPic < 3) {
-                            executor.execute(() -> {
-                                try {
-                                    msgField.solve();
-                                } catch (Exception ignored) {
-                                }
-                            });
-                            solvedPic++;
-                        }
-                    }
-                    case "voice" -> msgField.solve();
-                }
-            }
-            executor.shutdown();
-            try {
-                executor.awaitTermination(60, TimeUnit.SECONDS);
-            } catch (InterruptedException e) {
-                throw new RuntimeException(e);
-            }
-        }
-        for (MsgField msgField : messageFields) {
-            sb.append(msgField.toString());
-        }
-        return sb.toString();
+        return messageFields.solveAll(description);
     }
 
     public String solveAll() {

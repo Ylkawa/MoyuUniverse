@@ -6,8 +6,6 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.nekoyu.Universe.AIChat.Event.RequestEvent;
 import com.nekoyu.Universe.API.MessageChannel.*;
-import com.nekoyu.Universe.API.MessageChannel.MessageField.ImageField;
-import com.nekoyu.Universe.API.MessageChannel.MessageField.MsgField;
 import com.nekoyu.Universe.API.MessageChannel.MessageField.TextField;
 import com.nekoyu.Universe.API.PlaceHolder;
 import com.nekoyu.Universe.API.Providers.LLMProvider.Assistant;
@@ -34,9 +32,6 @@ import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
 import java.util.jar.JarFile;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -44,11 +39,13 @@ import java.util.zip.ZipEntry;
 
 public class AIChat extends Law {
     public static final Gson gson = new Gson();
+    public static final int TOPIC_TIMEOUT = 20;
     Logger logger = LoggerFactory.getLogger(this.getClass());
     List<SessionConfig> configs = new ArrayList<>();
     static Multimap<String, LLMFunction> llmFunctions = ArrayListMultimap.create();
     List<AIChatPlugin> aiChatPlugins = new ArrayList<>();
     Config globalCfg;
+    Map<String, Topic> activatingTopics = new HashMap<>();
     @Nullable
     Memory MEMORY = null;
 
@@ -167,9 +164,19 @@ public class AIChat extends Law {
     public void run() {
         for (SessionConfig sessionCfg : configs) {
             Universe.MessageChannelManager.listenToSession(sessionCfg.SessionId, mcm -> {
+                Topic topic = activatingTopics.get(mcm.sessionId);
+                if (topic != null) topic.addMsg(mcm);
                 if (sessionCfg.Trigger.equals("every") || mcm.messageString.contains(sessionCfg.Keyword) || mcm.level >= 2) {
                     Object provider = Universe.Providers.get(sessionCfg.Provider);
                     if (provider instanceof LLMProvider lp) {
+                        if (topic == null) {
+                            topic = new Topic(sessionCfg);
+                            activatingTopics.put(mcm.sessionId, topic);
+                            MessageList ml = (MessageList) Universe.MessageChannelManager.getMessageHistory(sessionCfg.SessionId).clone();
+                            for (MCMessage m : ml) {
+                                topic.addMsg(m);
+                            }
+                        }
                         Assistant assistant = lp.newAssistant(sessionCfg.Model);
                         if (sessionCfg.Tools != null) {
                             for (String tool : sessionCfg.Tools) {
@@ -180,12 +187,8 @@ public class AIChat extends Law {
                                 }
                             } // 为assistant添加指定的tools // 如果不存在这个tool就不添加
                         }
-                        // 决定让 AI 发言
-                        MessageList ml = (MessageList) Universe.MessageChannelManager.getMessageHistory(sessionCfg.SessionId).clone();
-                        // 设置 System Prompt
                         // 先让插件处理事件 插件提供局部的PlaceHolder
                         var reqEv = new RequestEvent();
-                        reqEv.messageList = ml;
                         reqEv.locationId = mcm.getLocationId();
                         for (var plug : aiChatPlugins) {
                             try {
@@ -194,108 +197,57 @@ public class AIChat extends Law {
                                 logger.debug("{} 在处理 RequestEvent 发生错误", plug.id, e);
                             }
                         }
+                        reqEv.messageList = topic.messages;
                         reqEv.placeholders.put("TIME", formatTimestamp(System.currentTimeMillis()));
                         reqEv.placeholders.put("SESSION_LOCATION_ID", mcm.getLocationId());
                         reqEv.placeholders.put("ACCOUNT_NICKNAME", mcm.receiver.getName());
                         reqEv.placeholders.put("SESSION_PROMPT", PlaceHolder.replace(sessionCfg.Prompt, reqEv.placeholders));
-                        assistant.setSystemPrompt(PlaceHolder.replace(globalCfg.Prompt, reqEv.placeholders));
-
-                        ExecutorService executor = Executors.newFixedThreadPool(5);
-                        String[][] solveInfo = new String[ml.size()][2];
-                        for (int i = 0; i < ml.size(); i++) {
-                            MCMessage msg = ml.get(i);
-                            if (msg.universe || "assistant".equals(msg.getMetainfo("role")) ||
-                                    msg.sender.getLocationId().equals(mcm.receiver.getLocationId())) {
-                                solveInfo[i][0] = "assistant";
-                            } else solveInfo[i][0] = "user";
-                            executor.submit(() -> { // presolve
-                                for (MsgField mf : msg.messageFields) {
-                                    if (mf instanceof ImageField) {
-                                        if (!sessionCfg.nativeImage) mf.solve();
-                                    }
-                                }
-                            });
-                        }
-                        executor.shutdown();
 
                         try {
-                            if (executor.awaitTermination(60, TimeUnit.SECONDS)) {
-                                RequestEvent re = new RequestEvent();
-                                re.messageList = ml;
-                                try {
-                                    // 构建 OpenAI Adapter ML
-                                    MessageList openaiMl = new MessageList();
-                                    for (int i = 0; i < solveInfo.length; i++) {
-                                        if (solveInfo[i][0].equals("assistant")) {
-                                            StringBuilder content = new StringBuilder();
-                                            boolean first = true;
-                                            while (i < solveInfo.length && solveInfo[i][0].equals("assistant")) {
-                                                if (first) first = false;
-                                                else content.append("\n\n");
-                                                content.append(ml.get(i).solveAll());
-                                                i++;
-                                            }
-                                            i--;
-                                            MCMessage msg = new MCMessage();
-                                            msg.putMetainfo("role", "assistant");
-                                            msg.messageFields.add(new TextField(content.toString()));
-                                            openaiMl.add(msg);
-                                        } else { // 此处默认非 assistant 即 user
-                                            MCMessage msg = new MCMessage();
-                                            msg.putMetainfo("role", "user");
-                                            msg.messageFields.add(new TextField(formatTimestamp((ml.get(i).time * 1000)) + // [时间]
-                                                    "[" + ml.get(i).id + "]" + // [时间] [消息id]
-                                                    ml.get(i).sender.getName() + "(" + ml.get(i).sender.getLocationId() + ")" + ml.get(i).sender.getSex() + // [时间] [消息id] [昵称](用户QQ号)性别
-                                                    ": "));  // [时间] [消息id] [昵称](用户 LocationId)性别: [消息内容]
-                                            for (MsgField mf : ml.get(i).messageFields) { // 这里仅处理了 Text 和 Image 类型，其他的都是交给末屿宇宙的默认方式转换成文本
-                                                if (mf instanceof TextField) {
-                                                    msg.messageFields.add(mf);
-                                                } else if (mf instanceof ImageField imgF) {
-                                                    if (sessionCfg.nativeImage) {
-                                                        msg.messageFields.add(mf);
-                                                        String metadata = imgF.solveMetadata();
-                                                        if (!metadata.isBlank())
-                                                            msg.messageFields.add(new TextField("{" + metadata + "}"));
-                                                        // 如果 Metadata 存在就追加一条 Metadata 的提示词字段
-                                                    }
-                                                } else msg.messageFields.add(new TextField(mf.toString()));
-                                            }
-                                            openaiMl.add(msg);
-                                        }
-                                    }
-
-                                    // Extensional Args
-                                    ExtensionalArgs extensionalArgs = new ExtensionalArgs();
-                                    extensionalArgs.placeholders.put("_LocationID", mcm.getLocationId());
-                                    extensionalArgs.enable_thinking = sessionCfg.enable_thinking;
-
-                                    // 接收响应 tokens
-                                    StringBuilder respTokens = new StringBuilder();
-                                    assistant.completions(openaiMl, extensionalArgs, outputs -> {
-                                        String[] split = outputs.split("\n\n", 2); // 每一次接收够一段就回复一次消息
-                                        if (split.length > 1) {
-                                            respTokens.append(split[0]);
-                                            mcm.reply(respTokens.toString());
-                                            respTokens.setLength(0);
-                                            respTokens.append(split[1]);
-                                        } else {
-                                            respTokens.append(split[0]);
-                                        }
-                                    });
-                                    mcm.reply(respTokens.toString());
-                                } catch (Exception e) {
-                                    logger.error(e.getMessage(), e);
+                            MessageList openaiMl = topic.getOpenAIML();
+                            // 设置 System Prompt
+                            assistant.setSystemPrompt(PlaceHolder.replace(globalCfg.Prompt, reqEv.placeholders));
+                            // Extensional Args
+                            ExtensionalArgs extensionalArgs = new ExtensionalArgs();
+                            extensionalArgs.placeholders.put("_LocationID", mcm.getLocationId());
+                            extensionalArgs.enable_thinking = sessionCfg.enable_thinking;
+                            // 接收响应 tokens
+                            StringBuilder recordTokens = new StringBuilder();
+                            StringBuilder replyTokens = new StringBuilder();
+                            assistant.completions(openaiMl, extensionalArgs, outputs -> {
+                                recordTokens.append(outputs);
+                                String[] split = outputs.split("\n\n", 2); // 每一次接收够一段就回复一次消息
+                                if (split.length > 1) {
+                                    replyTokens.append(split[0]);
+                                    if (!replyTokens.isEmpty()) mcm.reply(replyTokens.toString());
+                                    replyTokens.setLength(0);
+                                    replyTokens.append(split[1]);
+                                } else {
+                                    replyTokens.append(split[0]);
                                 }
-                            } else {
-                                logger.error("消息解析超时");
-                            }
-                        } catch (InterruptedException e) {
-                            logger.error(e.getMessage(), e);
-                            return;
+                            });
+                            if (!replyTokens.isEmpty()) mcm.reply(replyTokens.toString());
+                            MCMessage recordMcm = new MCMessage();
+                            recordMcm.messageFields.add(new TextField(recordTokens.toString()));
+                            recordMcm.putMetainfo("role", "assistant");
+                            topic.addMsg(recordMcm);
+                        } catch (IOException e) {
+                            logger.error("生成回复时出错", e);
                         }
                     } else {
                         if (provider == null) logger.warn("无此适配器 {}", sessionCfg.Provider);
                         else logger.warn("定义的AI服务适配器 {} 无效", sessionCfg.Provider);
+                    }
+                } else if (topic != null) {
+                    int size = topic.messages.size();
+                    for (int i = size - 1; i >= size - TOPIC_TIMEOUT; i--) { // 检测话题是否超时
+                        if (i < 0) break;
+                        MCMessage message = topic.messages.get(i);
+                        if (Objects.equals(message.sender.getLocationId(), message.receiver.getLocationId())) break;
+                        if (i == size - TOPIC_TIMEOUT) {
+                            // TODO 删除之前，总结一下这一次主题的内容，生成记忆吧
+                            activatingTopics.remove(mcm.sessionId);
+                        }
                     }
                 }
             });
@@ -365,14 +317,17 @@ public class AIChat extends Law {
                                 for (var line : respTokens.toString().split("\n")) {
                                     if (line.toUpperCase().startsWith("UPDATE")) {
                                         Matcher matcher = Pattern.compile("^UPDATE (?<MemKey>\\d+): (?<Content>.+)").matcher(line);
+                                        matcher.find();
                                         int memKey = Integer.parseInt(matcher.group("MemKey"));
                                         String content = matcher.group("Content");
                                         MEMORY.updateMemory(memKey, content);
                                     } else if (line.toUpperCase().startsWith("DELETE")) {
                                         Matcher matcher = Pattern.compile("^DELETE (?<MemKey>\\d+)").matcher(line);
+                                        matcher.find();
                                         MEMORY.deleteMemory(Integer.parseInt(matcher.group("MemKey")));
                                     } else if (line.toUpperCase().startsWith("NEW")) {
                                         Matcher matcher = Pattern.compile("^NEW \\[(?<LocationId>[^]]+)]: (?<Content>.+)").matcher(line);
+                                        matcher.find();
                                         String locationId = matcher.group("LocationId");
                                         String content = matcher.group("Content");
                                         MEMORY.newMemory(locationId, content);
@@ -473,7 +428,7 @@ public class AIChat extends Law {
 
             String placeholders = String.join(",", Collections.nCopies(locIds.size(), "?"));
 
-            String sql = "SELECT location_id, mem_key, value FROM memories WHERE location_id IN (" + placeholders + ")";
+            String sql = "SELECT location_id, mem_key, content FROM memories WHERE location_id IN (" + placeholders + ")";
 
             List<MemObj> result = new ArrayList<>();
 
@@ -505,14 +460,14 @@ public class AIChat extends Law {
         public void initTable() {
             try (var conn = ds.getConnection();
                  PreparedStatement p = conn.prepareStatement("""
-                     CREATE TABLE IF NOT EXISTS memories (
-                     mem_key INT AUTO_INCREMENT PRIMARY KEY,
-                     location_id VARCHAR(255) NOT NULL,
-                     content TEXT NOT NULL,
-                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                     INDEX idx_location_id (location_id)
-                     )""")
+                         CREATE TABLE IF NOT EXISTS memories (
+                         mem_key INT AUTO_INCREMENT PRIMARY KEY,
+                         location_id VARCHAR(255) NOT NULL,
+                         content TEXT NOT NULL,
+                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                         INDEX idx_location_id (location_id)
+                         )""")
             ) {
                 p.execute();
             } catch (SQLException e) {
@@ -533,7 +488,7 @@ public class AIChat extends Law {
 
             @Override
             public String toString() {
-                return "(" + memKey +  ")" + formatTimestamp(updatedAt * 1000) + " [" + locationId + "]: " + content;
+                return "(" + memKey + ")" + formatTimestamp(updatedAt * 1000) + " [" + locationId + "]: " + content;
             }
         }
     }

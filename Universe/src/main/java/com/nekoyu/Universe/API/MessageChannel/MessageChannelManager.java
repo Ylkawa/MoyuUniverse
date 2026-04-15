@@ -189,7 +189,7 @@ public class MessageChannelManager {
             mcm.session = session;
             mcm.time = System.currentTimeMillis() / 1000;
             mcm.sender = mc.loginAccount;
-            mcm.universe = true;
+            mcm.receiver = mc.loginAccount;
             // 应该没别的必须的参数了，留空算了
 
             MessageList messageList = messageHistory.get(sessionId);
