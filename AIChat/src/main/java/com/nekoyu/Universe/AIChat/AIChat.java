@@ -167,70 +167,76 @@ public class AIChat extends Law {
                 Topic topic = activatingTopics.get(mcm.sessionId);
                 if (topic != null) topic.addMsg(mcm);
                 if (sessionCfg.Trigger.equals("every") || mcm.messageString.contains(sessionCfg.Keyword) || mcm.level >= 2) {
-                    Object provider = Universe.Providers.get(sessionCfg.Provider);
-                    if (provider instanceof LLMProvider lp) {
-                        if (topic == null) {
-                            topic = new Topic(sessionCfg);
-                            activatingTopics.put(mcm.sessionId, topic);
-                            MessageList ml = (MessageList) Universe.MessageChannelManager.getMessageHistory(sessionCfg.SessionId).clone();
-                            for (MCMessage m : ml) {
-                                topic.addMsg(m);
-                            }
-                        }
-                        Assistant assistant = lp.newAssistant(sessionCfg.Model);
-                        if (sessionCfg.Tools != null) {
-                            for (String tool : sessionCfg.Tools) {
-                                if (llmFunctions.get(tool) != null) {
-                                    for (LLMFunction func : llmFunctions.get(tool)) {  // FIXME Tool 可能被重复添加而无保护
-                                        assistant.addTool(func);
+                    if (topic.responding.compareAndSet(false, true)) { // 阻止同时回复多个消息
+                        try {
+                            Object provider = Universe.Providers.get(sessionCfg.Provider);
+                            if (provider instanceof LLMProvider lp) {
+                                if (topic == null) {
+                                    topic = new Topic(sessionCfg);
+                                    activatingTopics.put(mcm.sessionId, topic);
+                                    MessageList ml = (MessageList) Universe.MessageChannelManager.getMessageHistory(sessionCfg.SessionId).clone();
+                                    for (MCMessage m : ml) {
+                                        topic.addMsg(m);
                                     }
                                 }
-                            } // 为assistant添加指定的tools // 如果不存在这个tool就不添加
-                        }
-                        // 先让插件处理事件 插件提供局部的PlaceHolder
-                        var reqEv = new RequestEvent();
-                        reqEv.locationId = mcm.getLocationId();
-                        for (var plug : aiChatPlugins) {
-                            try {
-                                plug.onRequest(reqEv);
-                            } catch (Exception e) {
-                                logger.debug("{} 在处理 RequestEvent 发生错误", plug.id, e);
-                            }
-                        }
-                        reqEv.messageList = topic.messages;
-                        reqEv.placeholders.put("TIME", formatTimestamp(System.currentTimeMillis()));
-                        reqEv.placeholders.put("SESSION_LOCATION_ID", mcm.getLocationId());
-                        reqEv.placeholders.put("ACCOUNT_NICKNAME", mcm.receiver.getName());
-
-                        try {
-                            MessageList openaiMl = topic.getOpenAIML();
-                            // 设置 System Prompt
-                            assistant.setSystemPromptFirst(PlaceHolder.replace(globalCfg.PromptFirst + sessionCfg.PromptFirst, reqEv.placeholders));
-                            assistant.setSystemPromptLast(PlaceHolder.replace(globalCfg.PromptLast + sessionCfg.PromptLast, reqEv.placeholders));
-                            // Extensional Args
-                            ExtensionalArgs extensionalArgs = new ExtensionalArgs();
-                            extensionalArgs.placeholders.put("_LocationID", mcm.getLocationId());
-                            extensionalArgs.enable_thinking = sessionCfg.enable_thinking;
-                            // 接收响应 tokens
-                            StringBuilder replyTokens = new StringBuilder();
-                            assistant.completions(openaiMl, extensionalArgs, outputs -> {
-                                String[] split = outputs.split("\n\n", 2); // 每一次接收够一段就回复一次消息
-                                if (split.length > 1) {
-                                    replyTokens.append(split[0]);
-                                    if (!replyTokens.isEmpty()) mcm.reply(replyTokens.toString());
-                                    replyTokens.setLength(0);
-                                    replyTokens.append(split[1]);
-                                } else {
-                                    replyTokens.append(split[0]);
+                                Assistant assistant = lp.newAssistant(sessionCfg.Model);
+                                if (sessionCfg.Tools != null) {
+                                    for (String tool : sessionCfg.Tools) {
+                                        if (llmFunctions.get(tool) != null) {
+                                            for (LLMFunction func : llmFunctions.get(tool)) {  // FIXME Tool 可能被重复添加而无保护
+                                                assistant.addTool(func);
+                                            }
+                                        }
+                                    } // 为assistant添加指定的tools // 如果不存在这个tool就不添加
                                 }
-                            });
-                            if (!replyTokens.isEmpty()) mcm.reply(replyTokens.toString());
-                        } catch (IOException e) {
-                            logger.error("生成回复时出错", e);
+                                // 先让插件处理事件 插件提供局部的PlaceHolder
+                                var reqEv = new RequestEvent();
+                                reqEv.locationId = mcm.getLocationId();
+                                for (var plug : aiChatPlugins) {
+                                    try {
+                                        plug.onRequest(reqEv);
+                                    } catch (Exception e) {
+                                        logger.debug("{} 在处理 RequestEvent 发生错误", plug.id, e);
+                                    }
+                                }
+                                reqEv.messageList = topic.messages;
+                                reqEv.placeholders.put("TIME", formatTimestamp(System.currentTimeMillis()));
+                                reqEv.placeholders.put("SESSION_LOCATION_ID", mcm.getLocationId());
+                                reqEv.placeholders.put("ACCOUNT_NICKNAME", mcm.receiver.getName());
+
+                                try {
+                                    MessageList openaiMl = topic.getOpenAIML();
+                                    // 设置 System Prompt
+                                    assistant.setSystemPromptFirst(PlaceHolder.replace(globalCfg.PromptFirst + sessionCfg.PromptFirst, reqEv.placeholders));
+                                    assistant.setSystemPromptLast(PlaceHolder.replace(globalCfg.PromptLast + sessionCfg.PromptLast, reqEv.placeholders));
+                                    // Extensional Args
+                                    ExtensionalArgs extensionalArgs = new ExtensionalArgs();
+                                    extensionalArgs.placeholders.put("_LocationID", mcm.getLocationId());
+                                    extensionalArgs.enable_thinking = sessionCfg.enable_thinking;
+                                    // 接收响应 tokens
+                                    StringBuilder replyTokens = new StringBuilder();
+                                    assistant.completions(openaiMl, extensionalArgs, outputs -> {
+                                        String[] split = outputs.split("\n\n", 2); // 每一次接收够一段就回复一次消息
+                                        if (split.length > 1) {
+                                            replyTokens.append(split[0]);
+                                            if (!replyTokens.isEmpty()) mcm.reply(replyTokens.toString());
+                                            replyTokens.setLength(0);
+                                            replyTokens.append(split[1]);
+                                        } else {
+                                            replyTokens.append(split[0]);
+                                        }
+                                    });
+                                    if (!replyTokens.isEmpty()) mcm.reply(replyTokens.toString());
+                                } catch (IOException e) {
+                                    logger.error("生成回复时出错", e);
+                                }
+                            } else {
+                                if (provider == null) logger.warn("无此适配器 {}", sessionCfg.Provider);
+                                else logger.warn("定义的AI服务适配器 {} 无效", sessionCfg.Provider);
+                            }
+                        } finally {
+                            topic.responding.set(false);
                         }
-                    } else {
-                        if (provider == null) logger.warn("无此适配器 {}", sessionCfg.Provider);
-                        else logger.warn("定义的AI服务适配器 {} 无效", sessionCfg.Provider);
                     }
                 } else if (topic != null) {
                     int size = topic.messages.size();
