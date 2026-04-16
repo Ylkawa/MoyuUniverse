@@ -4,4 +4,5 @@ public class Config {
     String ID;
     String Token;
     String URI;
+    boolean EnableQZone = false;
 }

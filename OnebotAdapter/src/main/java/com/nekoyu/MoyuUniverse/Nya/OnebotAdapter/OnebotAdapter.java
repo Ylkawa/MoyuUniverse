@@ -67,6 +67,7 @@ public class OnebotAdapter extends Law {
                             OnebotChannel oc = new OnebotChannel(config.ID);
                             oc.token = config.Token;
                             oc.uri = new URI(config.URI);
+                            oc.enableQZone = config.EnableQZone;
                             ocs.add(oc);
                             logger.info("已载入 Onebot 配置 {}", oc.ID);
                         } catch (FileNotFoundException e) {

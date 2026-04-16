@@ -70,11 +70,12 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
     Logger logger = LoggerFactory.getLogger(this.getClass());
     URI uri;
     String token;
+    boolean enableQZone;
     Map<String, Callback> syncActions = new ConcurrentHashMap<>(); // Echoes 和 Actions 的映射
     Map<String, Session> cachedSessions = new ConcurrentHashMap<>(); // 用户账号列表缓存
     boolean good = true; // 实现端健康状态
     boolean online = true; // 实现端在线状态
-    QZone qZone = new QZone();
+    QZone qZone = null;
     private static final ScheduledExecutorService scheduler =
             Executors.newSingleThreadScheduledExecutor();
 
@@ -163,6 +164,8 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
                     loginAccount = (QQAccount) getSession("user/" +  accountId);
                     logger.info("{} 登录的 QQ号 为 {} ({}), {} 个好友  {} 个群聊", ID, nickname, accountId, friendCount, groupCount);
                 });
+
+                if (enableQZone) qZone = new QZone();
             }
 
             @Override
@@ -446,7 +449,7 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
     public void stop() {
         isReady = false;
         wsConnection.close();
-        qZone.release();
+        if (qZone != null) qZone.release();
     }
 
     @Override
@@ -576,19 +579,19 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
     @Override
     public void sendLike(String sessionId) {
         String[] split = sessionId.split("/");
-        qZone.addTask(new QZone.Task.SendLikeTask(split[split.length - 1]));
+        if (qZone != null )qZone.addTask(new QZone.Task.SendLikeTask(split[split.length - 1]));
     }
 
     @Override
     public void replyPost(String sessionId, MFChain message) {
         String[] split = sessionId.split("/");
-        qZone.addTask(new QZone.Task.SendCommentTask(split[split.length - 1], message));
+        if (qZone != null) qZone.addTask(new QZone.Task.SendCommentTask(split[split.length - 1], message));
     }
 
     @Override
     public void repost(String sessionId, MFChain message) {
         String[] split = sessionId.split("/");
-        qZone.addTask(new QZone.Task.RepostTask(split[split.length - 1], message));
+        if (qZone != null) qZone.addTask(new QZone.Task.RepostTask(split[split.length - 1], message));
     }
 
     private interface Callback {

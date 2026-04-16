@@ -2,7 +2,8 @@ package com.nekoyu.Universe.AIChat;
 
 public class SessionConfig {
     String SessionId;
-    String Prompt;
+    String PromptFirst;
+    String PromptLast;
     String Provider;
     String Trigger;
     String Model;

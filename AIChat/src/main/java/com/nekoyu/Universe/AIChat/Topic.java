@@ -36,6 +36,7 @@ public class Topic {
                 else oaiM.messageFields.add(new TextField(mf.toString()));
             }
         } else oaiM.messageFields.add(new TextField(mcm.solveAll()));
+        oaiM.sender = mcm.sender;
         messages.add(oaiM);
 
         int total = 0; // 总共的tokens数量（估算）

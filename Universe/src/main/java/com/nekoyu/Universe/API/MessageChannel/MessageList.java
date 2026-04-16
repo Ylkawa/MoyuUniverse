@@ -20,4 +20,14 @@ public class MessageList extends ArrayList<MCMessage> {
         }
         return null;
     }
+
+    public List<String> getLocationIds() {
+        List<String> locationIds = new ArrayList<>();
+        for (MCMessage mcm : this) {
+            if (!locationIds.contains(mcm.getLocationId())) {
+                locationIds.add(mcm.getLocationId());
+            }
+        }
+        return locationIds;
+    }
 }
