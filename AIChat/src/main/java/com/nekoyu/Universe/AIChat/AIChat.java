@@ -212,10 +212,8 @@ public class AIChat extends Law {
                             extensionalArgs.placeholders.put("_LocationID", mcm.getLocationId());
                             extensionalArgs.enable_thinking = sessionCfg.enable_thinking;
                             // 接收响应 tokens
-                            StringBuilder recordTokens = new StringBuilder();
                             StringBuilder replyTokens = new StringBuilder();
                             assistant.completions(openaiMl, extensionalArgs, outputs -> {
-                                recordTokens.append(outputs);
                                 String[] split = outputs.split("\n\n", 2); // 每一次接收够一段就回复一次消息
                                 if (split.length > 1) {
                                     replyTokens.append(split[0]);
@@ -227,10 +225,6 @@ public class AIChat extends Law {
                                 }
                             });
                             if (!replyTokens.isEmpty()) mcm.reply(replyTokens.toString());
-                            MCMessage recordMcm = new MCMessage();
-                            recordMcm.messageFields.add(new TextField(recordTokens.toString()));
-                            recordMcm.putMetainfo("role", "assistant");
-                            topic.addMsg(recordMcm);
                         } catch (IOException e) {
                             logger.error("生成回复时出错", e);
                         }

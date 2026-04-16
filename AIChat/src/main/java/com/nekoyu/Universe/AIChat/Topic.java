@@ -5,7 +5,6 @@ import com.nekoyu.Universe.API.MessageChannel.MessageField.ImageField;
 import com.nekoyu.Universe.API.MessageChannel.MessageField.MsgField;
 import com.nekoyu.Universe.API.MessageChannel.MessageField.TextField;
 import com.nekoyu.Universe.API.MessageChannel.MessageList;
-import com.nekoyu.Universe.API.Providers.LLMProvider.Assistant;
 
 import java.util.Objects;
 
@@ -21,53 +20,119 @@ public class Topic {
 
     public void addMsg(MCMessage mcm) {
         MCMessage oaiM = new MCMessage();
+
+        // 1) 先转换 role
         if (Objects.equals(mcm.sender.getLocationId(), mcm.receiver.getLocationId())) {
             oaiM.putMetainfo("role", "assistant");
-        } else oaiM.putMetainfo("role", "user");
-        oaiM.messageFields.add(new TextField(formatTimestamp((mcm.time * 1000)) + // [时间]
-                "[" + mcm.id + "]" + // [时间] [消息id]
-                mcm.sender.getName() + "(" + mcm.sender.getLocationId() + ")" + mcm.sender.getSex() + // [时间] [消息id] [昵称](用户QQ号)性别
-                ": "));  // [时间] [消息id] [昵称](用户 LocationId)性别: [消息内容]
+        } else {
+            oaiM.putMetainfo("role", "user");
+            oaiM.messageFields.add(new TextField(
+                    formatTimestamp((mcm.time * 1000)) +
+                            "[" + mcm.id + "]" +
+                            mcm.sender.getName() + "(" + mcm.sender.getLocationId() + ")" + mcm.sender.getSex() +
+                            ": "
+            ));
+        }
 
+        // 2) 追加消息内容
         if (sessionCfg.nativeImage) {
             for (MsgField mf : mcm.messageFields) {
-                if (mf instanceof ImageField) oaiM.messageFields.add(mf);
-                if (mf instanceof TextField) oaiM.messageFields.add(mf);
-                else oaiM.messageFields.add(new TextField(mf.toString()));
+                if (mf instanceof ImageField) {
+                    oaiM.messageFields.add(mf);
+                } else if (mf instanceof TextField) {
+                    oaiM.messageFields.add(mf);
+                } else {
+                    oaiM.messageFields.add(new TextField(mf.toString()));
+                }
             }
-        } else oaiM.messageFields.add(new TextField(mcm.solveAll()));
+        } else {
+            oaiM.messageFields.add(new TextField(mcm.solveAll()));
+        }
+
         oaiM.sender = mcm.sender;
         messages.add(oaiM);
 
-        int total = 0; // 总共的tokens数量（估算）
-        int keep = 0; // 保留消息数量
+        // 3) 按“块”裁剪，避免截断 function calling 链
+        trimMessagesSafely();
+    }
 
+    private void trimMessagesSafely() {
         int budget = sessionCfg.maxTokens / 2;
 
-        for (int i = messages.size() - 1; i >= 0; i--) {
-            int t = countTokens(messages.get(i));
+        int total = 0;          // 已保留 token
+        int keep = 0;           // 最终保留消息数
+        int firstBlockSize = 0;  // 保底：至少保留最后一个完整块
+        boolean firstBlockSeen = false;
 
-            if (total + t > budget) {
+        for (int i = messages.size() - 1; i >= 0; ) {
+            int blockTokens = 0;
+            int blockSize = 0;
+
+            MCMessage cur = messages.get(i);
+
+            // tool block：tool + tool + tool ... + assistant(tool_calls)
+            if (isToolMessage(cur)) {
+                while (i >= 0 && isToolMessage(messages.get(i))) {
+                    blockTokens += countTokens(messages.get(i));
+                    blockSize++;
+                    i--;
+                }
+
+                if (i >= 0 && isAssistantWithToolCalls(messages.get(i))) {
+                    blockTokens += countTokens(messages.get(i));
+                    blockSize++;
+                    i--;
+                }
+            } else {
+                blockTokens = countTokens(cur);
+                blockSize = 1;
+                i--;
+            }
+
+            if (!firstBlockSeen) {
+                firstBlockSeen = true;
+                firstBlockSize = blockSize;
+            }
+
+            if (total + blockTokens > budget) {
                 break;
             }
 
-            total += t;
-            keep++;
+            total += blockTokens;
+            keep += blockSize;
         }
-        // WARN keep可能为0，此时无法触发LLM回复
 
-        if (messages.size() > 50 || total > budget) {
+        // 保底：如果预算太小导致一个块都放不下，至少保留最后一个完整块
+        if (keep == 0 && messages.size() > 0) {
+            keep = firstBlockSize;
+        }
+
+        // 只在需要时清理
+        if (messages.size() > 50 || total > budget || keep < messages.size()) {
             messages.clean(keep);
-        } // 上下文过长时强制清理
+        }
+    }
+
+    private static boolean isToolMessage(MCMessage m) {
+        return "tool".equals(m.getMetainfo("role"));
+    }
+
+    private static boolean isAssistantWithToolCalls(MCMessage m) {
+        return "assistant".equals(m.getMetainfo("role"))
+                && m.getMetainfo("Tool_calls") != null;
     }
 
     // 估算某消息的tokens量
     private static int countTokens(MCMessage oai) {
         int tokens = 0;
         for (MsgField mf : oai.messageFields) {
-            if (mf instanceof TextField txtF) tokens+= txtF.toString().length() / 2;
-            else if (mf instanceof ImageField) tokens+=1000;
-            else tokens+=mf.toString().length();
+            if (mf instanceof TextField txtF) {
+                tokens += txtF.toString().length() / 2;
+            } else if (mf instanceof ImageField) {
+                tokens += 1000;
+            } else {
+                tokens += mf.toString().length();
+            }
         }
         return tokens;
     }

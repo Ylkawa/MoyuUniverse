@@ -1,9 +1,11 @@
 package com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.event.JsonMessages;
 
+import com.google.gson.JsonElement;
+
 public class com_tencent_tuwen_lua extends JsonMessage {
     public String bizsrc;
     public Config config;
-    public Extra extra;
+    public JsonElement extra;
     public Meta meta;
 
     public static class Config {

@@ -1,7 +1,5 @@
 package com.nekoyu.Universe.API.Providers.LLMProvider;
 
-import com.nekoyu.Universe.API.MessageChannel.MCMessage;
-import com.nekoyu.Universe.API.MessageChannel.MessageField.TextField;
 import com.nekoyu.Universe.API.MessageChannel.MessageList;
 import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.ExtensionalArgs;
 import com.nekoyu.Universe.API.Providers.LLMProvider.RespBodies.CompletionsResponse;
@@ -37,20 +35,9 @@ public class Assistant {
     }
 
     public CompletionsResponse completions(MessageList messageList, ExtensionalArgs extensionalArgs, LLMProvider.BufferCallback bufferCallback) throws IOException {
-        MessageList ml = (MessageList) messageList.clone();
-        if (systemPromptFirst != null) ml.add(0,
-                new MCMessage.Builder()
-                        .add(new TextField(systemPromptFirst))
-                        .metainfo("role", "system")
-                        .build()
-        );
-        if (systemPromptLast != null) ml.add(
-                new MCMessage.Builder()
-                        .add(new TextField(systemPromptLast))
-                        .metainfo("role", "system")
-                        .build()
-        );
-        return provider.completions(model, ml, tools, extensionalArgs, bufferCallback);
+        extensionalArgs.systemPromptFirst = systemPromptFirst;
+        extensionalArgs.systemPromptLast = systemPromptLast;
+        return provider.completions(model, messageList, tools, extensionalArgs, bufferCallback);
     }
 
     public void addTool(LLMFunction tool) {

@@ -6,4 +6,6 @@ import java.util.Map;
 public class ExtensionalArgs {
     public Map<String, String> placeholders = new HashMap<>();
     public boolean enable_thinking = false;
+    public String systemPromptFirst = null;
+    public String systemPromptLast = null;
 }
