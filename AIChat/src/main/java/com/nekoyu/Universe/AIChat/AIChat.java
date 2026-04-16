@@ -29,6 +29,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Instant;
+import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
@@ -203,6 +204,17 @@ public class AIChat extends Law {
                                 reqEv.placeholders.put("TIME", formatTimestamp(System.currentTimeMillis()));
                                 reqEv.placeholders.put("SESSION_LOCATION_ID", mcm.getLocationId());
                                 reqEv.placeholders.put("ACCOUNT_NICKNAME", mcm.receiver.getName());
+                                if (MEMORY != null) {
+                                    try {
+                                        StringBuilder sb = new StringBuilder();
+                                        for (var obj : MEMORY.getMemories(new ArrayList<>(topic.messages.getLocationIds()))) {
+                                            sb.append(obj).append("\n\n");
+                                        }
+                                        reqEv.placeholders.put("MEMORY", sb.toString());
+                                    } catch (Exception e) {
+                                        logger.error("无法获取记忆", e);
+                                    }
+                                }
 
                                 try {
                                     MessageList openaiMl = topic.getOpenAIML();
@@ -535,12 +547,19 @@ public class AIChat extends Law {
             int memKey;
             String locationId;
             String content;
-            long createdAt;
-            long updatedAt;
+            LocalDateTime createdAt;
+            LocalDateTime updatedAt;
 
             @Override
             public String toString() {
-                return "(" + memKey + ")" + formatTimestamp(updatedAt * 1000) + " [" + locationId + "]: " + content;
+                return "[mem_id=" + memKey
+                        + "|time=" + formatTimestamp(updatedAt)
+                        + "|loc=" + locationId + "]\n"
+                        + content;
+            }
+
+            public static String formatTimestamp(LocalDateTime time) {
+                return time.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
             }
         }
     }
