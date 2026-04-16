@@ -245,7 +245,11 @@ public class AIChat extends Law {
                         MCMessage message = topic.messages.get(i);
                         if (Objects.equals(message.sender.getLocationId(), message.receiver.getLocationId())) break;
                         if (i == size - TOPIC_TIMEOUT) {
-                            constructMemory(mcm.getLocationId(), topic.messages);
+                            try {
+                                constructMemory(mcm.getLocationId(), topic.messages);
+                            } catch (RuntimeException e) {
+                                logger.error("Failed to construct memory", e);
+                            }
                             activatingTopics.remove(mcm.sessionId);
                         }
                     }
@@ -263,7 +267,11 @@ public class AIChat extends Law {
                             // name(locationId)[2026-04-11 12:19:44]:\n\n
                             msg.messageFields = mcp.messageFields;
                             ml.add(msg);
-                            constructMemory(mcp.getLocationId(), ml);
+                            try {
+                                constructMemory(mcp.getLocationId(), ml);
+                            } catch (RuntimeException e) {
+                                logger.error("Failed to construct memory", e);
+                            }
                             mcp.sendLike();
                         }
                     } else {
