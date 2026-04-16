@@ -167,18 +167,18 @@ public class AIChat extends Law {
                 Topic topic = activatingTopics.get(mcm.sessionId);
                 if (topic != null) topic.addMsg(mcm);
                 if (sessionCfg.Trigger.equals("every") || mcm.messageString.contains(sessionCfg.Keyword) || mcm.level >= 2) {
+                    if (topic == null) {
+                        topic = new Topic(sessionCfg);
+                        activatingTopics.put(mcm.sessionId, topic);
+                        MessageList ml = (MessageList) Universe.MessageChannelManager.getMessageHistory(sessionCfg.SessionId).clone();
+                        for (MCMessage m : ml) {
+                            topic.addMsg(m);
+                        }
+                    }
                     if (topic.responding.compareAndSet(false, true)) { // 阻止同时回复多个消息
                         try {
                             Object provider = Universe.Providers.get(sessionCfg.Provider);
                             if (provider instanceof LLMProvider lp) {
-                                if (topic == null) {
-                                    topic = new Topic(sessionCfg);
-                                    activatingTopics.put(mcm.sessionId, topic);
-                                    MessageList ml = (MessageList) Universe.MessageChannelManager.getMessageHistory(sessionCfg.SessionId).clone();
-                                    for (MCMessage m : ml) {
-                                        topic.addMsg(m);
-                                    }
-                                }
                                 Assistant assistant = lp.newAssistant(sessionCfg.Model);
                                 if (sessionCfg.Tools != null) {
                                     for (String tool : sessionCfg.Tools) {
