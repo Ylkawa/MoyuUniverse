@@ -50,6 +50,7 @@ public class MCMessage {
     }
 
     public String getLocationId() {
+        if (sessionId == null) return null;
         return sender.platform + ":" + sessionId.split(":")[1];
     }
 
