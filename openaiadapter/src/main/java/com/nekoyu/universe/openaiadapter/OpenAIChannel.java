@@ -105,12 +105,11 @@ public class OpenAIChannel extends LLMProvider {
             }
             completionsRequest.messages.add(message);
         }
-        logger.debug(gson.toJson(completionsRequest));
         if (extensionalArgs.systemPromptFirst != null) {
             ArrayMessage systemPromptFirst = new ArrayMessage();
             systemPromptFirst.role = "system";
             systemPromptFirst.content.add(new TextPiece(extensionalArgs.systemPromptFirst));
-            completionsRequest.messages.add(systemPromptFirst);
+            completionsRequest.messages.add(0, systemPromptFirst);
         }
         if (extensionalArgs.systemPromptLast != null) {
             ArrayMessage systemPromptLast = new ArrayMessage();
@@ -118,6 +117,7 @@ public class OpenAIChannel extends LLMProvider {
             systemPromptLast.content.add(new TextPiece(extensionalArgs.systemPromptLast));
             completionsRequest.messages.add(systemPromptLast);
         }
+        logger.debug(gson.toJson(completionsRequest));
         boolean outputted = false;
         if (timeout <= 1) { // 超时时，禁用所有tool，进行最后一次请求，避免死循环
             completionsRequest.tools = null;
