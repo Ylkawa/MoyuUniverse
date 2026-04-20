@@ -52,6 +52,7 @@ public class Topic {
         }
 
         oaiM.sender = mcm.sender;
+        oaiM.sessionId = mcm.sessionId;
         messages.add(oaiM);
 
         // 3) 按“块”裁剪，避免截断 function calling 链
