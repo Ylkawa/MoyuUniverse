@@ -11,5 +11,5 @@ public class SessionConfig {
     String Keyword;
     boolean enable_thinking = false;
     boolean nativeImage;
-    int maxTokens = 100000;
+    int maxTokens = 20000;
 }

@@ -391,6 +391,9 @@ public class AIChat extends Law {
         try {
             StringBuilder respTokens = new StringBuilder();
             assistant.completions(ml, extensionalArgs, respTokens::append);
+            int countOfNewMemory = 0;
+            int countOfUpdatedMemory = 0;
+            int countOfDeletedMemory = 0;
 
             for (String rawLine : respTokens.toString().split("\\R")) {
                 String line = rawLine.trim();
@@ -405,6 +408,7 @@ public class AIChat extends Law {
                     if (content != null && !content.isBlank()) {
                         MEMORY.updateMemory(memKey, content.trim());
                     }
+                    countOfUpdatedMemory++;
                     continue;
                 }
 
@@ -412,6 +416,7 @@ public class AIChat extends Law {
                 if (deleteMatcher.matches()) {
                     int memKey = Integer.parseInt(deleteMatcher.group(1));
                     MEMORY.deleteMemory(memKey);
+                    countOfDeletedMemory++;
                     continue;
                 }
 
@@ -422,8 +427,14 @@ public class AIChat extends Law {
                     if (!locId.isEmpty() && content != null && !content.isBlank()) {
                         MEMORY.newMemory(locId, content.trim());
                     }
+                    countOfNewMemory++;
+                    continue;
                 }
+
+                logger.warn("AI 在构建记忆时输出了不能被识别的格式：{}", line);
             }
+
+            logger.info("本次记忆改动：新增 {} 更新 {} 删除 {}", countOfNewMemory, countOfUpdatedMemory, countOfDeletedMemory);
         } catch (IOException e) {
             logger.error("生成失败", e);
         }
