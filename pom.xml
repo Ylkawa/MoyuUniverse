@@ -16,7 +16,6 @@
         <module>AIChat</module>
         <module>NetworkStatusMonitor</module>
         <module>ColorGroupName</module>
-        <module>AIChat-Memory</module>
         <module>AliyunWebhook</module>
         <module>AIChat-Web</module>
         <module>openaiadapter</module>
