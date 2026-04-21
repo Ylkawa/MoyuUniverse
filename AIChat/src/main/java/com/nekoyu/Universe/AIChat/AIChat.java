@@ -352,15 +352,20 @@ public class AIChat extends Law {
                 
                 输出必须严格符合以下格式，不得添加解释、理由或额外文本：
                 
-                NEW [目标LocationId]: [要新增的记忆]
+                NEW [[目标LocationId]]: [要新增的记忆]
                 UPDATE [记忆条目ID]: [修改后的记忆内容]
                 DELETE [记忆条目ID]
+                
+                例如：
+                NEW [Universe:group/12435678]: 群聊主要讨论人工智能大语言模型应用开发
+                UPDATE 12: 用户比较喜欢VOCALOID的音乐
+                DELETE 3
                 
                 补充约束：
                 - NEW 只能写入新的、未重复的有效记忆。
                 - UPDATE 只能修改与原记忆语义一致但更准确的内容。
                 - DELETE 只能删除过时、错误、重复或无长期价值的记忆。
-                - 对于明显临时的内容，如果没有长期价值，宁可不输出任何记忆。""";
+                - 对于明显临时的内容，如果没有长期价值，宁可不输出任何记忆。无法输出有价值记忆时，使用单行 END 指令直接结束记忆构建。""";
 
         RequestEvent reqEv = new RequestEvent();
         reqEv.placeholders.put("TIME", formatTimestamp(System.currentTimeMillis()));
@@ -416,6 +421,8 @@ public class AIChat extends Law {
                 String line = rawLine.trim();
                 if (line.isEmpty()) {
                     continue;
+                } else if (line.equals("END")) {
+                    logger.info("AI 主动结束了构建记忆");
                 }
 
                 Matcher updateMatcher = UPDATE_PATTERN.matcher(line);
