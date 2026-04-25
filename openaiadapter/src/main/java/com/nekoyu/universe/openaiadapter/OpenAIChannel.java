@@ -123,6 +123,7 @@ public class OpenAIChannel extends LLMProvider {
             completionsRequest.tools = null;
             ArrayMessage am = new ArrayMessage();
             am.content.add(new TextPiece("[WARNING] 工具调用回合超时，工具被禁用"));
+            am.role = "system";
             completionsRequest.messages.add(am);
         }
         Request req = new Request.Builder()
