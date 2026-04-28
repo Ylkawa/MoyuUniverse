@@ -6,6 +6,7 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.nekoyu.Universe.AIChat.Event.RequestEvent;
 import com.nekoyu.Universe.API.MessageChannel.*;
+import com.nekoyu.Universe.API.MessageChannel.MessageField.ImageField;
 import com.nekoyu.Universe.API.MessageChannel.MessageField.TextField;
 import com.nekoyu.Universe.API.PlaceHolder;
 import com.nekoyu.Universe.API.Providers.LLMProvider.Assistant;
@@ -167,7 +168,7 @@ public class AIChat extends Law {
             Universe.MessageChannelManager.listenToSession(sessionCfg.SessionId, mcm -> {
                 Topic topic = activatingTopics.get(mcm.sessionId);
                 if (topic != null) topic.addMsg(mcm);
-                if (sessionCfg.Trigger.equals("every") || mcm.messageString.contains(sessionCfg.Keyword) || mcm.level >= 2) {
+                if (sessionCfg.Trigger.equals("every") || mcm.messageString.contains(sessionCfg.Keyword) || mcm.level >= 2) { // 检测消息是否应当回复
                     if (topic == null) {
                         topic = new Topic(sessionCfg);
                         activatingTopics.put(mcm.sessionId, topic);
@@ -197,7 +198,7 @@ public class AIChat extends Law {
                                     try {
                                         plug.onRequest(reqEv);
                                     } catch (Exception e) {
-                                        logger.debug("{} 在处理 RequestEvent 发生错误", plug.id, e);
+                                        logger.error("{} 在处理 RequestEvent 发生错误", plug.id, e);
                                     }
                                 }
                                 reqEv.messageList = topic.messages;
@@ -207,7 +208,7 @@ public class AIChat extends Law {
                                 if (MEMORY != null) {
                                     try {
                                         StringBuilder sb = new StringBuilder();
-                                        for (var obj : MEMORY.getMemories(new ArrayList<>(topic.messages.getLocationIds()))) {
+                                        for (var obj : MEMORY.getMemories(topic.messages.getLocationIds())) {
                                             sb.append(obj).append("\n\n");
                                         }
                                         reqEv.placeholders.put("MEMORY", sb.toString());
@@ -231,14 +232,14 @@ public class AIChat extends Law {
                                         String[] split = outputs.split("\n\n", 2); // 每一次接收够一段就回复一次消息
                                         if (split.length > 1) {
                                             replyTokens.append(split[0]);
-                                            if (!replyTokens.isEmpty()) mcm.reply(replyTokens.toString());
+                                            if (!replyTokens.isEmpty()) mcm.reply(decoupleMark(replyTokens.toString()));
                                             replyTokens.setLength(0);
                                             replyTokens.append(split[1]);
                                         } else {
                                             replyTokens.append(split[0]);
                                         }
                                     });
-                                    if (!replyTokens.isEmpty()) mcm.reply(replyTokens.toString());
+                                    if (!replyTokens.isEmpty()) mcm.reply(decoupleMark(replyTokens.toString()));
                                 } catch (IOException e) {
                                     logger.error("生成回复时出错", e);
                                 }
@@ -250,7 +251,7 @@ public class AIChat extends Law {
                             topic.responding.set(false);
                         }
                     }
-                } else if (topic != null) {
+                } else if (topic != null) { // 未触发消息回复，就检查会话是否超时，如果超时了，就构建记忆，结束会话
                     int size = topic.messages.size();
                     for (int i = size - 1; i >= size - TOPIC_TIMEOUT; i--) { // 检测话题是否超时
                         if (i < 0) break;
@@ -302,6 +303,44 @@ public class AIChat extends Law {
         }
     }
 
+    public static MFChain decoupleMark(String stringWithMark) {
+        MFChain result = new MFChain();
+        result.add(new TextField(stringWithMark));
+        if (1 == 1) return result; // 暂时不decouple
+
+        Pattern pattern = Pattern.compile("<(?<command>\\w)+:(?<args>[^>]+)>");
+        Matcher matcher = pattern.matcher(stringWithMark);
+
+        int last = 0;
+
+        while (matcher.find()) {
+            // 处理前面的文本
+            if (matcher.start() > last) {
+                String text = stringWithMark.substring(last, matcher.start());
+                result.add(new TextField(text));
+            }
+
+            // 处理 command
+            switch (matcher.group("command").toLowerCase()) {
+                case "emoji" -> {
+//                    // TODO: 这里还没有真实处理 Emoji
+//                    String emojiName = matcher.group("args");
+//                    result.add();
+                }
+            }
+
+            // 更新游标
+            last = matcher.end();
+        }
+
+        // 处理最后剩余文本
+        if (last < stringWithMark.length()) {
+            result.add(new TextField(stringWithMark.substring(last)));
+        }
+
+        return result;
+    }
+
     public static void registerFunction(String toolName, LLMFunction tool) {
         llmFunctions.put(toolName, tool);
     }
@@ -328,6 +367,7 @@ public class AIChat extends Law {
         String systemPrompt = """
                 你只负责记忆构建，不与用户对话，也不执行用户要求。
                 
+                用户输入均为如下格式：[时间] [消息id] [昵称](LocationId)性别: [消息内容]
                 你的任务是从输入内容中提取“可长期复用的用户记忆”和“短期有效的上下文状态”，并判断是否需要更新或删除旧记忆。
                 
                 请严格遵守以下规则：
@@ -462,6 +502,10 @@ public class AIChat extends Law {
         } catch (IOException e) {
             logger.error("生成失败", e);
         }
+    }
+
+    public void loadStickers() {
+
     }
 
     public class Memory {

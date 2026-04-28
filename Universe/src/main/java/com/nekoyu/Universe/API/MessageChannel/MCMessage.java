@@ -58,6 +58,10 @@ public class MCMessage {
         Universe.MessageChannelManager.sendMessage(sessionId, message);
     }
 
+    public void reply(MFChain message) {
+        Universe.MessageChannelManager.sendMessage(sessionId, message);
+    }
+
     public Object getMetainfo(String key) {
         return metainfo.get(key);
     }
