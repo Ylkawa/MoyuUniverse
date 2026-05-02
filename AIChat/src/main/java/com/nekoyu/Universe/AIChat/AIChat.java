@@ -421,7 +421,7 @@ public class AIChat extends Law {
 
         assistant.setSystemPromptFirst(PlaceHolder.replace(systemPrompt, reqEv.placeholders));
 
-        List<Memory.MemObj> memories = MEMORY.getMemories(new ArrayList<>(ml.getLocationIds()));
+        List<Memory.MemObj> memories = MEMORY.getMemories(ml.getLocationIds());
 
         MCMessage previousMemory = new MCMessage();
         previousMemory.putMetainfo("role", "user");
