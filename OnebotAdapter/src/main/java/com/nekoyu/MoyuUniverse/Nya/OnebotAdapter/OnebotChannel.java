@@ -161,7 +161,7 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
                     } catch (IOException e) {
                         throw new RuntimeException(e);
                     }
-                    loginAccount = (QQAccount) getSession("user/" +  accountId);
+                    loginAccount = (QQAccount) getSession("user/" + accountId);
                     logger.info("{} 登录的 QQ号 为 {} ({}), {} 个好友  {} 个群聊", ID, nickname, accountId, friendCount, groupCount);
                 });
 
@@ -195,14 +195,22 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
                                             }
                                             // 暂时没看到有能和emoji一一对应的表格，先不管
                                             case "image" -> {
+                                                if (ms.data.get("sub_type") != null)
+                                                    if (Integer.parseInt(ms.data.get("sub_type")) == 1) { // 表情包
+                                                        try {
+                                                            StickerField stickerField = new StickerField(new URL(ms.data.get("url")));
+                                                            mcm.messageFields.add(stickerField);
+                                                        } catch (MalformedURLException e) {
+                                                            logger.error("无法以 {} 创建URL对象", ms.data.get("url"), e);
+                                                            mcm.messageFields.add(new TextField("[动画表情]"));
+                                                        }
+                                                    }
                                                 try {
                                                     ImageField imageField = new ImageField(new URL(ms.data.get("url")));
                                                     mcm.messageFields.add(imageField);
                                                 } catch (MalformedURLException e) {
-                                                    logger.error("无法以 {} 创建URL对象", ms.data.get("file"), e);
+                                                    logger.error("无法以 {} 创建URL对象", ms.data.get("url"), e);
                                                     mcm.messageFields.add(new TextField("[图片]"));
-                                                } catch (RuntimeException e) {
-                                                    logger.error(e.getMessage(), e);
                                                 }
                                             }
                                             // 放不进去文本，先这样
@@ -256,7 +264,7 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
                                                 try {
                                                     mcm.messageFields.add(new ShareUrlField(ms.data.get("title"), new URL(ms.data.get("url"))));
                                                 } catch (MalformedURLException e) {
-                                                    logger.error("无法以 {} 创建URL对象", ms.data.get("file"), e);
+                                                    logger.error("无法以 {} 创建URL对象", ms.data.get("url"), e);
                                                     mcm.messageFields.add(new TextField("[分享链接]"));
                                                 }
                                             }
@@ -279,7 +287,6 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
                                                         try {
                                                             mcm.messageFields.add(new ShareUrlField("网易云音乐分享", new URL("https://music.163.com/#/song?id=" + ms.data.get("id"))));
                                                         } catch (MalformedURLException e) {
-                                                            logger.error("无法以 {} 创建URL对象", ms.data.get("file"), e);
                                                             mcm.messageFields.add(new TextField("[网易云音乐分享]"));
                                                         }
                                                     }
@@ -287,7 +294,6 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
                                                         try {
                                                             mcm.messageFields.add(new ShareUrlField("QQ音乐分享", new URL("https://y.qq.com/n/ryqq/songDetail/" + ms.data.get("id"))));
                                                         } catch (MalformedURLException e) {
-                                                            logger.error("无法以 {} 创建URL对象", ms.data.get("file"), e);
                                                             mcm.messageFields.add(new TextField("[QQ音乐分享]"));
                                                         }
                                                     }
@@ -298,7 +304,7 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
                                                         try {
                                                             mcm.messageFields.add(new ShareUrlField("音乐分享", new URL(ms.data.get("url"))));
                                                         } catch (MalformedURLException e) {
-                                                            logger.error("无法以 {} 创建URL对象", ms.data.get("file"), e);
+                                                            logger.error("无法以 {} 创建URL对象", ms.data.get("url"), e);
                                                             mcm.messageFields.add(new TextField("音乐分享"));
                                                         }
                                                     }
@@ -579,7 +585,7 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
     @Override
     public void sendLike(String sessionId) {
         String[] split = sessionId.split("/");
-        if (qZone != null )qZone.addTask(new QZone.Task.SendLikeTask(split[split.length - 1]));
+        if (qZone != null) qZone.addTask(new QZone.Task.SendLikeTask(split[split.length - 1]));
     }
 
     @Override
@@ -859,7 +865,7 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
                 try {
                     Document doc = org.jsoup.Jsoup.parse(item.getAttribute("outerHTML"));
                     long timestamp = Long.parseLong(doc.selectFirst("[name=feed_data]").attr("data-abstime"));
-                    if (timestamp*1000 < lastFetch) {
+                    if (timestamp * 1000 < lastFetch) {
                         lastFetch = System.currentTimeMillis(); // 标记一下这一次最新动态是这个时间
                         logger.debug("fetched all new post");
                         return;
