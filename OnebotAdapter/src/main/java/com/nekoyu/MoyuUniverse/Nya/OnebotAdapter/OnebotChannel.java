@@ -788,9 +788,9 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
                         throw new RuntimeException(e);
                     }
                 }
-                for (int i = 0; i <= 600; i++) { // 等待新任务如果没有就退出了
+                for (int i = 0; i <= 240; i++) { // 等待新任务如果没有就退出了
                     if (!tasks.isEmpty()) break;
-                    else if (i == 600) {
+                    else if (i == 240) {
                         release();
                         return;
                     }
