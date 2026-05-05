@@ -34,6 +34,7 @@ import org.openqa.selenium.*;
 import org.openqa.selenium.chrome.ChromeDriver;
 import org.openqa.selenium.chrome.ChromeOptions;
 import org.openqa.selenium.interactions.Actions;
+import org.openqa.selenium.remote.RemoteWebDriver;
 import org.openqa.selenium.support.ui.ExpectedConditions;
 import org.openqa.selenium.support.ui.WebDriverWait;
 import org.slf4j.Logger;
@@ -71,6 +72,7 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
     URI uri;
     String token;
     boolean enableQZone;
+    URL remoteWebDriverURL = null;
     Map<String, Callback> syncActions = new ConcurrentHashMap<>(); // Echoes 和 Actions 的映射
     Map<String, Session> cachedSessions = new ConcurrentHashMap<>(); // 用户账号列表缓存
     boolean good = true; // 实现端健康状态
@@ -654,7 +656,7 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
     public class QZone {
         public static final Random RANDOM = new Random();
         List<String> availablePostKeys = new ArrayList<>();
-        ChromeDriver driver;
+        WebDriver driver;
         private volatile boolean workerRunning = false;
         final BlockingDeque<Task> tasks = new LinkedBlockingDeque<>(); // 使用队列机制逐个执行任务
         private long lastFetch = System.currentTimeMillis();
@@ -664,7 +666,7 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
                 if (online && tasks.isEmpty()) {
                     addTask(new Task.FetchPosts());
                 }
-            }, 1, 60, TimeUnit.MINUTES);
+            }, 20, 60 * 60, TimeUnit.SECONDS);
         }
 
         public static class Task {
@@ -728,25 +730,20 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
         // 此处通过请求Onebot API get_cookies 获取cookies初始化会话
         public void init() {
             logger.debug("create chrome instance");
-            String driverPath = System.getProperty("webdriver.chrome.driver");
-            if (driverPath == null || driverPath.isBlank()) {
-                String envDriverPath = System.getenv("CHROMEDRIVER_PATH");
-                if (envDriverPath != null && !envDriverPath.isBlank()) {
-                    System.setProperty("webdriver.chrome.driver", envDriverPath);
-                }
-            }
-            ChromeOptions options = new ChromeOptions(); // headless
-            options.addArguments("--headless=new");
-            options.addArguments("--no-sandbox");
-            options.addArguments("--disable-dev-shm-usage");
-            options.addArguments("--disable-gpu");
-            options.addArguments("--disable-extensions");
-            options.addArguments("--window-size=1920,1080");
+            ChromeOptions options = new ChromeOptions();
+            options.addArguments("--start-maximized");
 
-            // 这个按情况开
-            options.addArguments("--blink-settings=imagesEnabled=false");
-            driver = new ChromeDriver(options);
-            logger.debug("get driver");
+            try {
+                if (remoteWebDriverURL != null) {
+                    driver = new RemoteWebDriver(
+                            remoteWebDriverURL,
+                            options
+                    );
+                } else driver = new ChromeDriver(options);
+                logger.debug("get driver");
+            } catch (Exception e) {
+                logger.error(e.getMessage(), e);
+            }
             OBRequest obr = new OBRequest("get_cookies");
             obr.params.put("domain", "qzone.qq.com");
             try {
@@ -830,7 +827,7 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
             boolean directExitLoop = false;
             while (Long.parseLong(list.get(list.size() - 1).findElement(By.cssSelector("[name=feed_data]")).getAttribute("data-abstime")) * 1000 > lastFetch) { // 一直往下面翻直到翻到上一次看到的地方
                 logger.debug("rolling page to get more posts");
-                driver.executeScript("window.scrollTo(0, document.body.scrollHeight);");
+                ((JavascriptExecutor) driver).executeScript("window.scrollTo(0, document.body.scrollHeight);");
                 for (int i = 0; i < 5; i++) {
                     list = driver.findElements(
                             By.cssSelector("#feed_friend_list li.f-single.f-s-s:not(.f-single-biz)")
@@ -848,7 +845,7 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
             }
             // 如果好友动态被折叠就挨个先展开全文一下
             for (WebElement item : driver.findElements(By.cssSelector("div.f-info.qz_info_cut > a[data-cmd=qz_toggle]"))) {
-                driver.executeScript(
+                ((JavascriptExecutor) driver).executeScript(
                         "arguments[0].scrollIntoView({block: 'center'});", item
                 );
                 item.click();
@@ -987,7 +984,7 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
 
             if (Objects.equals(btn.getAttribute("data-islike"), "1")) return; // 点过了，直接return
 
-            driver.executeScript(
+            ((JavascriptExecutor) driver).executeScript(
                     "arguments[0].scrollIntoView({block: 'center'});", btn
             );
 

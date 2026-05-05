@@ -6,8 +6,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.*;
+import java.net.MalformedURLException;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.net.URL;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
 import java.util.*;
@@ -68,6 +70,14 @@ public class OnebotAdapter extends Law {
                             oc.token = config.Token;
                             oc.uri = new URI(config.URI);
                             oc.enableQZone = config.EnableQZone;
+                            if (config.RemoteWebDriver != null && config.RemoteWebDriver.url != null) {
+                                try {
+                                    oc.remoteWebDriverURL = new URL(config.RemoteWebDriver.url);
+                                } catch (MalformedURLException e) {
+                                    logger.warn("Onebot Channel {} 配置的远程SeleniumWebDriver URL有误，QZone能力不启用", config.ID);
+                                    oc.enableQZone = false;
+                                }
+                            }
                             ocs.add(oc);
                             logger.info("已载入 Onebot 配置 {}", oc.ID);
                         } catch (FileNotFoundException e) {

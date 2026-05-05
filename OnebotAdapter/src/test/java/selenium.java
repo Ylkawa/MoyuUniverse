@@ -9,8 +9,8 @@ import org.openqa.selenium.JavascriptExecutor;
 import org.openqa.selenium.WebElement;
 import org.openqa.selenium.chrome.ChromeDriver;
 import org.openqa.selenium.devtools.DevTools;
-import org.openqa.selenium.devtools.v144.network.Network;
-import org.openqa.selenium.devtools.v144.network.model.RequestId;
+import org.openqa.selenium.devtools.v146.network.Network;
+import org.openqa.selenium.devtools.v146.network.model.RequestId;
 import org.openqa.selenium.support.ui.ExpectedConditions;
 import org.openqa.selenium.support.ui.WebDriverWait;
 

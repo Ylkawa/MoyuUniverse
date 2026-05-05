@@ -5,4 +5,9 @@ public class Config {
     String Token;
     String URI;
     boolean EnableQZone = false;
+    RemoteWebDriver RemoteWebDriver;
+
+    public static class RemoteWebDriver {
+        String url;
+    }
 }
