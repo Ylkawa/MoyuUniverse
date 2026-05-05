@@ -3,11 +3,13 @@ package com.nekoyu.universe.openaiadapter;
 import com.google.gson.Gson;
 import com.google.gson.JsonSyntaxException;
 import com.nekoyu.Universe.API.MessageChannel.MCMessage;
+import com.nekoyu.Universe.API.MessageChannel.MFChain;
 import com.nekoyu.Universe.API.MessageChannel.MessageField.ImageField;
 import com.nekoyu.Universe.API.MessageChannel.MessageField.MetaField;
 import com.nekoyu.Universe.API.MessageChannel.MessageField.MsgField;
 import com.nekoyu.Universe.API.MessageChannel.MessageField.TextField;
 import com.nekoyu.Universe.API.MessageChannel.MessageList;
+import com.nekoyu.Universe.API.Providers.LLMProvider.Embedding;
 import com.nekoyu.Universe.API.Providers.LLMProvider.LLMProvider;
 import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.ContentPiece.ImageUrlPiece;
 import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.LLMFunction;
@@ -15,6 +17,7 @@ import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.*;
 import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.ContentPiece.TextPiece;
 import com.nekoyu.Universe.API.Providers.LLMProvider.RespBodies.CompletionsResponse;
 import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.LLMTool;
+import com.nekoyu.Universe.API.Providers.LLMProvider.RespBodies.EmbeddingResponse;
 import okhttp3.*;
 import okio.BufferedSource;
 import org.checkerframework.checker.units.qual.A;
@@ -36,7 +39,7 @@ import java.util.regex.Pattern;
  * 注意：此 Adapter 支持以堵塞式和流式逻辑，但是堵塞式请求并非原生非流式请求，而是通过流式请求完成，因而仅支持可以流式请求的 API
  * Only supports streamed outputting and function calling models
  */
-public class OpenAIChannel extends LLMProvider {
+public class OpenAIChannel extends LLMProvider implements Embedding {
     Logger logger = LoggerFactory.getLogger(OpenAIChannel.class);
     OkHttpClient client;
     Gson gson;
@@ -85,7 +88,7 @@ public class OpenAIChannel extends LLMProvider {
 //        logger.debug(gson.toJson(cr));
         CompletionsResponse completions = completions(messageList, cr, llmFunctions, bufferCallback, extensionalArgs, 5, responding);
         if (completions.usage.total_tokens > 0)
-            logger.info("本次请求消耗 tokens: 输入 {}  输出 {}", completions.usage.prompt_tokens, completions.usage.completion_tokens); // 无言了，百炼的 API 默认不返回 usage
+            logger.info("Completions-Usage: 输入 {} Tokens  输出 {} Tokens", completions.usage.prompt_tokens, completions.usage.completion_tokens); // 无言了，百炼的 API 默认不返回 usage
         return completions;
     }
 
@@ -255,6 +258,22 @@ public class OpenAIChannel extends LLMProvider {
         Matcher matcher = pattern.matcher(baseurl);
         if (matcher.find()) {
             speciallyAdaptation = "dashscope";
+        }
+    }
+
+    @Override
+    public EmbeddingResponse embedding(EmbeddingRequest embeddingRequest) {
+        Request req = new Request.Builder()
+                .url(baseurl + "/embeddings")
+                .addHeader("Authorization", "Bearer " + apikey)
+                .post(RequestBody.create(gson.toJson(embeddingRequest), MediaType.get("application/json; charset=utf-8")))
+                .build();
+        try (Response resp = client.newCall(req).execute()) {
+            EmbeddingResponse embeddingResponse = new EmbeddingResponse();
+            logger.info("Embedding-Usage: {} Tokens", embeddingResponse.usage.prompt_tokens); // 无言了，百炼的 API 默认不返回 usage
+            return embeddingResponse;
+        } catch (IOException e) {
+            throw new RuntimeException(e);
         }
     }
 }
