@@ -1051,6 +1051,7 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
                 driver.quit();
                 driver = null;
             }
+            workerRunning = false;
         }
     }
 }
