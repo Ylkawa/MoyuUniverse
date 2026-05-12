@@ -69,7 +69,7 @@ public class MessageChannelManager {
                         mcm.sender.name,
                         ColorUtils.RESET,
                         mcm.sender.id,
-                        mcm.messageString);
+                        mcm.messageString.replaceAll("\n", "\n  ")); // 给换行的消息打几个空格，防止和程序的日志输出弄混了
             } else {
                 messagingLogger.info("{}{}{} {}{}{}({}) -> {}",
                         ColorUtils.fg(mc.mainColor),
@@ -79,7 +79,7 @@ public class MessageChannelManager {
                         mcm.sender.name,
                         ColorUtils.RESET,
                         mcm.sender.id,
-                        mcm.messageString);
+                        mcm.messageString.replaceAll("\n", "\n  ")); // 给换行的消息打几个空格，防止和程序的日志输出弄混了
             }
             messageHistory.computeIfAbsent(mcm.sessionId, k -> new MessageList());
             MessageList messageList = messageHistory.get(mcm.sessionId);
