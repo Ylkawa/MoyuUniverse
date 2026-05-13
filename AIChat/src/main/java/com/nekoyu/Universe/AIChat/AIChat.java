@@ -6,7 +6,6 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.nekoyu.Universe.AIChat.Event.RequestEvent;
 import com.nekoyu.Universe.API.MessageChannel.*;
-import com.nekoyu.Universe.API.MessageChannel.MessageField.ImageField;
 import com.nekoyu.Universe.API.MessageChannel.MessageField.TextField;
 import com.nekoyu.Universe.API.PlaceHolder;
 import com.nekoyu.Universe.API.Providers.LLMProvider.Assistant;
@@ -50,6 +49,7 @@ public class AIChat extends Law {
     Map<String, Topic> activatingTopics = new HashMap<>();
     @Nullable
     Memory MEMORY = null;
+    Map<String, Assistant> subAgents = new HashMap<>();
 
     @Override
     public boolean prepare() {
@@ -141,6 +141,28 @@ public class AIChat extends Law {
         } else {
             toolsDic.mkdirs();
         }
+
+        File subAgentsConfDic = new File("./data/AIChat/SubAgents/");
+        if (subAgentsConfDic.isDirectory()) {
+            for (File confFile : subAgentsConfDic.listFiles()) {
+                try (InputStreamReader inputStreamReader = new InputStreamReader(new FileInputStream(confFile))) {
+                    SubAgentConfig subAgentConfig = gson.fromJson(inputStreamReader, SubAgentConfig.class);
+                    Object o = Universe.Providers.get(subAgentConfig.ProviderId);
+                    if (o instanceof LLMProvider llmProvider) {
+                        Assistant assistant = new Assistant(llmProvider, subAgentConfig.model);
+                        assistant.setSystemPromptFirst(subAgentConfig.SystemPrompt);
+                        for (String toolName : subAgentConfig.tools) {
+                            llmFunctions.get(toolName).forEach(assistant::addTool);
+                        }
+                        subAgents.put(subAgentConfig.name, assistant);
+
+                        logger.info("已载入 SubAgent : {}", subAgentConfig.name);
+                    } else logger.warn("为 SubAgent - {} 配置的ProviderId不为LLMProvider，无法加载", subAgentConfig.name);
+                } catch (IOException e) {
+                    logger.error("无法加载 SubAgent 配置文件", e);
+                }
+            }
+        } else logger.warn("没有配置 SubAgent，此特性将禁用");
         return true;
     }
 
@@ -151,8 +173,6 @@ public class AIChat extends Law {
                     SessionConfig sc = gson.fromJson(isr, SessionConfig.class);
                     configs.add(sc);
                     logger.info("载入配置文件 {} ", file.getName());
-                } catch (FileNotFoundException e) {
-                    throw new RuntimeException(e);
                 } catch (IOException e) {
                     throw new RuntimeException(e);
                 }
@@ -184,12 +204,29 @@ public class AIChat extends Law {
                                 Assistant assistant = lp.newAssistant(sessionCfg.Model);
                                 if (sessionCfg.Tools != null) {
                                     for (String tool : sessionCfg.Tools) {
-                                        if (llmFunctions.get(tool) != null) {
-                                            for (LLMFunction func : llmFunctions.get(tool)) {  // FIXME Tool 可能被重复添加而无保护
-                                                assistant.addTool(func);
-                                            }
+                                        llmFunctions.get(tool);
+                                        for (LLMFunction func : llmFunctions.get(tool)) {  // FIXME Tool 可能被重复添加而无保护
+                                            assistant.addTool(func);
                                         }
-                                    } // 为assistant添加指定的tools // 如果不存在这个tool就不添加
+                                    } // 为 assistant 添加指定的 tools // 如果不存在这个 tool 就不添加
+                                    for (String subAgentName : sessionCfg.subAgents) {
+                                        Assistant subAgent = subAgents.get(subAgentName);
+                                        // 作为 tool 添加，以供 assistant 调用 subAgent
+                                        LLMFunction llmFunction = new LLMFunction(subAgentName, subAgent.getDescription(), new LLMFunction.Parameters("object", new String[]{"Question"}, new String[]{"Question"}), args -> {
+                                            MCMessage m = new MCMessage();
+                                            m.messageFields.add(new TextField(args.get("Question")));
+                                            MessageList ml = new MessageList();
+                                            ml.add(m);
+                                            StringBuilder sb = new StringBuilder();
+                                            try {
+                                                subAgent.completions(ml, sb::append);
+                                                return sb.toString();
+                                            } catch (IOException e) {
+                                                throw new RuntimeException(e);
+                                            }
+                                        });
+                                        assistant.addTool(llmFunction);
+                                    } // 为 assistant 添加 subAgent
                                 }
                                 // 先让插件处理事件 插件提供局部的PlaceHolder
                                 var reqEv = new RequestEvent();
@@ -353,9 +390,9 @@ public class AIChat extends Law {
     }
 
     public void constructMemory(String locationId, MessageList ml) {
-       final Pattern UPDATE_PATTERN = Pattern.compile("^UPDATE\\s+(\\d+)\\s*:\\s*(.+)$");
-       final Pattern DELETE_PATTERN = Pattern.compile("^DELETE\\s+(\\d+)\\s*$");
-       final Pattern NEW_PATTERN = Pattern.compile("^NEW\\s*\\[(.+?)]\\s*:\\s*(.+)$");
+        final Pattern UPDATE_PATTERN = Pattern.compile("^UPDATE\\s+(\\d+)\\s*:\\s*(.+)$");
+        final Pattern DELETE_PATTERN = Pattern.compile("^DELETE\\s+(\\d+)\\s*$");
+        final Pattern NEW_PATTERN = Pattern.compile("^NEW\\s*\\[(.+?)]\\s*:\\s*(.+)$");
 
         Object provider = Universe.Providers.get(globalCfg.ProviderId);
         if (!(provider instanceof LLMProvider lp)) {

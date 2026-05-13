@@ -12,14 +12,14 @@ import java.util.Map;
 public class Assistant {
     LLMProvider provider;
     String model;
+    String description;
     String systemPromptFirst;
+    String systemPromptLast;
+    Map<String, LLMFunction> tools = new HashMap<>();
 
     public void setSystemPromptLast(String systemPromptLast) {
         this.systemPromptLast = systemPromptLast;
     }
-
-    String systemPromptLast;
-    Map<String, LLMFunction> tools = new HashMap<>();
 
     public Assistant(LLMProvider provider) {
         this.provider = provider;
@@ -46,5 +46,13 @@ public class Assistant {
 
     public void setSystemPromptFirst(String systemPromptFirst) {
         this.systemPromptFirst = systemPromptFirst;
+    }
+
+    public String getDescription() {
+        return description;
+    }
+
+    public void setDescription(String description) {
+        this.description = description;
     }
 }
