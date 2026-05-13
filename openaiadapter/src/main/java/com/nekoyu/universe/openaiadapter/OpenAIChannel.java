@@ -88,7 +88,7 @@ public class OpenAIChannel extends LLMProvider implements Embedding {
 //        logger.debug(gson.toJson(cr));
         CompletionsResponse completions = completions(messageList, cr, llmFunctions, bufferCallback, extensionalArgs, 5, responding);
         if (completions.usage.total_tokens > 0)
-            logger.info("Completions-Usage: 输入 {} Tokens  输出 {} Tokens", completions.usage.prompt_tokens, completions.usage.completion_tokens); // 无言了，百炼的 API 默认不返回 usage
+            logger.info("Completions-Usage: ({}) 输入 {} Tokens  输出 {} Tokens", cr.model, completions.usage.prompt_tokens, completions.usage.completion_tokens); // 无言了，百炼的 API 默认不返回 usage
         return completions;
     }
 

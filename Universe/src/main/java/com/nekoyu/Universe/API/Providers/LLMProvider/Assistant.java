@@ -36,6 +36,7 @@ public class Assistant {
     }
 
     public CompletionsResponse completions(MessageList messageList, ExtensionalArgs extensionalArgs, LLMProvider.BufferCallback bufferCallback) throws IOException {
+        if (extensionalArgs == null) extensionalArgs = new ExtensionalArgs();
         extensionalArgs.enable_thinking = thinking;
         extensionalArgs.systemPromptFirst = systemPromptFirst;
         extensionalArgs.systemPromptLast = systemPromptLast;
