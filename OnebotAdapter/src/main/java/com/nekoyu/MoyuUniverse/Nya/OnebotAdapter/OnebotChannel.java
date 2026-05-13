@@ -804,6 +804,8 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
         }
 
         public void fetchLatestPosts() {
+            int newPosts = 0;
+
             logger.debug("begin fetching latest posts");
             driver.get("https://qzone.qq.com/");
             WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(30));
@@ -864,7 +866,7 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
                     long timestamp = Long.parseLong(doc.selectFirst("[name=feed_data]").attr("data-abstime"));
                     if (timestamp * 1000 < lastFetch) {
                         lastFetch = System.currentTimeMillis(); // 标记一下这一次最新动态是这个时间
-                        logger.debug("fetched all new post");
+                        logger.debug("fetched all {} new post", newPosts);
                         return;
                     }
                     String key;
@@ -969,6 +971,7 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
                     }
                     // 广播到宇宙
                     broadcastMessage("post/" + post.poster.getId() + "/" + key, post);
+                    newPosts++;
                 } catch (Throwable e) {
                     logger.error("Failed to prase", e);
                     logger.error(item.getAttribute("outerHTML"));
