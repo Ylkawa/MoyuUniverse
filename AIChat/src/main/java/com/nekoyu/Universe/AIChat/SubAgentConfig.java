@@ -8,4 +8,6 @@ public class SubAgentConfig {
     String model;
     List<String> tools;
     String SystemPrompt;
+    String description;
+    boolean thinking = false;
 }

@@ -142,7 +142,7 @@ public class AIChat extends Law {
             toolsDic.mkdirs();
         }
 
-        File subAgentsConfDic = new File("./data/AIChat/SubAgents/");
+        File subAgentsConfDic = new File("./config/AIChat/SubAgents/");
         if (subAgentsConfDic.isDirectory()) {
             for (File confFile : subAgentsConfDic.listFiles()) {
                 try (InputStreamReader inputStreamReader = new InputStreamReader(new FileInputStream(confFile))) {
@@ -151,9 +151,11 @@ public class AIChat extends Law {
                     if (o instanceof LLMProvider llmProvider) {
                         Assistant assistant = new Assistant(llmProvider, subAgentConfig.model);
                         assistant.setSystemPromptFirst(subAgentConfig.SystemPrompt);
-                        for (String toolName : subAgentConfig.tools) {
+                        if (subAgentConfig.tools != null) for (String toolName : subAgentConfig.tools) {
                             llmFunctions.get(toolName).forEach(assistant::addTool);
                         }
+                        assistant.setThinking(subAgentConfig.thinking);
+                        assistant.setDescription(subAgentConfig.description);
                         subAgents.put(subAgentConfig.name, assistant);
 
                         logger.info("已载入 SubAgent : {}", subAgentConfig.name);

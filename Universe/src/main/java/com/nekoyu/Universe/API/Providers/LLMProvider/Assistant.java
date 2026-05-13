@@ -15,6 +15,7 @@ public class Assistant {
     String description;
     String systemPromptFirst;
     String systemPromptLast;
+    boolean thinking;
     Map<String, LLMFunction> tools = new HashMap<>();
 
     public void setSystemPromptLast(String systemPromptLast) {
@@ -35,6 +36,7 @@ public class Assistant {
     }
 
     public CompletionsResponse completions(MessageList messageList, ExtensionalArgs extensionalArgs, LLMProvider.BufferCallback bufferCallback) throws IOException {
+        extensionalArgs.enable_thinking = thinking;
         extensionalArgs.systemPromptFirst = systemPromptFirst;
         extensionalArgs.systemPromptLast = systemPromptLast;
         return provider.completions(model, messageList, tools, extensionalArgs, bufferCallback);
@@ -54,5 +56,9 @@ public class Assistant {
 
     public void setDescription(String description) {
         this.description = description;
+    }
+
+    public void setThinking(boolean thinking) {
+        this.thinking = thinking;
     }
 }
