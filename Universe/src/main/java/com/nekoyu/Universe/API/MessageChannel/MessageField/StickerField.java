@@ -6,4 +6,9 @@ public class StickerField extends ImageField {
     public StickerField(URL url) {
         super(url);
     }
+
+    @Override
+    public String toString() {
+        return "[动画表情]";
+    }
 }
