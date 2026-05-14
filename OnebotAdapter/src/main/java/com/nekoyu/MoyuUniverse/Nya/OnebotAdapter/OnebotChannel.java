@@ -827,6 +827,10 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
             );
             int numOfPost = list.size();
             boolean directExitLoop = false;
+            if (list.isEmpty()) {
+                logger.warn("未加载出任何动态");
+                return;
+            }
             while (Long.parseLong(list.get(list.size() - 1).findElement(By.cssSelector("[name=feed_data]")).getAttribute("data-abstime")) * 1000 > lastFetch) { // 一直往下面翻直到翻到上一次看到的地方
                 logger.debug("rolling page to get more posts");
                 ((JavascriptExecutor) driver).executeScript("window.scrollTo(0, document.body.scrollHeight);");
