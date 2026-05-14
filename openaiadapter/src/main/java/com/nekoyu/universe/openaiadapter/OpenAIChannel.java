@@ -67,6 +67,7 @@ public class OpenAIChannel extends LLMProvider implements Embedding {
         responding.usage.total_tokens = 0;
         responding.choices = new CompletionsResponse.Choice[]{new CompletionsResponse.Choice() {{
             message.content = "";
+            message.reasoning_content = "";
         }}};
         CompletionsRequest cr = new CompletionsRequest();
         if ("dashscope".equals(speciallyAdaptation)) { // 对阿里云百炼进行特调
@@ -93,12 +94,15 @@ public class OpenAIChannel extends LLMProvider implements Embedding {
     }
 
     public CompletionsResponse completions(MessageList ml, CompletionsRequest completionsRequest, Map<String, LLMFunction> llmFunctions, BufferCallback bufferCallback, ExtensionalArgs extensionalArgs, int timeout, CompletionsResponse responding) throws IOException {
-        completionsRequest.messages.clear();
+        completionsRequest.messages.clear(); // 每一轮都重新构建了消息列表
         for (MCMessage m : ml) {
             ArrayMessage message = new ArrayMessage();
             if (m.getMetainfo("role") instanceof String role) {
                 message.role = role;
-                if (role.equals("assistant") && m.getMetainfo("Tool_calls") instanceof Tool_call[] toolCalls) message.tool_calls = toolCalls;
+                if (role.equals("assistant") && m.getMetainfo("Tool_calls") instanceof Tool_call[] toolCalls)  {
+                    if (m.getMetainfo("reasoning") instanceof String s) message.reasoning_content = s; // 回传思考链
+                    message.tool_calls = toolCalls;
+                }
                 if (role.equals("tool") && m.getMetainfo("tool_call_id") instanceof String tool_call_id) message.tool_call_id = tool_call_id;
             } else message.role = "user";
             for (MsgField mf : m.messageFields) {
@@ -141,6 +145,7 @@ public class OpenAIChannel extends LLMProvider implements Embedding {
                 Map<Integer, Tool_call> tool_calls = new HashMap<>();
                 String finish_reason = "unfinished";
                 StringBuilder content = new StringBuilder();
+                StringBuilder reasoning_content = new StringBuilder();
                 while ((line = source.readUtf8Line()) != null) {
                     if (line.startsWith("data: ")) {
 //                        logger.debug(line);
@@ -154,6 +159,10 @@ public class OpenAIChannel extends LLMProvider implements Embedding {
                                     outputted = true;
                                     content.append(choice.delta.content);
                                     responding.choices[0].message.content += choice.delta.content;
+                                }
+                                if (choice.delta.reasoning_content != null && !choice.delta.reasoning_content.isBlank()) {
+                                    reasoning_content.append(choice.delta.reasoning_content);
+                                    responding.choices[0].message.reasoning_content += choice.delta.reasoning_content;
                                 }
                                 if (choice.delta.tool_calls != null) {
                                     for (Tool_call tool_call : choice.delta.tool_calls) {
@@ -199,6 +208,7 @@ public class OpenAIChannel extends LLMProvider implements Embedding {
                             responding.choices[0].message.content += "\n\n";
                             bufferCallback.onCompletion("\n\n");
                         }
+                        if (responding.choices[0].message.reasoning_content != null) assistantMcm.putMetainfo("reasoning", responding.choices[0].message.reasoning_content); // 存放思考链
                         Tool_call[] toolCalls = tool_calls.values().toArray(new Tool_call[0]);
                         assistantMcm.putMetainfo("Tool_calls", toolCalls);
                         boolean next = false;
@@ -222,7 +232,7 @@ public class OpenAIChannel extends LLMProvider implements Embedding {
                                     toolMcm.messageFields.add(new TextField(ex.getMessage()));
                                 }
                             }
-                            if (args != null && extensionalArgs != null) args.putAll(extensionalArgs.placeholders);
+                            if (args != null) args.putAll(extensionalArgs.placeholders);
                             String ctt;
                             if (args == null)
                                 ctt = "未知原因的工具调用错误";

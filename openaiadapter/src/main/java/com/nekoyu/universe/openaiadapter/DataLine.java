@@ -20,6 +20,7 @@ public class DataLine {
         String finish_reason;
 
         public static class Delta {
+            String reasoning_content;
             String content;
             String role;
             Tool_call[] tool_calls;

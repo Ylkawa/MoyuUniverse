@@ -211,25 +211,25 @@ public class AIChat extends Law {
                                             assistant.addTool(func);
                                         }
                                     } // 为 assistant 添加指定的 tools // 如果不存在这个 tool 就不添加
-                                    if (sessionCfg.subAgents != null) for (String subAgentName : sessionCfg.subAgents) {
-                                        Assistant subAgent = subAgents.get(subAgentName);
-                                        // 作为 tool 添加，以供 assistant 调用 subAgent
-                                        LLMFunction llmFunction = new LLMFunction(subAgentName, subAgent.getDescription(), new LLMFunction.Parameters("object", new String[]{"Question"}, new String[]{"Question"}), args -> {
-                                            MCMessage m = new MCMessage();
-                                            m.messageFields.add(new TextField(args.get("Question")));
-                                            MessageList ml = new MessageList();
-                                            ml.add(m);
-                                            StringBuilder sb = new StringBuilder();
-                                            try {
-                                                subAgent.completions(ml, sb::append);
-                                                return sb.toString();
-                                            } catch (IOException e) {
-                                                throw new RuntimeException(e);
-                                            }
-                                        });
-                                        assistant.addTool(llmFunction);
-                                    } // 为 assistant 添加 subAgent
                                 }
+                                if (sessionCfg.subAgents != null) for (String subAgentName : sessionCfg.subAgents) {
+                                    Assistant subAgent = subAgents.get(subAgentName);
+                                    // 作为 tool 添加，以供 assistant 调用 subAgent
+                                    LLMFunction llmFunction = new LLMFunction(subAgentName, subAgent.getDescription(), new LLMFunction.Parameters("object", new String[]{"Question"}, new String[]{"Question"}), args -> {
+                                        MCMessage m = new MCMessage();
+                                        m.messageFields.add(new TextField(args.get("Question")));
+                                        MessageList ml = new MessageList();
+                                        ml.add(m);
+                                        StringBuilder sb = new StringBuilder();
+                                        try {
+                                            subAgent.completions(ml, sb::append);
+                                            return sb.toString();
+                                        } catch (IOException e) {
+                                            throw new RuntimeException(e);
+                                        }
+                                    });
+                                    assistant.addTool(llmFunction);
+                                } // 为 assistant 添加 subAgent
                                 // 先让插件处理事件 插件提供局部的PlaceHolder
                                 var reqEv = new RequestEvent();
                                 reqEv.locationId = mcm.getLocationId();
@@ -264,7 +264,7 @@ public class AIChat extends Law {
                                     // Extensional Args
                                     ExtensionalArgs extensionalArgs = new ExtensionalArgs();
                                     extensionalArgs.placeholders.put("_LocationID", mcm.getLocationId());
-                                    extensionalArgs.enable_thinking = sessionCfg.enable_thinking;
+                                    assistant.setThinking(sessionCfg.enable_thinking);
                                     // 接收响应 tokens
                                     StringBuilder replyTokens = new StringBuilder();
                                     assistant.completions(openaiMl, extensionalArgs, outputs -> {

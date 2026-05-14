@@ -29,6 +29,7 @@ public class CompletionsResponse {
             public String role;
             public String content;
             public Tool_call[] tool_calls;
+            public String reasoning_content;
 
             public Message() {
                 tool_calls = null;
