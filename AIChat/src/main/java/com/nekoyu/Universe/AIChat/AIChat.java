@@ -211,7 +211,7 @@ public class AIChat extends Law {
                                             assistant.addTool(func);
                                         }
                                     } // 为 assistant 添加指定的 tools // 如果不存在这个 tool 就不添加
-                                    for (String subAgentName : sessionCfg.subAgents) {
+                                    if (sessionCfg.subAgents != null) for (String subAgentName : sessionCfg.subAgents) {
                                         Assistant subAgent = subAgents.get(subAgentName);
                                         // 作为 tool 添加，以供 assistant 调用 subAgent
                                         LLMFunction llmFunction = new LLMFunction(subAgentName, subAgent.getDescription(), new LLMFunction.Parameters("object", new String[]{"Question"}, new String[]{"Question"}), args -> {
