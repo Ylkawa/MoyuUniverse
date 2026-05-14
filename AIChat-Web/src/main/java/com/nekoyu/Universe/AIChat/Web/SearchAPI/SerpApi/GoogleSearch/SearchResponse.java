@@ -117,7 +117,7 @@ public class SearchResponse {
         public String question;
         public String type;
         public List<List<String>> table;
-        public List<Map<String, String>> formatted;
+        public Map<String, Map<String, String>> formatted;
         public String title;
         public String link;
         public String displayed_link;
