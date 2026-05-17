@@ -811,171 +811,287 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
             WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(30));
             wait.until(
                     ExpectedConditions.elementToBeClickable(By.id("tab_menu_friend"))
-            ).click(); // 点进好友动态的页面
+            ).click();
             wait.until(ExpectedConditions.invisibilityOfElementLocated(
                     By.className("feed-fn-loading")
-            )); // 等待页面加载
+            ));
             logger.debug("page loaded");
+
             try {
-                Thread.sleep(5000); // 等五秒钟
+                Thread.sleep(5000);
             } catch (InterruptedException e) {
                 throw new RuntimeException(e);
             }
-            // 好了加载完了
+
             List<WebElement> list = driver.findElements(
                     By.cssSelector("#feed_friend_list li.f-single.f-s-s:not(.f-single-biz)")
             );
             int numOfPost = list.size();
             boolean directExitLoop = false;
+
             if (list.isEmpty()) {
                 logger.warn("未加载出任何动态");
                 return;
             }
-            while (Long.parseLong(list.get(list.size() - 1).findElement(By.cssSelector("[name=feed_data]")).getAttribute("data-abstime")) * 1000 > lastFetch) { // 一直往下面翻直到翻到上一次看到的地方
+
+            // ===== 安全翻页 =====
+            while (true) {
+                WebElement last = list.get(list.size() - 1);
+
+                WebElement feedData;
+                try {
+                    feedData = last.findElement(By.cssSelector("[name=feed_data]"));
+                } catch (Exception e) {
+                    logger.warn("最后一条动态没有 feed_data，停止翻页");
+                    break;
+                }
+
+                String abstimeStr = feedData.getAttribute("data-abstime");
+                if (abstimeStr == null || abstimeStr.isBlank()) {
+                    logger.warn("data-abstime 为空，停止翻页");
+                    break;
+                }
+
+                long abstime;
+                try {
+                    abstime = Long.parseLong(abstimeStr);
+                } catch (NumberFormatException e) {
+                    logger.warn("data-abstime 非法: {}", abstimeStr);
+                    break;
+                }
+
+                if (abstime * 1000 <= lastFetch) break;
+
                 logger.debug("rolling page to get more posts");
                 ((JavascriptExecutor) driver).executeScript("window.scrollTo(0, document.body.scrollHeight);");
+
+                boolean loaded = false;
                 for (int i = 0; i < 5; i++) {
-                    list = driver.findElements(
+                    try {
+                        Thread.sleep(1000);
+                    } catch (InterruptedException e) {
+                        throw new RuntimeException(e);
+                    }
+
+                    List<WebElement> newList = driver.findElements(
                             By.cssSelector("#feed_friend_list li.f-single.f-s-s:not(.f-single-biz)")
                     );
-                    if (numOfPost != list.size()) {
+
+                    if (newList.size() != numOfPost) {
+                        list = newList;
                         numOfPost = list.size();
+                        loaded = true;
                         break;
                     }
+
                     if (i == 4) {
                         logger.debug("unable to roll page");
-                        directExitLoop = true; // 等了五下还没加载出新的，放弃继续加载
+                        directExitLoop = true;
                     }
                 }
-                if (directExitLoop) break;
+
+                if (!loaded || directExitLoop) break;
             }
-            // 如果好友动态被折叠就挨个先展开全文一下
+
+            // ===== 展开全文 =====
             for (WebElement item : driver.findElements(By.cssSelector("div.f-info.qz_info_cut > a[data-cmd=qz_toggle]"))) {
                 ((JavascriptExecutor) driver).executeScript(
                         "arguments[0].scrollIntoView({block: 'center'});", item
                 );
-                item.click();
+                try {
+                    item.click();
+                } catch (Exception ignored) {}
+
                 logger.debug("unfolded a post");
+
                 try {
                     Thread.sleep(4000 + RANDOM.nextInt(2000));
                 } catch (InterruptedException e) {
                     throw new RuntimeException(e);
                 }
             }
-            // 所有的好友动态容器
+
             logger.debug("start to fetch");
+
             for (WebElement item : list) {
                 try {
                     Document doc = org.jsoup.Jsoup.parse(item.getAttribute("outerHTML"));
-                    long timestamp = Long.parseLong(doc.selectFirst("[name=feed_data]").attr("data-abstime"));
+
+                    Element feedData = doc.selectFirst("[name=feed_data]");
+                    if (feedData == null) {
+                        logger.warn("跳过：没有 feed_data");
+                        continue;
+                    }
+
+                    String abstimeStr = feedData.attr("data-abstime");
+                    if (abstimeStr == null || abstimeStr.isBlank()) {
+                        logger.warn("跳过：data-abstime 为空");
+                        continue;
+                    }
+
+                    long timestamp;
+                    try {
+                        timestamp = Long.parseLong(abstimeStr);
+                    } catch (NumberFormatException e) {
+                        logger.warn("跳过：非法 abstime {}", abstimeStr);
+                        continue;
+                    }
+
                     if (timestamp * 1000 < lastFetch) {
-                        lastFetch = System.currentTimeMillis(); // 标记一下这一次最新动态是这个时间
+                        lastFetch = System.currentTimeMillis();
                         logger.debug("fetched all {} new post", newPosts);
                         return;
                     }
+
                     String key;
                     MCPost post = new MCPost();
-                    @SuppressWarnings("DataFlowIssue") // 前面列表列出来的怎么可能是null
-                    String poster_id = doc.getElementsByClass("f-name q_namecard ").get(0).attr("link").split("_")[1]; // QQ号
+
+                    Element nameEle = doc.getElementsByClass("f-name q_namecard ").first();
+                    if (nameEle == null) {
+                        logger.warn("跳过：没有用户信息");
+                        continue;
+                    }
+
+                    String link = nameEle.attr("link");
+                    if (!link.contains("_")) {
+                        logger.warn("跳过：link异常 {}", link);
+                        continue;
+                    }
+
+                    String poster_id = link.split("_")[1];
+
                     QQAccount poster;
                     try {
                         poster = (QQAccount) getSession("user/" + poster_id);
-                    } catch (Exception e) { // 一般直接用统一的获取用户信息的方法，但是如果出问题就fallback到直接填充
+                    } catch (Exception e) {
                         poster = new QQAccount();
                         poster.setId(poster_id);
-                        poster.setName(doc.getElementsByClass("f-name q_namecard ").get(0).text());
+                        poster.setName(nameEle.text());
                     }
+
                     post.poster = poster;
                     post.timestamp = timestamp;
-                    // 正文
+
+                    // ===== 正文 =====
                     Element div = doc.selectFirst(".f-info");
                     if (div != null) {
-                        div.select("br").append("\\n"); // 直接转换的话换行会丢失，所以这里用\n代表换行，也就是说这里其实可以被原有的\n注入，不过不想管
+                        div.select("br").append("\\n");
                         String text = div.text().replace("\\n", "\n");
                         post.messageFields.add(new TextField(text));
                     }
-                    // 附图
+
+                    // ===== 图片 =====
                     Element img_box = doc.selectFirst(".img-box");
                     if (img_box != null) {
                         List<ImageField> imgs = new ArrayList<>();
                         for (Element a : img_box.getElementsByTag("a")) {
-                            String[] split = a.attr("data-pickey").split(",", 2);
-                            String url = split[1];
+                            String dataPickey = a.attr("data-pickey");
+                            if (dataPickey == null || !dataPickey.contains(",")) continue;
+
+                            String[] split = dataPickey.split(",", 2);
+                            if (split.length < 2) continue;
+
                             try {
-                                imgs.add(new ImageField(new URL(url)));
+                                imgs.add(new ImageField(new URL(split[1])));
                             } catch (MalformedURLException e) {
-                                imgs.clear();
                                 for (Element img : img_box.getElementsByTag("img")) {
-                                    imgs.add(new ImageField(new URL(img.attr("src"))));
+                                    try {
+                                        imgs.add(new ImageField(new URL(img.attr("src"))));
+                                    } catch (Exception ignored) {}
                                 }
                             }
                         }
                         post.messageFields.addAll(imgs);
                     }
-                    // 基本信息
+
+                    // ===== 基本信息 =====
                     Element data_ele = doc.selectFirst(".qz_summary i.none");
+                    if (data_ele == null) {
+                        logger.warn("跳过：没有 data_ele");
+                        continue;
+                    }
+
                     key = data_ele.attr("data-tid");
+                    if (key == null || key.isBlank()) {
+                        logger.warn("跳过：data-tid 为空");
+                        continue;
+                    }
+
                     availablePostKeys.add(key);
-                    // 点赞列表
+
+                    // ===== 点赞 =====
                     Element likes_ele = doc.selectFirst(".user-list");
                     if (likes_ele != null) {
                         for (Element li : likes_ele.getElementsByTag("a")) {
                             Matcher href = Pattern.compile("(?<=/)\\d+$").matcher(li.attr("href"));
-                            href.find();
+                            if (!href.find()) continue;
+
                             String liker_id = href.group();
                             String name = li.text();
-                            if (liker_id.equals(accountId)) name = name.substring(0, name.length() - 1); // 删掉末尾的“、”
-                            QQAccount liker = new QQAccount(); // 这里直接用原地就有的信息，防风控
+
+                            if (liker_id.equals(accountId) && name.length() > 0) {
+                                name = name.substring(0, name.length() - 1);
+                            }
+
+                            QQAccount liker = new QQAccount();
                             liker.setId(liker_id);
                             liker.setName(name);
                             post.likers.add(liker);
                         }
+
                         Element countEle = likes_ele.selectFirst(".f-like-cnt");
                         if (countEle == null) post.likeCount = 0;
                         else {
-                            String countEleText = countEle.text();
-                            if (countEleText.isBlank()) post.likeCount = 0;
+                            String digits = countEle.text().replaceAll("\\D+", "");
+                            if (digits.isEmpty()) post.likeCount = 0;
                             else {
-                                String digits = countEleText.replaceAll("\\D+", "");
-                                if (digits.isEmpty()) post.likeCount = 0;
                                 try {
                                     post.likeCount = Integer.parseInt(digits);
                                 } catch (NumberFormatException e) {
-                                    logger.warn("Failed to parse like count: {}", countEleText, e);
                                     post.likeCount = 0;
                                 }
                             }
                         }
-                    } else logger.debug("likes_ele is null");
-                    // 评论列表
-                    Element comments_list_ele = doc.selectFirst(".comments-list ");
-                    if (comments_list_ele != null) for (Element li : comments_list_ele.getElementsByTag("li")) {
-                        MCMessage comment = new MCMessage();
-                        Element comment_content = li.selectFirst(".comments-content");
-                        comment_content.select(".comments-op").remove();
-                        comment_content.select(".nickname").remove();
-                        String nickname = li.attr("data-nick");
-                        String uin = li.attr("data-uin");
-                        String content = comment_content.text().substring(1);
-                        if (content.startsWith(" ")) content = content.substring(1); // 如果还有空格得再裁一下
-                        QQAccount commentSender = new QQAccount();
-                        commentSender.setName(nickname);
-                        commentSender.setId(uin);
-                        comment.sender = commentSender;
-                        comment.messageFields.add(new TextField(content));
-                        Element img_r = comment_content.selectFirst(".comments-thumbnails"); // 评论的附图
-                        if (img_r != null) for (Element ele : img_r.getElementsByTag("img")) {
-                            try {
-                                comment.messageFields.add(new ImageField(new URL(ele.attr("src"))));
-                            } catch (MalformedURLException e) {
-                                throw new RuntimeException(e);
-                            }
-                        }
-                        post.replies.add(comment);
                     }
-                    // 广播到宇宙
+
+                    // ===== 评论 =====
+                    Element comments_list_ele = doc.selectFirst(".comments-list");
+                    if (comments_list_ele != null) {
+                        for (Element li : comments_list_ele.getElementsByTag("li")) {
+                            Element comment_content = li.selectFirst(".comments-content");
+                            if (comment_content == null) continue;
+
+                            comment_content.select(".comments-op").remove();
+                            comment_content.select(".nickname").remove();
+
+                            String content = comment_content.text();
+                            if (content.length() > 0) content = content.substring(1).trim();
+
+                            MCMessage comment = new MCMessage();
+
+                            QQAccount commentSender = new QQAccount();
+                            commentSender.setName(li.attr("data-nick"));
+                            commentSender.setId(li.attr("data-uin"));
+
+                            comment.sender = commentSender;
+                            comment.messageFields.add(new TextField(content));
+
+                            Element img_r = comment_content.selectFirst(".comments-thumbnails");
+                            if (img_r != null) {
+                                for (Element ele : img_r.getElementsByTag("img")) {
+                                    try {
+                                        comment.messageFields.add(new ImageField(new URL(ele.attr("src"))));
+                                    } catch (Exception ignored) {}
+                                }
+                            }
+
+                            post.replies.add(comment);
+                        }
+                    }
+
                     broadcastMessage("post/" + post.poster.getId() + "/" + key, post);
                     newPosts++;
+
                 } catch (Throwable e) {
                     logger.error("Failed to prase", e);
                     logger.error(item.getAttribute("outerHTML"));
