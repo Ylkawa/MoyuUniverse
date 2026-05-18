@@ -85,7 +85,7 @@ public class Web extends AIChatPlugin {
 
         LLMFunction visitUrl = new LLMFunction("访问网页",
                 """
-                        获取部分受支持的网页中的信息（内容会被精简）仅支持哔哩哔哩视频和用户空间、YouTube视频
+                        获取部分受支持的网页中的信息（内容会被精简）仅支持哔哩哔哩视频和用户空间、YouTube视频、Wikipedia、萌娘百科词条
                         例: https://www.bilibili.com/video/BV1SC4y1J7De , https://space.bilibili.com/497423225 , https://www.youtube.com/watch?v=EkREmibZp3E""",
                 new LLMFunction.Parameters("object", new String[]{"URL"}, new String[]{"URL"}),
                 args -> visitUrl(args.get("URL")));
@@ -116,9 +116,10 @@ public class Web extends AIChatPlugin {
     }
 
     private String visitUrl(String url) {
-        Matcher domain = Pattern.compile("^https?://([^/]+)(?:/.*)?$").matcher(url);
-        if (domain.find()) {
-            switch (domain.group(1)) {
+        Matcher matcher0 = Pattern.compile("^https?://([^/]+)(?:/.*)?$").matcher(url);
+        if (matcher0.find()) {
+            String domain = matcher0.group(1);
+            switch (domain) {
                 case "www.bilibili.com", "bilibili.com" -> {
                     Pattern pattern = Pattern.compile("(BV\\w+)(?:\\?.*)?");
                     Matcher matcher = pattern.matcher(url);
@@ -329,10 +330,11 @@ public class Web extends AIChatPlugin {
                         }
                     }
                 }
-                default -> {
-                    return "不支持的链接类型, 请停止访问此链接";
-                }
             }
+            if (domain.endsWith("moegirl.org.cn") || domain.endsWith("wikipedia.org")) {
+                return com.nekoyu.Universe.AIChat.Web.MediaWiki.Client.query(com.nekoyu.Universe.AIChat.Web.MediaWiki.Client.rewriteUrl(url)).toString();
+            }
+            return "不支持的链接类型, 请停止访问此链接";
         }
         return "未知原因导致访问失败";
     }
