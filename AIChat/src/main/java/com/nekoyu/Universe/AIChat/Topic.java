@@ -39,8 +39,9 @@ public class Topic {
         // 2) 追加消息内容
         if (sessionCfg.nativeImage) {
             for (MsgField mf : mcm.messageFields) {
-                if (mf instanceof ImageField) {
+                if (mf instanceof ImageField i) {
                     oaiM.messageFields.add(mf);
+                    oaiM.messageFields.add(new TextField(i.solveMetadata()));
                 } else if (mf instanceof TextField) {
                     oaiM.messageFields.add(mf);
                 } else {
