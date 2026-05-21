@@ -22,7 +22,6 @@ import com.nekoyu.Universe.API.MessageChannel.MessageField.*;
 import com.nekoyu.Universe.API.MessageChannel.MessageField.TextField;
 import com.nekoyu.Universe.API.MessageSession;
 import com.nekoyu.Universe.Universe;
-import com.nekoyu.Universe.Utils.ImageUtils;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
@@ -40,12 +39,14 @@ import org.openqa.selenium.support.ui.WebDriverWait;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.awt.*;
 import java.io.IOException;
 import java.net.MalformedURLException;
 import java.net.URI;
 import java.net.URL;
 import java.time.Duration;
 import java.util.*;
+import java.util.List;
 import java.util.concurrent.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -115,7 +116,11 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
         obr.params.put(msgType + "_id", id);
         LinkedList<MessageSegment> obMsg = new LinkedList<>();
         for (MsgField field : message) {
-            if (field instanceof ImageField imgF) {
+            if (field instanceof StickerField stickerField) {
+                Image e = new Image(stickerField.getUrl().toString());
+                e.data.put("sub_type", 1);
+                obMsg.add(e);
+            } else if (field instanceof ImageField imgF) {
                 obMsg.add(new Image(imgF.getUrl().toString()));
             } else obMsg.add(new Text(field.toString()));
         }
@@ -158,12 +163,8 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
                     JsonObject responseData = response.data.getAsJsonObject();
                     nickname = responseData.get("nickname").getAsString();
                     accountId = responseData.get("user_id").getAsString();
-                    try {
-                        mainColor = ImageUtils.getMainColor(new URL("https://q.qlogo.cn/headimg_dl?dst_uin=" + accountId + "&spec=640&img_type=jpg"));
-                    } catch (IOException e) {
-                        throw new RuntimeException(e);
-                    }
                     loginAccount = (QQAccount) getSession("user/" + accountId);
+                    mainColor = loginAccount.getColor();
                     logger.info("{} 登录的 QQ号 为 {} ({}), {} 个好友  {} 个群聊", ID, nickname, accountId, friendCount, groupCount);
                 });
 
@@ -190,7 +191,7 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
                                     for (MessageSegment ms : message.message) {
                                         switch (ms.type) {
                                             case "text" -> {
-                                                mcm.messageFields.add(new TextField(ms.data.get("text")));
+                                                mcm.messageFields.add(new TextField((String) ms.data.get("text")));
                                             }
                                             case "face" -> {
                                                 mcm.messageFields.add(new TextField("[QQ表情]"));
@@ -198,9 +199,9 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
                                             // 暂时没看到有能和emoji一一对应的表格，先不管
                                             case "image" -> {
                                                 if (ms.data.get("sub_type") != null)
-                                                    if (Integer.parseInt(ms.data.get("sub_type")) == 1) { // 表情包
+                                                    if (Integer.parseInt((String) ms.data.get("sub_type")) == 1) { // 表情包
                                                         try {
-                                                            StickerField stickerField = new StickerField(new URL(ms.data.get("url")));
+                                                            StickerField stickerField = new StickerField(new URL((String) ms.data.get("url")));
                                                             mcm.messageFields.add(stickerField);
                                                         } catch (MalformedURLException e) {
                                                             logger.error("无法以 {} 创建URL对象", ms.data.get("url"), e);
@@ -208,7 +209,7 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
                                                         }
                                                     }
                                                 try {
-                                                    ImageField imageField = new ImageField(new URL(ms.data.get("url")));
+                                                    ImageField imageField = new ImageField(new URL((String) ms.data.get("url")));
                                                     mcm.messageFields.add(imageField);
                                                 } catch (MalformedURLException e) {
                                                     logger.error("无法以 {} 创建URL对象", ms.data.get("url"), e);
@@ -218,7 +219,7 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
                                             // 放不进去文本，先这样
                                             case "record" -> {
                                                 try {
-                                                    VoiceField voiceField = new VoiceField(new URL(ms.data.get("url")));
+                                                    VoiceField voiceField = new VoiceField(new URL((String) ms.data.get("url")));
                                                     mcm.messageFields.add(voiceField);
                                                 } catch (MalformedURLException e) {
                                                     logger.error("无法以 {} 创建URL对象", ms.data.get("url"), e);
@@ -227,7 +228,7 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
                                             }
                                             case "video" -> {
                                                 try {
-                                                    VideoField videoField = new VideoField(new URL(ms.data.get("url")));
+                                                    VideoField videoField = new VideoField(new URL((String) ms.data.get("url")));
                                                     mcm.messageFields.add(videoField);
                                                 } catch (MalformedURLException e) {
                                                     logger.error("无法以 {} 创建URL对象", ms.data.get("url"), e);
@@ -264,14 +265,14 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
                                             }
                                             case "share" -> {
                                                 try {
-                                                    mcm.messageFields.add(new ShareUrlField(ms.data.get("title"), new URL(ms.data.get("url"))));
+                                                    mcm.messageFields.add(new ShareUrlField((String) ms.data.get("title"), new URL((String) ms.data.get("url"))));
                                                 } catch (MalformedURLException e) {
                                                     logger.error("无法以 {} 创建URL对象", ms.data.get("url"), e);
                                                     mcm.messageFields.add(new TextField("[分享链接]"));
                                                 }
                                             }
                                             case "contact" -> {
-                                                switch (ms.data.get("type")) {
+                                                switch ((String) ms.data.get("type")) {
                                                     case "qq":
                                                         mcm.messageFields.add(new ShareContactField("QQ", "group/" + ms.data.get("id")));
                                                         break;
@@ -281,10 +282,10 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
                                                 }
                                             }
                                             case "location" -> {
-                                                mcm.messageFields.add(new LocationField(Double.parseDouble(ms.data.get("lat")), Double.parseDouble(ms.data.get("lon"))));
+                                                mcm.messageFields.add(new LocationField(Double.parseDouble((String) ms.data.get("lat")), Double.parseDouble((String) ms.data.get("lon"))));
                                             }
                                             case "music" -> {
-                                                switch (ms.data.get("type")) {
+                                                switch ((String) ms.data.get("type")) {
                                                     case "163" -> {
                                                         try {
                                                             mcm.messageFields.add(new ShareUrlField("网易云音乐分享", new URL("https://music.163.com/#/song?id=" + ms.data.get("id"))));
@@ -304,7 +305,7 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
                                                     }
                                                     case "custom" -> {
                                                         try {
-                                                            mcm.messageFields.add(new ShareUrlField("音乐分享", new URL(ms.data.get("url"))));
+                                                            mcm.messageFields.add(new ShareUrlField("音乐分享", new URL((String) ms.data.get("url"))));
                                                         } catch (MalformedURLException e) {
                                                             logger.error("无法以 {} 创建URL对象", ms.data.get("url"), e);
                                                             mcm.messageFields.add(new TextField("音乐分享"));
@@ -324,11 +325,11 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
                                             // 合并转发自定义节点 没做
                                             case "xml" -> {
                                                 mcm.messageFields.add(new MetaField("[XML消息]"));
-                                                logger.debug(ms.data.get("data"));
+                                                logger.debug((String) ms.data.get("data"));
                                             }
                                             case "json" -> {
                                                 try {
-                                                    JsonMessage jm = gson.fromJson(ms.data.get("data"), JsonMessage.class);
+                                                    JsonMessage jm = gson.fromJson((String) ms.data.get("data"), JsonMessage.class);
                                                     if (jm instanceof com_tencent_miniapp_01 card) {
                                                         mcm.messageFields.add(new ShareUrlField(card.meta.detail_1.title + " - " + card.meta.detail_1.desc, null));
                                                     } else if (jm instanceof com_tencent_tuwen_lua card) {
@@ -353,9 +354,9 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
                                                         mcm.messageFields.add(new ShareUrlField("[" + card.meta.miniapp.tag + "]" + card.meta.miniapp.title, url));
                                                     }
                                                 } catch (Throwable e) {
-                                                    JsonElement je = gson.fromJson(ms.data.get("data"), JsonElement.class);
+                                                    JsonElement je = gson.fromJson((String) ms.data.get("data"), JsonElement.class);
                                                     mcm.messageFields.add(new MetaField(je.getAsJsonObject().get("prompt").getAsString()));
-                                                    logger.debug(ms.data.get("data"), e);
+                                                    logger.debug((String) ms.data.get("data"), e);
                                                 }
                                             }
                                         }

@@ -4,16 +4,30 @@ import javax.imageio.ImageIO;
 import java.awt.Color;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
+import java.io.InputStream;
+import java.net.HttpURLConnection;
 import java.net.URL;
 import java.util.*;
 
 public class ImageUtils {
     public static Color getMainColor(URL imageUrl) throws IOException {
-        BufferedImage img = ImageIO.read(imageUrl);
-        if (img == null) {
-            throw new IllegalArgumentException("URL 不是有效图片");
+        HttpURLConnection conn = (HttpURLConnection) imageUrl.openConnection();
+        // 超时
+        conn.setConnectTimeout(5000);
+        conn.setReadTimeout(5000);
+        conn.setRequestProperty(
+                "User-Agent",
+                "Mozilla/5.0"
+        );
+        // 跟随重定向
+        conn.setInstanceFollowRedirects(true);
+        BufferedImage img;
+        try (InputStream in = conn.getInputStream()) {
+            img = ImageIO.read(in);
         }
-
+        if (img == null) {
+            throw new IOException("不是有效图片: " + imageUrl);
+        }
         int step = Math.max(1, Math.min(img.getWidth(), img.getHeight()) / 50);
 
         List<int[]> pixels = new ArrayList<>();

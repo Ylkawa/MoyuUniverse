@@ -6,12 +6,14 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.nekoyu.Universe.AIChat.Event.RequestEvent;
 import com.nekoyu.Universe.API.MessageChannel.*;
+import com.nekoyu.Universe.API.MessageChannel.MessageField.StickerField;
 import com.nekoyu.Universe.API.MessageChannel.MessageField.TextField;
 import com.nekoyu.Universe.API.PlaceHolder;
 import com.nekoyu.Universe.API.Providers.LLMProvider.Assistant;
 import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.ExtensionalArgs;
 import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.LLMFunction;
 import com.nekoyu.Universe.API.Providers.LLMProvider.LLMProvider;
+import com.nekoyu.Universe.API.UniverseChannel;
 import com.nekoyu.Universe.LawsLoader.Law;
 import com.nekoyu.Universe.Universe;
 import com.zaxxer.hikari.HikariConfig;
@@ -22,9 +24,11 @@ import org.slf4j.LoggerFactory;
 import javax.annotation.Nullable;
 import java.io.*;
 import java.lang.reflect.InvocationTargetException;
+import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.*;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -33,15 +37,17 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.concurrent.*;
 import java.util.jar.JarFile;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Stream;
 import java.util.zip.ZipEntry;
 
 public class AIChat extends Law {
     public static final Gson gson = new Gson();
     public static final int TOPIC_TIMEOUT = 20;
-    Logger logger = LoggerFactory.getLogger(this.getClass());
+    static Logger logger = LoggerFactory.getLogger(AIChat.class);
     List<SessionConfig> configs = new ArrayList<>();
     static Multimap<String, LLMFunction> llmFunctions = ArrayListMultimap.create();
     List<AIChatPlugin> aiChatPlugins = new ArrayList<>();
@@ -50,9 +56,35 @@ public class AIChat extends Law {
     @Nullable
     Memory MEMORY = null;
     Map<String, Assistant> subAgents = new HashMap<>();
+    Multimap<String, File> emojisCollect = ArrayListMultimap.create();
 
     @Override
     public boolean prepare() {
+        UniverseChannel.addHttpHandler("/AIChat/", exchange -> {
+            if (!exchange.getRequestMethod().equals("GET")) {
+                String resp = "405 Method Not Allowed";
+                exchange.sendResponseHeaders(405, resp.getBytes().length);
+                OutputStream os = exchange.getResponseBody();
+                os.write(resp.getBytes());
+                os.close();
+            }
+            String[] way = exchange.getRequestURI().toString().split("/");
+            Collection<File> collection = emojisCollect.get(way[way.length - 1]);
+            int index = new Random().nextInt(collection.size());
+            File image = (File) collection.toArray()[index];
+            exchange.sendResponseHeaders(200, image.length());
+            try (OutputStream os = exchange.getResponseBody();
+                 FileInputStream fis = new FileInputStream(image)) {
+
+                byte[] buffer = new byte[8192];
+                int len;
+                while ((len = fis.read(buffer)) != -1) {
+                    os.write(buffer, 0, len);
+                }
+            }
+            exchange.sendResponseHeaders(400, 0);
+        });
+
         getDataDir();
         File configDic = new File("./config/AIChat");
         if (!configDic.exists()) configDic.mkdir();
@@ -159,13 +191,79 @@ public class AIChat extends Law {
                         subAgents.put(subAgentConfig.name, assistant);
 
                         logger.info("已载入 SubAgent : {}", subAgentConfig.name);
-                    } else logger.warn("为 SubAgent - {} 配置的ProviderId不为LLMProvider，无法加载", subAgentConfig.name);
+                    } else
+                        logger.warn("为 SubAgent - {} 配置的ProviderId不为LLMProvider，无法加载", subAgentConfig.name);
                 } catch (IOException e) {
                     logger.error("无法加载 SubAgent 配置文件", e);
                 }
             }
         } else logger.warn("没有配置 SubAgent，此特性将禁用");
+
+        Path emojisDic = Paths.get("./data/AIChat/emojis/");
+        loadEmojis(emojisDic);
+
+        new Thread(() -> {
+            try {
+                WatchService watchService = FileSystems.getDefault().newWatchService();
+                emojisDic.register(
+                        watchService,
+                        StandardWatchEventKinds.ENTRY_CREATE,
+                        StandardWatchEventKinds.ENTRY_DELETE,
+                        StandardWatchEventKinds.ENTRY_MODIFY
+                );
+
+                final ScheduledExecutorService executorService = Executors.newSingleThreadScheduledExecutor();
+                final Object lock = new Object();
+                ScheduledFuture<?> pendingTask = null;
+                while (true) {
+                    try {
+                        WatchKey key = watchService.take();
+
+                        synchronized (lock) {
+                            for (WatchEvent<?> event : key.pollEvents()) {
+                                if (pendingTask != null && !pendingTask.isDone()) {
+                                    pendingTask.cancel(false);
+                                }
+
+                                pendingTask = executorService.schedule(() -> {
+                                    loadEmojis(emojisDic);
+                                }, 5, TimeUnit.SECONDS);
+                            }
+                        }
+
+                        key.reset();
+                    } catch (InterruptedException e) {
+                        logger.error(e.getMessage());
+                    }
+                }
+            } catch (IOException e) {
+                logger.warn("无法监听文件变化，将不能热重载表情包");
+            }
+        }).start();
         return true;
+    }
+
+    private void loadEmojis(Path emojisDic) {
+        emojisCollect.clear();
+        if (Files.isDirectory(emojisDic)) {
+            // Load emojis list for chatbot
+            try (Stream<Path> paths = Files.walk(emojisDic)) {
+                paths.filter(Files::isRegularFile).forEach(path -> {
+                    Path relative = emojisDic.relativize(path);
+                    if (relative.getNameCount() >= 2) {
+                        StringBuilder collectName = new StringBuilder();
+                        for (int i = 0; i < relative.getNameCount() - 1; i++) {
+                            if (!collectName.isEmpty()) collectName.append("-");
+                            collectName.append(relative.getName(i));
+                        }
+                        emojisCollect.put(collectName.toString(), path.toFile());
+                    }
+                });
+            } catch (IOException e) {
+                logger.warn("未能正确获取表情包列表");
+            }
+        }
+        logger.info("已刷新表情包库，载入 {} 个表情包", emojisCollect.size());
     }
 
     private void loadSessionCfg(File configDic) {
@@ -244,6 +342,11 @@ public class AIChat extends Law {
                                 reqEv.placeholders.put("TIME", formatTimestamp(System.currentTimeMillis()));
                                 reqEv.placeholders.put("SESSION_LOCATION_ID", mcm.getLocationId());
                                 reqEv.placeholders.put("ACCOUNT_NICKNAME", mcm.receiver.getName());
+                                StringBuilder emojiSetAvailable = new StringBuilder();
+                                for (String emojiName : emojisCollect.keySet()) {
+                                    emojiSetAvailable.append(emojiName).append(" ");
+                                }
+                                reqEv.placeholders.put("AVAILABLE_EMOJI", emojiSetAvailable.toString());
                                 if (MEMORY != null) {
                                     try {
                                         StringBuilder sb = new StringBuilder();
@@ -342,13 +445,10 @@ public class AIChat extends Law {
         }
     }
 
-    public static MFChain decoupleMark(String stringWithMark) {
+    public MFChain decoupleMark(String stringWithMark) {
         MFChain result = new MFChain();
-        result.add(new TextField(stringWithMark));
-        if (1 == 1) return result; // 暂时不decouple
 
-        Pattern pattern = Pattern.compile("<(?<command>\\w)+:(?<args>[^>]+)>");
-        Matcher matcher = pattern.matcher(stringWithMark);
+        Matcher matcher = Pattern.compile("<(?<command>\\w+):(?<args>[^>]+)>").matcher(stringWithMark);
 
         int last = 0;
 
@@ -360,12 +460,19 @@ public class AIChat extends Law {
             }
 
             // 处理 command
-            switch (matcher.group("command").toLowerCase()) {
+            String command = matcher.group("command");
+            switch (command.toLowerCase()) {
                 case "emoji" -> {
-//                    // TODO: 这里还没有真实处理 Emoji
-//                    String emojiName = matcher.group("args");
-//                    result.add();
+                    String emojiName = matcher.group("args");
+                    if (emojisCollect.get(emojiName).isEmpty()) {
+                        result.add(new TextField(emojiName));
+                    } else {
+                        try {
+                            result.add(new StickerField(new URL(UniverseChannel.getOutboundHttpAddress() + "/AIChat/emoji/" + emojiName)));
+                        } catch (MalformedURLException ignored) {}
+                    }
                 }
+                default -> logger.warn("无法识别 {} 的命令", command);
             }
 
             // 更新游标

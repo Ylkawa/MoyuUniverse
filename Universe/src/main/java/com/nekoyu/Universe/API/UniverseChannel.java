@@ -41,6 +41,7 @@ public class UniverseChannel {
     private static final Map<String, File> fileMounting = new HashMap<>();
     private static final Map<String, CachedFile> remoteUrlCachedFile = new ConcurrentHashMap<>();
     private static final Map<String, CachedFile> repostUrlCachedFile = new ConcurrentHashMap<>();
+
     private static String outboundHttpAddress;
 
     public static void setToken(String token) {
@@ -49,6 +50,10 @@ public class UniverseChannel {
 
     public static void setWsPort(int port) {
         UniverseChannel.wsPort = port;
+    }
+
+    public static String getOutboundHttpAddress() {
+        return outboundHttpAddress;
     }
 
     public static void load() {
@@ -303,6 +308,7 @@ public class UniverseChannel {
     }
 
     public static void addHttpHandler(String path, HttpHandler hh) {
+        logger.info("注册 HTTP Handler: {}", path);
         httpServer.createContext(path, hh);
     }
 

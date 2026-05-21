@@ -5,5 +5,5 @@ import java.util.Map;
 
 public class MessageSegment {
     public String type;
-    public Map<String, String> data = new HashMap<>();
+    public Map<String, Object> data = new HashMap<>();
 }

@@ -74,14 +74,18 @@ public class LawsManager {
                 law.ID = cfg.name;
                 laws.put(cfg.name, law);
                 lawClassLoaders.put(cfg.name, cl);
-                logger.info("成功加载法则: {}", cfg.name);
             } catch (Exception e) {
-                logger.error("加载法则 {} 失败", cfg.name, e);
+                logger.error("载入法则 {} 失败", cfg.name, e);
             } finally {
                 // 恢复原始上下文类加载器（可选）
                 Thread.currentThread().setContextClassLoader(getClass().getClassLoader());
             }
         }
+        StringBuilder sb = new StringBuilder();
+        laws.keySet().forEach(id -> {
+            sb.append(id).append(" ");
+        });
+        logger.info("载入 {}等共 {} 个宇宙法则", sb, laws.size());
     }
 
     // 递归收集法则及其依赖的 URL
@@ -136,13 +140,15 @@ public class LawsManager {
     public void enableLaws() {
         ExecutorService executor = Executors.newCachedThreadPool();
         for (Law law : laws.values()) {
-            executor.submit(() -> enableLaw(law));
+            executor.submit(() -> {
+                enableLaw(law);
+                logger.info("{} 启动完毕", law.ID);
+            });
         }
         executor.shutdown();
         try {
-            executor.awaitTermination(120, TimeUnit.SECONDS);
+            if (!executor.awaitTermination(120, TimeUnit.SECONDS)) logger.warn("宇宙法则加载超时");;
         } catch (InterruptedException e) {
-            logger.warn("宇宙法则加载超时");
             throw new RuntimeException(e);
         }
     }

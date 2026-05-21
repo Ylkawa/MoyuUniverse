@@ -29,6 +29,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 public class ImageField extends FileField {
     private static final Logger logger = LoggerFactory.getLogger(ImageField.class);
+    boolean metadataAvailable = true;
     Metadata metadata;
     String solvedMetadataString = null;
     transient private final AtomicReference<Color> mainColor = new AtomicReference<>();
@@ -37,7 +38,6 @@ public class ImageField extends FileField {
         super(url);
         description = "";
         super.type = "image";
-        metadata = getMetadata();
     }
 
     @Override
@@ -56,6 +56,8 @@ public class ImageField extends FileField {
     }
 
     public Metadata getMetadata() {
+        if (!metadataAvailable) return null;
+        if (metadata != null) return metadata;
         OkHttpClient client = new OkHttpClient.Builder()
                 .connectTimeout(10, TimeUnit.SECONDS)
                 .readTimeout(30, TimeUnit.SECONDS)
@@ -71,7 +73,9 @@ public class ImageField extends FileField {
             }
 
             // 直接使用响应体的流读取元数据
-            return ImageMetadataReader.readMetadata(response.body().byteStream());
+            Metadata metadata = ImageMetadataReader.readMetadata(response.body().byteStream());
+            this.metadata = metadata;
+            return metadata;
         } catch (IOException | ImageProcessingException e) {
             throw new RuntimeException(e);
         }
@@ -92,22 +96,22 @@ public class ImageField extends FileField {
     public String solveMetadata() {
         if (solvedMetadataString != null) return solvedMetadataString;
         StringBuilder descriptionBuilder = new StringBuilder();
-        if (metadata != null) { // 如果EXIF信息存在
+        if (getMetadata() != null) { // 如果EXIF信息存在
             // 尝试解析EXIF信息
             descriptionBuilder.append("\nEXIF信息(部分):");
             // 设备制造商和型号
-            ExifIFD0Directory ifd0Dir = metadata.getFirstDirectoryOfType(ExifIFD0Directory.class);
+            ExifIFD0Directory ifd0Dir = getMetadata().getFirstDirectoryOfType(ExifIFD0Directory.class);
             if (ifd0Dir != null) {
                 descriptionBuilder.append("\n设备制造商: ").append(ifd0Dir.getString(ExifIFD0Directory.TAG_MAKE));
                 descriptionBuilder.append("\n设备型号: ").append(ifd0Dir.getString(ExifIFD0Directory.TAG_MODEL));
             }
             // 拍摄时间
-            ExifSubIFDDirectory exifDir = metadata.getFirstDirectoryOfType(ExifSubIFDDirectory.class);
+            ExifSubIFDDirectory exifDir = getMetadata().getFirstDirectoryOfType(ExifSubIFDDirectory.class);
             if (exifDir != null && exifDir.getDate(ExifSubIFDDirectory.TAG_DATETIME_ORIGINAL) != null) {
                 descriptionBuilder.append("\n拍摄时间: ").append(new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(exifDir.getDate(ExifSubIFDDirectory.TAG_DATETIME_ORIGINAL)));
             }
             // 经纬度
-            GpsDirectory gpsDirectory = metadata.getFirstDirectoryOfType(GpsDirectory.class);
+            GpsDirectory gpsDirectory = getMetadata().getFirstDirectoryOfType(GpsDirectory.class);
             if (gpsDirectory != null) {
                 GeoLocation location = gpsDirectory.getGeoLocation();
                 if (location != null) {
