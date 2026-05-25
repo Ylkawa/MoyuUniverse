@@ -53,6 +53,8 @@ import java.util.regex.Pattern;
 
 public class OnebotChannel extends MessageChannel implements SessionChat, PostChat, Administration {
     static final Gson gson;
+    private static final ScheduledExecutorService scheduler =
+            Executors.newSingleThreadScheduledExecutor();
 
     static {
         gson = new GsonBuilder()
@@ -79,8 +81,6 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
     boolean good = true; // 实现端健康状态
     boolean online = true; // 实现端在线状态
     QZone qZone = null;
-    private static final ScheduledExecutorService scheduler =
-            Executors.newSingleThreadScheduledExecutor();
 
     public OnebotChannel(String id) {
         super(id);
@@ -198,22 +198,22 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
                                             }
                                             // 暂时没看到有能和emoji一一对应的表格，先不管
                                             case "image" -> {
-                                                if (ms.data.get("sub_type") != null)
-                                                    if (Integer.parseInt((String) ms.data.get("sub_type")) == 1) { // 表情包
-                                                        try {
-                                                            StickerField stickerField = new StickerField(new URL((String) ms.data.get("url")));
-                                                            mcm.messageFields.add(stickerField);
-                                                        } catch (MalformedURLException e) {
-                                                            logger.error("无法以 {} 创建URL对象", ms.data.get("url"), e);
-                                                            mcm.messageFields.add(new TextField("[动画表情]"));
-                                                        }
+                                                if (ms.data.get("sub_type") != null && (double) ms.data.get("sub_type") == 1) {
+                                                    try {
+                                                        StickerField stickerField = new StickerField(new URL((String) ms.data.get("url")));
+                                                        mcm.messageFields.add(stickerField);
+                                                    } catch (MalformedURLException e) {
+                                                        logger.error("无法以 {} 创建URL对象", ms.data.get("url"), e);
+                                                        mcm.messageFields.add(new TextField("[动画表情]"));
                                                     }
-                                                try {
-                                                    ImageField imageField = new ImageField(new URL((String) ms.data.get("url")));
-                                                    mcm.messageFields.add(imageField);
-                                                } catch (MalformedURLException e) {
-                                                    logger.error("无法以 {} 创建URL对象", ms.data.get("url"), e);
-                                                    mcm.messageFields.add(new TextField("[图片]"));
+                                                } else {
+                                                    try {
+                                                        ImageField imageField = new ImageField(new URL((String) ms.data.get("url")));
+                                                        mcm.messageFields.add(imageField);
+                                                    } catch (MalformedURLException e) {
+                                                        logger.error("无法以 {} 创建URL对象", ms.data.get("url"), e);
+                                                        mcm.messageFields.add(new TextField("[图片]"));
+                                                    }
                                                 }
                                             }
                                             // 放不进去文本，先这样
@@ -394,7 +394,7 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
                                 }
                                 case "meta_event" -> {
                                     Meta_Event meta_event = gson.fromJson(s, Meta_Event.class);
-                                    if (meta_event.sub_type.equals("heartbeat")) { // 解析心跳包
+                                    if (meta_event.sub_type != null && meta_event.sub_type.equals("heartbeat")) { // 解析心跳包
                                         if (meta_event.status.online) {
                                             online = true;
                                         } else if (online) {
@@ -428,6 +428,8 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
                             }
                         } catch (JsonSyntaxException ignored) {
 
+                        } catch (Throwable e) {
+                            logger.error(e.getMessage(), e);
                         }
                     });
                 }
@@ -608,15 +610,15 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
     }
 
     public class QQAccount extends Account {
+        public QQAccount() {
+            super.setPlatform("QQ");
+        }
+
         public void sendLike(int count) { // Max 10 as default and could be 20 with SVIP
             OBRequest obr = new OBRequest("send_like");
             obr.params.put("user_id", getId());
             obr.params.put("times", count);
             request(obr);
-        }
-
-        public QQAccount() {
-            super.setPlatform("QQ");
         }
 
         @Override
@@ -656,10 +658,10 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
      */
     public class QZone {
         public static final Random RANDOM = new Random();
+        final BlockingDeque<Task> tasks = new LinkedBlockingDeque<>(); // 使用队列机制逐个执行任务
         List<String> availablePostKeys = new ArrayList<>();
         WebDriver driver;
         private volatile boolean workerRunning = false;
-        final BlockingDeque<Task> tasks = new LinkedBlockingDeque<>(); // 使用队列机制逐个执行任务
         private long lastFetch = System.currentTimeMillis();
 
         public QZone() {
@@ -668,51 +670,6 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
                     addTask(new Task.FetchPosts());
                 }
             }, 20, 60 * 60, TimeUnit.SECONDS);
-        }
-
-        public static class Task {
-            enum Type {
-                fetchPosts, sendLike, sendComment, repost
-            }
-
-            Type type;
-
-            public static class FetchPosts extends Task {
-                public FetchPosts() {
-                    type = Type.fetchPosts;
-                }
-            }
-
-            public static class SendLikeTask extends Task {
-                String postKey;
-
-                public SendLikeTask(String postKey) {
-                    type = Type.sendLike;
-                    this.postKey = postKey;
-                }
-            }
-
-            public static class SendCommentTask extends Task {
-                String postKey;
-                MFChain comment;
-
-                public SendCommentTask(String postKey, MFChain comment) {
-                    type = Type.sendComment;
-                    this.postKey = postKey;
-                    this.comment = comment;
-                }
-            }
-
-            public static class RepostTask extends Task {
-                String postKey;
-                MFChain repostMsg;
-
-                public RepostTask(String postKey, MFChain repostMsg) {
-                    type = Type.repost;
-                    this.postKey = postKey;
-                    this.repostMsg = repostMsg;
-                }
-            }
         }
 
         public void addTask(Task task) {
@@ -901,7 +858,8 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
                 );
                 try {
                     item.click();
-                } catch (Exception ignored) {}
+                } catch (Exception ignored) {
+                }
 
                 logger.debug("unfolded a post");
 
@@ -998,7 +956,8 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
                                 for (Element img : img_box.getElementsByTag("img")) {
                                     try {
                                         imgs.add(new ImageField(new URL(img.attr("src"))));
-                                    } catch (Exception ignored) {}
+                                    } catch (Exception ignored) {
+                                    }
                                 }
                             }
                         }
@@ -1082,7 +1041,8 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
                                 for (Element ele : img_r.getElementsByTag("img")) {
                                     try {
                                         comment.messageFields.add(new ImageField(new URL(ele.attr("src"))));
-                                    } catch (Exception ignored) {}
+                                    } catch (Exception ignored) {
+                                    }
                                 }
                             }
 
@@ -1176,6 +1136,51 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
                 driver = null;
             }
             workerRunning = false;
+        }
+
+        public static class Task {
+            Type type;
+
+            enum Type {
+                fetchPosts, sendLike, sendComment, repost
+            }
+
+            public static class FetchPosts extends Task {
+                public FetchPosts() {
+                    type = Type.fetchPosts;
+                }
+            }
+
+            public static class SendLikeTask extends Task {
+                String postKey;
+
+                public SendLikeTask(String postKey) {
+                    type = Type.sendLike;
+                    this.postKey = postKey;
+                }
+            }
+
+            public static class SendCommentTask extends Task {
+                String postKey;
+                MFChain comment;
+
+                public SendCommentTask(String postKey, MFChain comment) {
+                    type = Type.sendComment;
+                    this.postKey = postKey;
+                    this.comment = comment;
+                }
+            }
+
+            public static class RepostTask extends Task {
+                String postKey;
+                MFChain repostMsg;
+
+                public RepostTask(String postKey, MFChain repostMsg) {
+                    type = Type.repost;
+                    this.postKey = postKey;
+                    this.repostMsg = repostMsg;
+                }
+            }
         }
     }
 }
