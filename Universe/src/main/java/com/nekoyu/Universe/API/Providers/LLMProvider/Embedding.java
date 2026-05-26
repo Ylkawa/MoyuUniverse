@@ -1,6 +1,5 @@
 package com.nekoyu.Universe.API.Providers.LLMProvider;
 
-import com.nekoyu.Universe.API.MessageChannel.MFChain;
 import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.EmbeddingRequest;
 import com.nekoyu.Universe.API.Providers.LLMProvider.RespBodies.EmbeddingResponse;
 

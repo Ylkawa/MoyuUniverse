@@ -10,7 +10,7 @@ public class EmbeddingResponse {
     public String id;
 
     public static class Embedding {
-        public float[] embedding;
+        public double[] embedding;
         public int index;
         public String object;
     }

@@ -650,10 +650,6 @@ public class AIChat extends Law {
         }
     }
 
-    public void loadStickers() {
-
-    }
-
     public class Memory {
         HikariDataSource ds;
 

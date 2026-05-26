@@ -47,6 +47,7 @@ public class OpenAIChannel extends LLMProvider implements Embedding {
     String apikey;
     String baseurl;
     String defaultModel;
+    String defaultEmbeddingModel;
     String speciallyAdaptation = null; // 特调选项
 
     public OpenAIChannel() {
@@ -273,17 +274,28 @@ public class OpenAIChannel extends LLMProvider implements Embedding {
 
     @Override
     public EmbeddingResponse embedding(EmbeddingRequest embeddingRequest) {
+        // 翻译
+        OAIEmbeddingRequest request = new OAIEmbeddingRequest();
+        if (embeddingRequest.model != null && !embeddingRequest.model.isEmpty()) request.model = embeddingRequest.model;
+        else request.model = defaultEmbeddingModel;
+        request.input = embeddingRequest.message.toString();
         Request req = new Request.Builder()
                 .url(baseurl + "/embeddings")
                 .addHeader("Authorization", "Bearer " + apikey)
-                .post(RequestBody.create(gson.toJson(embeddingRequest), MediaType.get("application/json; charset=utf-8")))
+                .post(RequestBody.create(gson.toJson(request), MediaType.get("application/json; charset=utf-8")))
                 .build();
         try (Response resp = client.newCall(req).execute()) {
-            EmbeddingResponse embeddingResponse = gson.fromJson(resp.body().string(), EmbeddingResponse.class);
-            logger.info("Embedding-Usage: {} Tokens", embeddingResponse.usage.prompt_tokens); // 无言了，百炼的 API 默认不返回 usage
+            String string = resp.body().string();
+            System.out.println(new Gson().fromJson(string, HashMap.class));
+            EmbeddingResponse embeddingResponse = gson.fromJson(string, EmbeddingResponse.class);
+            if (embeddingResponse.usage != null) logger.info("Embedding-Usage: {} Tokens", embeddingResponse.usage.prompt_tokens); // 无言了，百炼的 API 默认不返回 usage
             return embeddingResponse;
         } catch (IOException e) {
             throw new RuntimeException(e);
         }
+    }
+
+    public void setApiKey(String apikey) {
+        this.apikey = apikey;
     }
 }

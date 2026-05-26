@@ -5,5 +5,6 @@ public class Config {
     String APIKey;
     String BaseUrl;
     String DefaultModel;
+    String DefaultEmbeddingModel;
     boolean enable_thinking = false;
 }
