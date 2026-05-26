@@ -54,7 +54,8 @@ public class AIChat extends Law {
     Config globalCfg;
     Map<String, Topic> activatingTopics = new HashMap<>();
     @Nullable
-    Memory MEMORY = null;
+    AIChat.Memory MEMORY = null;
+    com.nekoyu.Universe.AIChat.Memory VectorMEMORY = null;
     Map<String, Assistant> subAgents = new HashMap<>();
     Multimap<String, File> emojisCollect = ArrayListMultimap.create();
 
@@ -99,6 +100,9 @@ public class AIChat extends Law {
             globalCfg = gson.fromJson(reader, Config.class);
             if (globalCfg.SQLConfig != null && globalCfg.SQLConfig.url != null) {
                 MEMORY = new Memory(globalCfg.SQLConfig);
+            }
+            if (globalCfg.QdrantConfig != null && globalCfg.QdrantConfig.address != null) {
+                VectorMEMORY = new com.nekoyu.Universe.AIChat.Memory(globalCfg.QdrantConfig);
             }
         } catch (IOException e) {
             Gson gson = new GsonBuilder()

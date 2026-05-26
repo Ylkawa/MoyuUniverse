@@ -6,6 +6,8 @@ import com.nekoyu.Universe.API.Providers.LLMProvider.Embedding;
 import com.nekoyu.Universe.API.Providers.LLMProvider.LLMProvider;
 import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.EmbeddingRequest;
 import com.nekoyu.Universe.API.Providers.LLMProvider.RespBodies.EmbeddingResponse;
+import io.qdrant.client.QdrantClient;
+import io.qdrant.client.QdrantGrpcClient;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -15,6 +17,14 @@ import java.util.List;
 public class Memory {
     private Embedding provider;
     private Logger logger = LoggerFactory.getLogger(Memory.class);
+    private QdrantClient client;
+    private String collection;
+
+    public Memory(Config.QdrantConfig config) throws IOException {
+        var builder = QdrantGrpcClient.newBuilder(config.address, config.port);
+        if (config.secretKey != null) builder.withApiKey(config.secretKey);
+        client = new QdrantClient(builder.build());
+    }
 
     public List<Item> query(String quiz) {
 
