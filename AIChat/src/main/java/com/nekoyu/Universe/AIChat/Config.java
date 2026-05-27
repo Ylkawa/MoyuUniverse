@@ -21,5 +21,6 @@ public class Config {
         boolean encryptedConnection = true;
         String secretKey = null;
         String collection = "moyu_universe_aic_meomory";
+        String provider = null;
     }
 }
