@@ -11,6 +11,8 @@ import io.qdrant.client.QdrantClient;
 import io.qdrant.client.QdrantGrpcClient;
 import io.qdrant.client.grpc.Points;
 import io.qdrant.client.grpc.JsonWithInt.Value;
+import io.qdrant.client.grpc.Collections;
+import io.qdrant.client.grpc.Collections.PayloadSchemaType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -22,19 +24,53 @@ import static io.qdrant.client.VectorsFactory.vectors;
 
 public class Memory {
     private final Embedding provider;
+    private final String collection;
     private Logger logger = LoggerFactory.getLogger(Memory.class);
     private QdrantClient client;
-    private String collection;
 
     public Memory(Config.QdrantConfig config) throws IOException {
-        var builder = QdrantGrpcClient.newBuilder(config.address, config.port, config.encryptedConnection);
-        if (config.secretKey != null) builder.withApiKey(config.secretKey);
-        client = new QdrantClient(builder.build());
-        collection = config.collection;
         Provider provider = (Provider) Universe.Providers.get(config.provider);
         if (provider instanceof Embedding embedding) this.provider = embedding;
         else if (provider != null) throw new IllegalArgumentException("Provider must support Embedding");
         else throw new IllegalArgumentException("Please specify a Embedding provider");
+        try {
+            var builder = QdrantGrpcClient.newBuilder(config.address, config.port, config.encryptedConnection);
+            if (config.secretKey != null) builder.withApiKey(config.secretKey);
+            client = new QdrantClient(builder.build());
+            collection = config.collection;
+            boolean exists = client.collectionExistsAsync(collection).get();
+            if (!exists) {
+                logger.info("数据集 {} 不存在，将尝试自动创建.", collection);
+                // 创建 collection
+                client.createCollectionAsync(
+                        collection,
+                        Collections.VectorParams.newBuilder()
+                                .setSize(embedding("test").length) // 这里会发起一次 Embedding 以得到指定的模型的向量维度数
+                                .setDistance(Collections.Distance.Cosine)
+                                .build()
+                ).get();
+
+                // createAt index
+                client.createPayloadIndexAsync(
+                        collection,
+                        "createAt",
+                        PayloadSchemaType.Integer,
+                        null, null, null, null
+                ).get();
+
+                // updateAt index
+                client.createPayloadIndexAsync(
+                        collection,
+                        "updateAt",
+                        Collections.PayloadSchemaType.Integer,
+                        null, null, null, null
+                ).get();
+
+                logger.info("数据集已建立.");
+            }
+        } catch (InterruptedException | ExecutionException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     public List<Item> query(String quiz) throws IOException {
