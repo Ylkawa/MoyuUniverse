@@ -4,8 +4,8 @@ import java.util.List;
 
 public class SessionConfig {
     String SessionId;
-    String PromptFirst;
-    String PromptLast;
+    String PromptFirst = "";
+    String PromptLast = "";
     String Provider;
     String Trigger;
     String Model;

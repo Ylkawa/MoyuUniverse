@@ -348,7 +348,8 @@ public class AIChat extends Law {
                                 reqEv.placeholders.put("ACCOUNT_NICKNAME", mcm.receiver.getName());
                                 StringBuilder emojiSetAvailable = new StringBuilder();
                                 for (String emojiName : emojisCollect.keySet()) {
-                                    emojiSetAvailable.append(emojiName).append(" ");
+                                    logger.debug("key = [{}]", emojiName);
+                                    if (emojiName != null) emojiSetAvailable.append(emojiName).append(" ");
                                 }
                                 reqEv.placeholders.put("AVAILABLE_EMOJI", emojiSetAvailable.toString());
                                 if (MEMORY != null) {
@@ -469,7 +470,7 @@ public class AIChat extends Law {
                 case "emoji" -> {
                     String emojiName = matcher.group("args");
                     if (emojisCollect.get(emojiName).isEmpty()) {
-                        result.add(new TextField(emojiName));
+                        result.add(new TextField("[" + emojiName + "]"));
                     } else {
                         try {
                             result.add(new StickerField(new URL(UniverseChannel.getOutboundHttpAddress() + "/AIChat/emoji/" + emojiName)));
@@ -613,6 +614,7 @@ public class AIChat extends Law {
                     continue;
                 } else if (line.equals("END")) {
                     logger.info("AI 主动结束了构建记忆");
+                    break;
                 }
 
                 Matcher updateMatcher = UPDATE_PATTERN.matcher(line);
