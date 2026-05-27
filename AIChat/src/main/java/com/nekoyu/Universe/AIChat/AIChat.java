@@ -504,7 +504,7 @@ public class AIChat extends Law {
     }
 
     public void constructMemory(String locationId, MessageList ml) {
-        final Pattern UPDATE_PATTERN = Pattern.compile("^UPDATE\\s+(\\d+)\\s*:\\s*(.+)$");
+        final Pattern UPDATE_PATTERN = Pattern.compile("^NEW\\s+([0-9]*\\.?[0-9]+)\\s+\\[(.+?)]\\s*:\\s*(.+)$");
         final Pattern DELETE_PATTERN = Pattern.compile("^DELETE\\s+(\\d+)\\s*$");
         final Pattern NEW_PATTERN = Pattern.compile("^NEW\\s*\\[(.+?)]\\s*:\\s*(.+)$");
 
@@ -543,12 +543,12 @@ public class AIChat extends Law {
                 
                 输出必须严格符合以下格式，不得添加解释、理由或额外文本：
                 
-                NEW [[目标LocationId]]: [要新增的记忆]
+                NEW [置信度] [[目标LocationId]]: [要新增的记忆]
                 UPDATE [记忆条目ID]: [修改后的记忆内容]
                 DELETE [记忆条目ID]
                 
                 例如：
-                NEW [Universe:group/12435678]: 群聊主要讨论人工智能大语言模型应用开发
+                NEW 0.76 [Universe:group/12435678]: 群聊主要讨论人工智能大语言模型应用开发
                 UPDATE 12: 用户比较喜欢VOCALOID的音乐
                 DELETE 3
                 
@@ -638,8 +638,9 @@ public class AIChat extends Law {
 
                 Matcher newMatcher = NEW_PATTERN.matcher(line);
                 if (newMatcher.matches()) {
-                    String locId = newMatcher.group(1).trim();
-                    String content = newMatcher.group(2);
+                    float confidence = Float.parseFloat(newMatcher.group(1));
+                    String locId = newMatcher.group(2).trim();
+                    String content = newMatcher.group(3);
                     if (!locId.isEmpty() && content != null && !content.isBlank()) {
                         MEMORY.newMemory(locId, content.trim());
                     }
