@@ -64,16 +64,16 @@ public class Memory {
                     item.content = payload.get("content").getStringValue();
                 }
                 // createAt 创建日期
-                if (payload.containsKey("createAt")) {
-                    item.createAt = payload.get("createAt").getIntegerValue();
+                if (payload.containsKey("create_at")) {
+                    item.createAt = payload.get("create_at").getIntegerValue();
                 }
                 // updatedAt 修改日期
-                if (payload.containsKey("updatedAt")) {
-                    item.updatedAt = payload.get("updatedAt").getIntegerValue();
+                if (payload.containsKey("updated_at")) {
+                    item.updateAt = payload.get("updated_at").getIntegerValue();
                 }
                 // locationId
-                if (payload.containsKey("locationId")) {
-                    item.locationId = payload.get("locationId").getStringValue();
+                if (payload.containsKey("location_id")) {
+                    item.locationId = payload.get("location_id").getStringValue();
                 }
                 // confidence 置信度
                 if (payload.containsKey("confidence")) {
@@ -112,19 +112,19 @@ public class Memory {
                                 .build()
                 );
                 payload.put(
-                        "createAt",
+                        "create_at",
                         Value.newBuilder()
                                 .setIntegerValue(item.createAt)
                                 .build()
                 );
                 payload.put(
-                        "updatedAt",
+                        "updated_at",
                         Value.newBuilder()
-                                .setIntegerValue(item.updatedAt)
+                                .setIntegerValue(item.updateAt)
                                 .build()
                 );
                 payload.put(
-                        "locationId",
+                        "location_id",
                         Value.newBuilder()
                                 .setStringValue(item.locationId)
                                 .build()
@@ -169,7 +169,7 @@ public class Memory {
         public String id;
         public String content;
         public long createAt;
-        public long updatedAt;
+        public long updateAt;
         public String locationId;
         public float score;
         public float confidence;
