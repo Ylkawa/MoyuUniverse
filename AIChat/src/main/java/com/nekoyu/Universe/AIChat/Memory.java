@@ -7,8 +7,11 @@ import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.EmbeddingRequest;
 import com.nekoyu.Universe.API.Providers.LLMProvider.RespBodies.EmbeddingResponse;
 import com.nekoyu.Universe.API.Providers.Provider;
 import com.nekoyu.Universe.Universe;
+import io.qdrant.client.PointIdFactory;
 import io.qdrant.client.QdrantClient;
 import io.qdrant.client.QdrantGrpcClient;
+import io.qdrant.client.ValueFactory;
+import io.qdrant.client.grpc.Common;
 import io.qdrant.client.grpc.Points;
 import io.qdrant.client.grpc.JsonWithInt.Value;
 import io.qdrant.client.grpc.Collections;
@@ -20,12 +23,13 @@ import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.ExecutionException;
 
+import static com.nekoyu.Universe.Utils.Time.formatTimestamp;
 import static io.qdrant.client.VectorsFactory.vectors;
 
 public class Memory {
     private final Embedding provider;
     private final String collection;
-    private Logger logger = LoggerFactory.getLogger(Memory.class);
+    private final Logger logger = LoggerFactory.getLogger(Memory.class);
     private QdrantClient client;
 
     public Memory(Config.QdrantConfig config) throws IOException {
@@ -53,7 +57,7 @@ public class Memory {
                 // createAt index
                 client.createPayloadIndexAsync(
                         collection,
-                        "createAt",
+                        "create_at",
                         PayloadSchemaType.Integer,
                         null, null, null, null
                 ).get();
@@ -61,8 +65,16 @@ public class Memory {
                 // updateAt index
                 client.createPayloadIndexAsync(
                         collection,
-                        "updateAt",
+                        "update_at",
                         Collections.PayloadSchemaType.Integer,
+                        null, null, null, null
+                ).get();
+
+                // locationId index
+                client.createPayloadIndexAsync(
+                        collection,
+                        "location_id",
+                        Collections.PayloadSchemaType.Keyword,
                         null, null, null, null
                 ).get();
 
@@ -92,7 +104,7 @@ public class Memory {
                 item.score = point.getScore();
                 // point id
                 if (point.hasId() && point.getId().hasUuid()) {
-                    item.id = point.getId().getUuid();
+                    item.id = UUID.fromString(point.getId().getUuid());
                 }
                 var payload = point.getPayloadMap();
                 // content
@@ -104,8 +116,8 @@ public class Memory {
                     item.createAt = payload.get("create_at").getIntegerValue();
                 }
                 // updatedAt 修改日期
-                if (payload.containsKey("updated_at")) {
-                    item.updateAt = payload.get("updated_at").getIntegerValue();
+                if (payload.containsKey("update_at")) {
+                    item.updateAt = payload.get("update_at").getIntegerValue();
                 }
                 // locationId
                 if (payload.containsKey("location_id")) {
@@ -130,9 +142,11 @@ public class Memory {
 
             for (Item item : items) {
                 // 自动生成 UUID
-                if (item.id == null || item.id.isBlank()) {
-                    item.id = UUID.randomUUID().toString();
+                if (item.id == null) {
+                    item.id = UUID.randomUUID();
                 }
+                item.createAt = System.currentTimeMillis();
+                item.updateAt = System.currentTimeMillis();
                 // embedding
                 double[] embedding = embedding(item.content);
                 List<Float> vector = new ArrayList<>();
@@ -154,7 +168,7 @@ public class Memory {
                                 .build()
                 );
                 payload.put(
-                        "updated_at",
+                        "update_at",
                         Value.newBuilder()
                                 .setIntegerValue(item.updateAt)
                                 .build()
@@ -175,7 +189,7 @@ public class Memory {
                 Points.PointStruct point = Points.PointStruct.newBuilder()
                         .setId(
                                 io.qdrant.client.grpc.Common.PointId.newBuilder()
-                                        .setUuid(item.id)
+                                        .setUuid(String.valueOf(item.id))
                                         .build()
                         )
                         .setVectors(vectors(vector))
@@ -192,6 +206,126 @@ public class Memory {
         }
     }
 
+    public void update(UUID uuid, float confidence, String content) {
+        try {
+            client.setPayloadAsync(
+                    collection,
+                    Map.of(
+                            "update_at", ValueFactory.value(System.currentTimeMillis()),
+                            "confidence", ValueFactory.value(confidence),
+                            "content", ValueFactory.value(content)
+                    ),
+                    List.of(PointIdFactory.id(uuid)),
+                    true,
+                    null,
+                    null
+            ).get();
+        } catch (Exception e) {
+            logger.error("Update failed", e);
+        }
+    }
+
+    /**
+    此方法不会真实删除数据，只会对已有数据进行隐藏（置信度改到-1.0）
+     */
+    public void delete(UUID uuid) {
+        try {
+            client.setPayloadAsync(
+                    collection,
+                    Map.of(
+                            "confidence", ValueFactory.value(-1.0F)
+                    ),
+                    List.of(PointIdFactory.id(uuid)), // 确保 uuid 转换为了 UUID 对象
+                    true, // wait: 是否等待操作在服务端落盘后再返回
+                    null, // ordering: 排序保证，传 null 使用默认值
+                    null  // shardKey: 分片键，传 null 使用默认值
+            ).get();
+        } catch (Exception e) {
+            logger.error("Delete failed", e);
+        }
+    }
+
+    public List<Item> getLastMemoryItems(List<String> locationIds, int limit) {
+        List<Common.Condition> locationConditions = locationIds.stream()
+                .map(id -> Common.Condition.newBuilder()
+                        .setField(
+                                Common.FieldCondition.newBuilder()
+                                        .setKey("location_id")
+                                        .setMatch(
+                                                Common.Match.newBuilder()
+                                                        .setKeyword(id)
+                                                        .build()
+                                        )
+                                        .build()
+                        )
+                        .build()
+                )
+                .toList();
+
+        Common.Filter filter = Common.Filter.newBuilder()
+                .addAllShould(locationConditions) // 或者是 addShould() 循环添加
+                .build();
+
+        try {
+            Points.ScrollResponse result = client.scrollAsync(
+                    Points.ScrollPoints.newBuilder()
+                            .setCollectionName(collection) // 集合名称
+                            .setFilter(filter)  // 传入你刚才构建的 Common.Filter 对象
+                            .setLimit(limit)                  // 相当于原来的 int 10
+                            .build()
+            ).get();
+
+            List<Item> items = new ArrayList<>();
+
+            for (Points.RetrievedPoint point : result.getResultList()) {
+                Map<String, Value> payload = point.getPayloadMap();
+
+                Item item = new Item();
+
+                // id
+                if (point.getId().hasUuid()) {
+                    item.id = UUID.fromString(point.getId().getUuid());
+                } else if (point.getId().hasNum()) {
+                    item.id = UUID.fromString(String.valueOf(point.getId().getNum()));
+                }
+
+                // payload
+                item.content = payload.containsKey("content")
+                        ? payload.get("content").getStringValue()
+                        : null;
+
+                item.locationId = payload.containsKey("location_id")
+                        ? payload.get("location_id").getStringValue()
+                        : null;
+
+                item.createAt = payload.containsKey("create_at")
+                        ? payload.get("create_at").getIntegerValue()
+                        : 0L;
+
+                item.updateAt = payload.containsKey("update_at")
+                        ? payload.get("update_at").getIntegerValue()
+                        : 0L;
+
+                item.score = payload.containsKey("score")
+                        ? (float) payload.get("score").getDoubleValue()
+                        : 0F;
+
+                item.confidence = payload.containsKey("confidence")
+                        ? (float) payload.get("confidence").getDoubleValue()
+                        : 0F;
+
+                items.add(item);
+            }
+
+            // 按 createAt 倒序
+            items.sort((a, b) -> Long.compare(b.createAt, a.createAt));
+
+            return items;
+        } catch (InterruptedException | ExecutionException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
     public double[] embedding(String text) throws IOException {
         EmbeddingRequest embeddingRequest = new EmbeddingRequest();
         embeddingRequest.message = new MFChain();
@@ -202,12 +336,20 @@ public class Memory {
     }
 
     public static class Item {
-        public String id;
+        public UUID id;
         public String content;
         public long createAt;
         public long updateAt;
         public String locationId;
         public float score;
         public float confidence;
+
+        @Override
+        public String toString() {
+            return "[mem_id=" + id
+                    + "|time=" + formatTimestamp(updateAt)
+                    + "|loc=" + locationId + "]\n"
+                    + content;
+        }
     }
 }
