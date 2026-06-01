@@ -18,6 +18,8 @@ import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.ContentPiece.Text
 import com.nekoyu.Universe.API.Providers.LLMProvider.RespBodies.CompletionsResponse;
 import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.LLMTool;
 import com.nekoyu.Universe.API.Providers.LLMProvider.RespBodies.EmbeddingResponse;
+import com.nekoyu.universe.openaiadapter.RequestBodies.AliyunBailianReq;
+import com.nekoyu.universe.openaiadapter.RequestBodies.OpenAIReq;
 import okhttp3.*;
 import okio.BufferedSource;
 import org.checkerframework.checker.units.qual.A;
@@ -71,8 +73,17 @@ public class OpenAIChannel extends LLMProvider implements Embedding {
             message.reasoning_content = "";
         }}};
         CompletionsRequest cr = new CompletionsRequest();
-        if ("dashscope".equals(speciallyAdaptation)) { // 对阿里云百炼进行特调
-            cr.stream_options.put("include_usage", true);
+        switch (speciallyAdaptation) {
+            case "dashscope" -> {
+                AliyunBailianReq bailian = new AliyunBailianReq();
+                bailian.stream_options.put("include_usage", true);
+                if (extensionalArgs.enable_thinking) bailian.enable_thinking = true;
+            }
+            case "gpt" -> {
+                OpenAIReq openai = new OpenAIReq();
+                if (extensionalArgs.enable_thinking) openai.reasoning.effort = OpenAIReq.Reasoning.Effort.low;
+            }
+            default -> cr = new CompletionsRequest();
         }
         if (model != null) cr.model = model;
         else cr.model = defaultModel;
@@ -86,7 +97,6 @@ public class OpenAIChannel extends LLMProvider implements Embedding {
         if (cr.tools.isEmpty()) cr.tools = null;
         // Transfer Universe message list to OpenAI message list
         cr.stream = true;
-        if (extensionalArgs.enable_thinking) cr.enable_thinking = true;
 //        logger.debug(gson.toJson(cr));
         CompletionsResponse completions = completions(messageList, cr, llmFunctions, bufferCallback, extensionalArgs, 5, responding);
         if (completions.usage.total_tokens > 0)
@@ -269,7 +279,13 @@ public class OpenAIChannel extends LLMProvider implements Embedding {
         Matcher matcher = pattern.matcher(baseurl);
         if (matcher.find()) {
             speciallyAdaptation = "dashscope";
+            return;
         }
+        if (defaultModel != null && defaultModel.startsWith("gpt-5")) {
+            speciallyAdaptation = "gpt";
+            return;
+        }
+        speciallyAdaptation = "none";
     }
 
     @Override
