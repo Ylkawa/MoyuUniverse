@@ -133,30 +133,30 @@ public class MinecraftConnectSpigot extends JavaPlugin {
                     case "ForwardChat" -> {
                         ComponentBuilder bc = new ComponentBuilder();
                         ForwardChat fc = gson.fromJson(s, ForwardChat.class);
-                        net.md_5.bungee.api.ChatColor color = net.md_5.bungee.api.ChatColor.of(new Color(fc.RGB[0],fc.RGB[1],fc.RGB[2]));
-                        TextComponent name = new TextComponent("[" + fc.MCMsg.sender.getName() + "]");
+                        net.md_5.bungee.api.ChatColor color = net.md_5.bungee.api.ChatColor.of(new Color(fc.sender.RGB[0],fc.sender.RGB[1],fc.sender.RGB[2]));
+                        TextComponent name = new TextComponent("[" + fc.sender.name + "]");
                         name.setColor(color);
                         name.setHoverEvent(
                                 new HoverEvent(
                                         HoverEvent.Action.SHOW_TEXT,
-                                        new Text(ChatColor.DARK_GREEN + fc.MCMsg.sender.getPlatform() + " " + fc.MCMsg.sender.getId())
+                                        new Text(ChatColor.DARK_GREEN + fc.sender.name + " " + fc.sender.name)
                                 )
                         );
                         bc.append(name).append(": ");
-                        for (MsgField f : fc.MCMsg.messageFields) {
-                            if (f instanceof AtField af) {
+                        for (var f : fc.segments) {
+                            if (f instanceof ForwardChat.At af) {
                                 TextComponent tc = new TextComponent(f.toString());
                                 tc.setColor(net.md_5.bungee.api.ChatColor.YELLOW);
                                 tc.setHoverEvent(
                                         new HoverEvent(
                                                 HoverEvent.Action.SHOW_TEXT,
-                                                new Text(ChatColor.DARK_GREEN + af.target.getPlatform() + " " + af.target.getId())
+                                                new Text(ChatColor.DARK_GREEN + af.target.locationId)
                                         )
                                 );
                                 bc.append(tc);
-                            } else if (f instanceof ImageField imgF) {
+                            } else if (f instanceof ForwardChat.Image imgF) {
                                 try {
-                                    BufferedImage bi = ImageIO.read(imgF.getUrl());
+                                    BufferedImage bi = ImageIO.read(imgF.url);
                                     int maxSize = 40;
                                     double scale = Math.min(
                                             (double) maxSize / bi.getWidth(),
@@ -194,8 +194,8 @@ public class MinecraftConnectSpigot extends JavaPlugin {
                                     tc.setHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, new Text("[图片]")));
                                     bc.append(tc);
                                 }
-                            } else {
-                                TextComponent tc = new TextComponent(f.toString());
+                            } else if (f instanceof ForwardChat.Text t) {
+                                TextComponent tc = new TextComponent(t.text);
                                 tc.setColor(net.md_5.bungee.api.ChatColor.WHITE);
                                 tc.setHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT, new Text("")));
                                 bc.append(tc);

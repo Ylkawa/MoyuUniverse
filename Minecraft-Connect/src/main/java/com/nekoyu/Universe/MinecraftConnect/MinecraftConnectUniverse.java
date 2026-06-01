@@ -6,6 +6,7 @@ import com.nekoyu.Universe.API.*;
 import com.nekoyu.Universe.API.MessageChannel.MCMessage;
 import com.nekoyu.Universe.API.MessageChannel.MCPost;
 import com.nekoyu.Universe.API.MessageChannel.MCMListener;
+import com.nekoyu.Universe.API.MessageChannel.MessageField.ImageField;
 import com.nekoyu.Universe.LawsLoader.Law;
 import com.nekoyu.Universe.Universe;
 import org.yaml.snakeyaml.Yaml;
@@ -71,10 +72,20 @@ public class MinecraftConnectUniverse extends Law implements UniverseListener {
             MCMListener mcl = mcm -> {
                 ForwardChat ucm = new ForwardChat();
                 ucm.message = "ForwardChat";
-                ucm.MCMsg = mcm;
+                for (var field : mcm.messageFields) {
+                    if (field instanceof ImageField imageField) {
+                        var image = new ForwardChat.Image();
+                        image.url = imageField.getUrl();
+                        ucm.segments.add(image);
+                    } else {
+                        ucm.segments.add(new ForwardChat.Text(field.toString()));
+                    }
+                }
+                ucm.sender.name = mcm.sender.getName();
+                ucm.sender.locationId = mcm.sender.getLocationId();
                 Color color = Color.CYAN;
                 if (mcm.sender.getAvatar() != null) color = mcm.sender.getAvatar().getMainColor();
-                ucm.RGB = new int[]{color.getRed(), color.getGreen(), color.getBlue()};
+                ucm.sender.RGB = new int[]{color.getRed(), color.getGreen(), color.getBlue()};
 
                 UniverseChannel.broadcast(target, ucm);
             };
