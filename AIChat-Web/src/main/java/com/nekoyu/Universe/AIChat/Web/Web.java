@@ -83,7 +83,7 @@ public class Web extends AIChatPlugin {
         );
         registerFunction("WebSearch", dst);
 
-        LLMFunction visitUrl = new LLMFunction("访问网页",
+        LLMFunction visitUrl = new LLMFunction("VisitWebPage",
                 """
                         获取部分受支持的网页中的信息（内容会被精简）仅支持哔哩哔哩视频和用户空间、YouTube视频、Wikipedia、萌娘百科词条
                         例: https://www.bilibili.com/video/BV1SC4y1J7De , https://space.bilibili.com/497423225 , https://www.youtube.com/watch?v=EkREmibZp3E""",
