@@ -108,7 +108,8 @@ public class OpenAIChannel extends LLMProvider implements Embedding {
         completionsRequest.messages.clear(); // 每一轮都重新构建了消息列表
         for (MCMessage m : ml) {
             ArrayMessage message = new ArrayMessage();
-            if (m.getMetainfo("role") instanceof String role) {
+            if (m.sender.equals(extensionalArgs.assistant)) message.role = "assistant";
+            else if (m.getMetainfo("role") instanceof String role) {
                 message.role = role;
                 if (role.equals("assistant") && m.getMetainfo("Tool_calls") instanceof Tool_call[] toolCalls)  {
                     if (m.getMetainfo("reasoning") instanceof String s) message.reasoning_content = s; // 回传思考链

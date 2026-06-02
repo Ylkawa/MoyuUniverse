@@ -24,10 +24,7 @@ public class Topic {
         MCMessage oaiM = new MCMessage();
 
         // 1) 先转换 role
-        if (Objects.equals(mcm.sender.getLocationId(), mcm.receiver.getLocationId())) {
-            oaiM.putMetainfo("role", "assistant");
-        } else {
-            oaiM.putMetainfo("role", "user");
+        if (!Objects.equals(mcm.sender.getLocationId(), mcm.receiver.getLocationId())) {
             oaiM.messageFields.add(new TextField(
                     formatTimestamp((mcm.time * 1000)) +
                             "[" + mcm.id + "]" +

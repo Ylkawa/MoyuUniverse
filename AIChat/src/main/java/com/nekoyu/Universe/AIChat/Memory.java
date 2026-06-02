@@ -32,7 +32,7 @@ public class Memory {
     private final Logger logger = LoggerFactory.getLogger(Memory.class);
     private QdrantClient client;
 
-    public Memory(Config.QdrantConfig config) throws IOException {
+    public Memory(Config.Qdrant config) throws IOException {
         Provider provider = (Provider) Universe.Providers.get(config.provider);
         if (provider instanceof Embedding embedding) this.provider = embedding;
         else if (provider != null) throw new IllegalArgumentException("Provider must support Embedding");
@@ -85,16 +85,42 @@ public class Memory {
         }
     }
 
-    public List<Item> query(String quiz) throws IOException {
+    public List<Item> query(String quiz) {
         List<Float> queryVector = new ArrayList<>();
-        for (double v : embedding(quiz)) {
-            queryVector.add((float) v);
-        }
         try {
+            for (double v : embedding(quiz)) {
+                queryVector.add((float) v);
+            }
+            return query(queryVector);
+        } catch (IOException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    public List<Item> query(List<Float> queryVector) {
+        try {
+            Common.Condition notDeletedCondition = Common.Condition.newBuilder()
+                    .setField(
+                            Common.FieldCondition.newBuilder()
+                                    .setKey("confidence")
+                                    .setRange(
+                                            Common.Range.newBuilder()
+                                                    .setGte(0)
+                                                    .build()
+                                    )
+                                    .build()
+                    )
+                    .build();
+
+            Common.Filter filter = Common.Filter.newBuilder()
+                    .addMust(notDeletedCondition)
+                    .build();
+
             List<Points.ScoredPoint> result = client.searchAsync(
                     Points.SearchPoints.newBuilder()
                             .setCollectionName(collection)
                             .addAllVector(queryVector)
+                            .setFilter(filter)
                             .setLimit(10)
                             .build()
             ).get();
@@ -208,18 +234,24 @@ public class Memory {
 
     public void update(UUID uuid, float confidence, String content) {
         try {
-            client.setPayloadAsync(
-                    collection,
-                    Map.of(
-                            "update_at", ValueFactory.value(System.currentTimeMillis()),
-                            "confidence", ValueFactory.value(confidence),
-                            "content", ValueFactory.value(content)
-                    ),
-                    List.of(PointIdFactory.id(uuid)),
-                    true,
-                    null,
-                    null
-            ).get();
+            double[] embedding = embedding(content);
+            List<Float> vector = new ArrayList<>();
+            for (double v : embedding) {
+                vector.add((float) v);
+            }
+
+            Map<String, Value> payload = new HashMap<>();
+            payload.put("update_at", ValueFactory.value(System.currentTimeMillis()));
+            payload.put("confidence", ValueFactory.value(confidence));
+            payload.put("content", ValueFactory.value(content));
+
+            Points.PointStruct point = Points.PointStruct.newBuilder()
+                    .setId(PointIdFactory.id(uuid))
+                    .setVectors(vectors(vector))
+                    .putAllPayload(payload)
+                    .build();
+
+            client.upsertAsync(collection, List.of(point)).get();
         } catch (Exception e) {
             logger.error("Update failed", e);
         }
@@ -246,6 +278,10 @@ public class Memory {
     }
 
     public List<Item> getLastMemoryItems(List<String> locationIds, int limit) {
+        if (locationIds == null || locationIds.isEmpty()) {
+            return List.of();
+        }
+
         List<Common.Condition> locationConditions = locationIds.stream()
                 .map(id -> Common.Condition.newBuilder()
                         .setField(
@@ -262,16 +298,30 @@ public class Memory {
                 )
                 .toList();
 
+        Common.Condition notDeletedCondition = Common.Condition.newBuilder()
+                .setField(
+                        Common.FieldCondition.newBuilder()
+                                .setKey("confidence")
+                                .setRange(
+                                        Common.Range.newBuilder()
+                                                .setGte(0)
+                                                .build()
+                                )
+                                .build()
+                )
+                .build();
+
         Common.Filter filter = Common.Filter.newBuilder()
-                .addAllShould(locationConditions) // 或者是 addShould() 循环添加
+                .addAllShould(locationConditions)
+                .addMust(notDeletedCondition)
                 .build();
 
         try {
             Points.ScrollResponse result = client.scrollAsync(
                     Points.ScrollPoints.newBuilder()
-                            .setCollectionName(collection) // 集合名称
-                            .setFilter(filter)  // 传入你刚才构建的 Common.Filter 对象
-                            .setLimit(limit)                  // 相当于原来的 int 10
+                            .setCollectionName(collection)
+                            .setFilter(filter)
+                            .setLimit(limit)
                             .build()
             ).get();
 

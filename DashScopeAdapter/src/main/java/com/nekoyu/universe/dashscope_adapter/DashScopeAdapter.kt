@@ -14,7 +14,7 @@ class DashScopeAdapter : Law() {
     var gson: Gson = Gson()
 
     override fun prepare(): Boolean {
-        for (file in Objects.requireNonNull<Array<File>?>(getConfigDir().listFiles())) {
+        for (file in Objects.requireNonNull(getConfigDir().listFiles())) {
             try {
                 FileReader(file).use { fr ->
                     val cfg = gson.fromJson<Config>(fr, Config::class.java)
