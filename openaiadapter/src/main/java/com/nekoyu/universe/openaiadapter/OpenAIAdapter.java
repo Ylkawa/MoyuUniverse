@@ -20,10 +20,10 @@ public class OpenAIAdapter extends Law {
             try (FileReader fr = new FileReader(file)) {
                 Config cfg = gson.fromJson(fr, Config.class);
                 OpenAIChannel channel = new OpenAIChannel();
+                channel.logger = LoggerFactory.getLogger("OpenAI C - " + cfg.ProviderId);
                 channel.apikey = cfg.APIKey;
                 channel.defaultModel = cfg.DefaultModel;
                 channel.setBaseurl(cfg.BaseUrl);
-                channel.logger = LoggerFactory.getLogger("OpenAI C - " + cfg.ProviderId);
                 Universe.Providers.put(cfg.ProviderId, channel);
             } catch (FileNotFoundException e) {
                 logger.error("能触发这个报错这辈子有了👍", e);

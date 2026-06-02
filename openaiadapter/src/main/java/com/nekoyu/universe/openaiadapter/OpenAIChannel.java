@@ -42,7 +42,7 @@ import java.util.regex.Pattern;
  * Only supports streamed outputting and function calling models
  */
 public class OpenAIChannel extends LLMProvider implements Embedding {
-    Logger logger = LoggerFactory.getLogger(OpenAIChannel.class);
+    Logger logger = null;
     OkHttpClient client;
     Gson gson;
     List<LLMFunction> tools;
@@ -72,16 +72,18 @@ public class OpenAIChannel extends LLMProvider implements Embedding {
             message.content = "";
             message.reasoning_content = "";
         }}};
-        CompletionsRequest cr = new CompletionsRequest();
+        CompletionsRequest cr;
         switch (speciallyAdaptation) {
             case "dashscope" -> {
                 AliyunBailianReq bailian = new AliyunBailianReq();
                 bailian.stream_options.put("include_usage", true);
                 if (extensionalArgs.enable_thinking) bailian.enable_thinking = true;
+                cr = bailian;
             }
             case "gpt" -> {
                 OpenAIReq openai = new OpenAIReq();
                 if (extensionalArgs.enable_thinking) openai.reasoning.effort = OpenAIReq.Reasoning.Effort.low;
+                cr = openai;
             }
             default -> cr = new CompletionsRequest();
         }
@@ -280,10 +282,12 @@ public class OpenAIChannel extends LLMProvider implements Embedding {
         Matcher matcher = pattern.matcher(baseurl);
         if (matcher.find()) {
             speciallyAdaptation = "dashscope";
+            logger.debug("识别到百炼API，启用百炼特殊适配");
             return;
         }
         if (defaultModel != null && defaultModel.startsWith("gpt-5")) {
             speciallyAdaptation = "gpt";
+            logger.debug("识别到GPT模型，启用GPT特殊适配");
             return;
         }
         speciallyAdaptation = "none";
@@ -305,7 +309,6 @@ public class OpenAIChannel extends LLMProvider implements Embedding {
                 .build();
         try (Response resp = client.newCall(req).execute()) {
             String string = resp.body().string();
-            System.out.println(new Gson().fromJson(string, HashMap.class));
             EmbeddingResponse embeddingResponse = gson.fromJson(string, EmbeddingResponse.class);
             if (embeddingResponse.usage != null) logger.info("Embedding-Usage: {} Tokens", embeddingResponse.usage.prompt_tokens); // 无言了，百炼的 API 默认不返回 usage
             return embeddingResponse;
