@@ -376,10 +376,11 @@ public class Memory {
         }
     }
 
-    public double[] embedding(String text) throws IOException {
+    private double[] embedding(String text) throws IOException {
         EmbeddingRequest embeddingRequest = new EmbeddingRequest();
-        embeddingRequest.message = new MFChain();
-        embeddingRequest.message.add(new TextField(text));
+        MFChain mfc = new MFChain();
+        mfc.add(new TextField(text));
+        embeddingRequest.message.add(mfc);
         EmbeddingResponse resp = provider.embedding(embeddingRequest);
         if (resp == null || resp.data == null || resp.data.isEmpty()) throw new IOException("Empty response");
         return resp.data.get(0).embedding;
@@ -398,7 +399,8 @@ public class Memory {
         public String toString() {
             return "[mem_id=" + id
                     + "|time=" + formatTimestamp(updateAt)
-                    + "|loc=" + locationId + "]\n"
+                    + "|confidence=" + confidence
+                    + "|loc=" + locationId + "]: "
                     + content;
         }
     }

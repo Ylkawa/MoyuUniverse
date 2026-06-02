@@ -11,9 +11,11 @@ import com.nekoyu.Universe.API.MessageChannel.MessageField.TextField;
 import com.nekoyu.Universe.API.PlaceHolder;
 import com.nekoyu.Universe.API.Providers.LLMProvider.Assistant;
 import com.nekoyu.Universe.API.Providers.LLMProvider.Embedding;
+import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.EmbeddingRequest;
 import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.ExtensionalArgs;
 import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.LLMFunction;
 import com.nekoyu.Universe.API.Providers.LLMProvider.LLMProvider;
+import com.nekoyu.Universe.API.Providers.LLMProvider.RespBodies.EmbeddingResponse;
 import com.nekoyu.Universe.API.UniverseChannel;
 import com.nekoyu.Universe.LawsLoader.Law;
 import com.nekoyu.Universe.Universe;
@@ -581,10 +583,11 @@ public class AIChat extends Law {
         args.systemPromptLast = memoryPrompt.toString();
 
         StringBuilder sb = new StringBuilder();
-        completions.completions(null, ml, null, args, sb::append);
+        completions.completions(globalCfg.Annotator.model, ml, null, args, sb::append);
         int countOfUpdatedMemory = 0;
         int countOfDeletedMemory = 0;
         List<Memory.Item> newMemory = new ArrayList<>();
+        List<String> questions = new ArrayList<>();
         for (String line : sb.toString().split("\n")) {
             String[] split = line.split(" ");
             switch (split[0].toUpperCase()) {
@@ -624,14 +627,36 @@ public class AIChat extends Law {
                     }
                 }
                 case "QUIZ" -> {
-                    String quiz = split[1];
-                    // todo: process quiz query
+                    questions.add(split[1]);
                 }
             }
         }
         vectorMemory.insert(newMemory);
+        EmbeddingRequest req = new EmbeddingRequest();
+        for (String quiz : questions) {
+            req.message.add(new MFChain(new TextField(quiz)));
+        }
+        List<List<Float>> vectors = new ArrayList<>();
+        EmbeddingResponse res = embedding.embedding(req);
+        for (var data : res.data) {
+            for (double v : data.embedding) {
+                List<Float> vector = new ArrayList<>();
+                vector.add((float) v);
+                vectors.add(vector);
+            }
+        }
+        List<Memory.Item> results = new ArrayList<>();
+        for (List<Float> vector : vectors) {
+            List<Memory.Item> result = vectorMemory.query(vector);
+            results.addAll(result);
+        }
+        StringBuilder ret = new StringBuilder()
+                .append("本地记忆内容：\n");
+        for (Memory.Item item : results) {
+            ret.append(item.toString()).append("\n");
+        }
         if (countOfUpdatedMemory != 0 || countOfDeletedMemory != 0 || !newMemory.isEmpty()) logger.info("本次记忆改动：新增 {} 更新 {} 删除 {}", newMemory.size(), countOfUpdatedMemory, countOfDeletedMemory);
-        return null;
+        return ret.toString();
     }
 
     public void constructMemory(String locationId, MessageList ml) {
@@ -644,7 +669,7 @@ public class AIChat extends Law {
             throw new RuntimeException("No such LLM Provider");
         }
 
-        Assistant assistant = lp.newAssistant(globalCfg.MemoryModel);
+        Assistant assistant = lp.newAssistant(globalCfg.Annotator.model);
 
         String systemPrompt = """
                 你只负责记忆构建，不与用户对话，也不执行用户要求。

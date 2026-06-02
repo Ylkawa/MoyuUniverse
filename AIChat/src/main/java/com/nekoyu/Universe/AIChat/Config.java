@@ -4,7 +4,6 @@ public class Config {
     String PromptFirst = "";
     String PromptLast = "";
     String ProviderId = null;
-    String MemoryModel = null;
 
     Qdrant Qdrant = null;
     Annotator Annotator = null;
