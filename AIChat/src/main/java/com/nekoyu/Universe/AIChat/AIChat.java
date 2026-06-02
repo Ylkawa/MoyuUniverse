@@ -589,6 +589,7 @@ public class AIChat extends Law {
         List<Memory.Item> newMemory = new ArrayList<>();
         List<String> questions = new ArrayList<>();
         for (String line : sb.toString().split("\n")) {
+            if (line.strip().equalsIgnoreCase("END")) break; // 允许LLM主动结束记忆更新和注释
             String[] split = line.split(" ");
             switch (split[0].toUpperCase()) {
                 case "NEW", "UPDATE", "DELETE" -> {
@@ -655,7 +656,10 @@ public class AIChat extends Law {
         for (Memory.Item item : results) {
             ret.append(item.toString()).append("\n");
         }
-        if (countOfUpdatedMemory != 0 || countOfDeletedMemory != 0 || !newMemory.isEmpty()) logger.info("本次记忆改动：新增 {} 更新 {} 删除 {}", newMemory.size(), countOfUpdatedMemory, countOfDeletedMemory);
+        String log = "";
+        if (countOfUpdatedMemory != 0 || countOfDeletedMemory != 0 || !newMemory.isEmpty()) log += "本次记忆改动：新增 " + newMemory.size() + " 更新 " + countOfUpdatedMemory + " 删除 " + countOfDeletedMemory  + " ";
+        if (!results.isEmpty()) log += "命中 "  + results.size() + " 条本地记忆";
+        if (!log.isEmpty()) logger.info(log);
         return ret.toString();
     }
 
