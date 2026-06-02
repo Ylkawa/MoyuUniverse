@@ -295,7 +295,9 @@ public class OpenAIChannel extends LLMProvider implements Embedding {
         OAIEmbeddingRequest request = new OAIEmbeddingRequest();
         if (embeddingRequest.model != null && !embeddingRequest.model.isEmpty()) request.model = embeddingRequest.model;
         else request.model = defaultEmbeddingModel;
-        request.input = embeddingRequest.message.toString();
+        for (var msg : embeddingRequest.message) {
+            request.input.add(msg.toString());
+        }
         Request req = new Request.Builder()
                 .url(baseurl + "/embeddings")
                 .addHeader("Authorization", "Bearer " + apikey)

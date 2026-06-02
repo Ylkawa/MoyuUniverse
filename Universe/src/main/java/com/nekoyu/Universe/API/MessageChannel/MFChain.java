@@ -44,6 +44,12 @@ public class MFChain extends LinkedList<MsgField> {
         return sb.toString();
     }
 
+    public MFChain(MsgField msgField) {
+        add(msgField);
+    }
+
+    public MFChain() {}
+
     @Override
     public String toString() {
         return solveAll(false);
