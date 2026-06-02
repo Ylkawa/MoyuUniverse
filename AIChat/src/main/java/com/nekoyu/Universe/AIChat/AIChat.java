@@ -418,23 +418,24 @@ public class AIChat extends Law {
             });
             Universe.MessageChannelManager.listenToPost(sessionCfg.SessionId, mcp -> {
                 if (sessionCfg.Trigger.equals("every") || mcp.messageString.contains(sessionCfg.Keyword) || mcp.level >= 2) {
+                    logger.info("接收到MCPost");
                     Object provider = Universe.Providers.get(sessionCfg.Provider);
                     if (provider instanceof LLMProvider) {
-//                        if (MEMORY != null && MEMORY.available()) {
-//                            MessageList ml = new MessageList();
-//                            MCMessage msg = new MCMessage();
-//                            msg.putMetainfo("role", "user");
-//                            msg.messageFields.add(new TextField(mcp.poster.getName() + " (" + mcp.poster.getLocationId() + ") [" + formatTimestamp(System.currentTimeMillis()) + "]:\n\n"));
-//                            // name(locationId)[2026-04-11 12:19:44]:\n\n
-//                            msg.messageFields = mcp.messageFields;
-//                            ml.add(msg);
-//                            try {
-//                                constructMemory(mcp.getLocationId(), ml);
-//                            } catch (RuntimeException e) {
-//                                logger.error("Failed to construct memory", e);
-//                            }
-//                            mcp.sendLike();
-//                        }
+                        if (vectorMemory != null) {
+                            MessageList ml = new MessageList();
+                            MCMessage msg = new MCMessage();
+                            msg.putMetainfo("role", "user");
+                            msg.messageFields.add(new TextField(mcp.poster.getName() + " (" + mcp.poster.getLocationId() + ") [" + formatTimestamp(System.currentTimeMillis()) + "]:\n\n"));
+                            // name(locationId)[2026-04-11 12:19:44]:\n\n
+                            msg.messageFields = mcp.messageFields;
+                            ml.add(msg);
+                            try {
+                                constructMemory(mcp.getLocationId(), ml);
+                            } catch (RuntimeException e) {
+                                logger.error("Failed to construct memory", e);
+                            }
+                            mcp.sendLike();
+                        }
                     } else {
                         if (provider == null) logger.warn("无此适配器 {}", sessionCfg.Provider);
                         else logger.warn("定义的AI服务适配器 {} 无效", sessionCfg.Provider);
