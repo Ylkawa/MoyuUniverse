@@ -367,7 +367,8 @@ public class AIChat extends Law {
                             if (vectorMemory != null) {
                                 try {
                                     StringBuilder sb = new StringBuilder();
-                                    for (var obj : vectorMemory.getLastMemoryItems(topic.messages.getLocationIds(), 50)) {
+                                    List<String> locationIds = topic.messages.getLocationIds();
+                                    for (var obj : vectorMemory.getLastMemoryItems(locationIds, locationIds.size() * 5)) {
                                         sb.append(obj.confidence)
                                                 .append(" ")
                                                 .append(Time.formatTimestamp(obj.updateAt))
@@ -558,8 +559,9 @@ public class AIChat extends Law {
                 
                 提炼问题时应当严格遵循以下规则：
                 1. 一行一个问题，单个问题不得跨行，每行的问题必须要能独立解读，且必须给出足够信息，尽可能准确地描述 Assistant 遇到的问题，比如用户提到一个角色，则应当根据上下文得到这个角色属于哪一个作品
-                2. 忽视 主Assistant 不需要提示而本身就知道的内容，如常识性内容或者上下文有提到的内容，再列举出其他所有与 主Assistant将要回答的问题 相关的问题，便于从记忆库和全网找回线索
-                3. 如果问题与某一个用户相关，那么在指令后加一个括号并填入用户的LocationId，并在问题中固定使用“用户”的称呼
+                2. 忽视常识性内容或者上下文有明确提到的内容，再列举出其他所有与 主Assistant将要回答的问题 相关的问题，便于从记忆库和全网找回线索
+                3. 如果问题不仅仅与某一个用户关联，则不需要加括号提供LocationId，直接用指令提问
+                4. 如果问题与某一个用户相关，那么在指令后加一个括号并填入用户的LocationId，并在问题中固定使用“用户”的称呼
                 
                 输出必须严格符合以下格式，不得添加解释、理由或额外文本：
                 NEW [置信度] [[目标LocationId]]: [要新增的记忆]
@@ -579,9 +581,8 @@ public class AIChat extends Law {
                 - NEW 只能写入新的、未重复的有效记忆。
                 - UPDATE 只能修改与原记忆语义一致但更准确的内容。
                 - DELETE 只能删除过时、错误、重复或无长期价值的记忆。
-                - 对于明显临时的内容，如果没有长期价值，宁可不输出任何记忆。无法输出有价值记忆时，使用单行 END 指令直接结束记忆构建。
-                
-                如果不能提供有价值的回复，输出一句"END"直接结束输出""";
+                - 对于明显临时的内容，如果没有长期价值，宁可不输出任何记忆。
+                - 如果不能提取有用记忆和Assistant遇到的非常识性问题，输出一句"END"直接结束输出""";
         StringBuilder memoryPrompt = new StringBuilder("先前的记忆条目，格式为 [条目ID]|[更新时间]|[置信度]|[LocationId]:[内容] ：\n\n");
 
         if ((memories == null || memories.isEmpty()) && topic.activatingMemory == null) {
@@ -618,7 +619,12 @@ public class AIChat extends Law {
                     final Pattern NEW_PATTERN = Pattern.compile("^NEW\\s+([0-9]*\\.?[0-9]+)\\s+\\[(.+?)]\\s*:\\s*(.+)$");
                     Matcher updateMatcher = UPDATE_PATTERN.matcher(line);
                     if (updateMatcher.matches()) {
-                        UUID uuid = topic.activatingMemory.get(UUID.fromString(updateMatcher.group(1))).id;
+                        Memory.Item item = topic.activatingMemory.get(UUID.fromString(updateMatcher.group(1)));
+                        if (item == null) {
+                            logger.warn("傻子模型 {} 想修改一个不存在的记忆条目ID👍", globalCfg.Annotator.model);
+                            continue;
+                        }
+                        UUID uuid = item.id;
                         float confidence = Float.parseFloat(updateMatcher.group(2));
                         String content = updateMatcher.group(3);
                         vectorMemory.update(uuid, confidence, content.trim());
