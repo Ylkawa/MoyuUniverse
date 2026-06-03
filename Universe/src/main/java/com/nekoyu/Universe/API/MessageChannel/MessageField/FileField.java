@@ -8,7 +8,7 @@ import java.lang.ref.Cleaner;
 import java.net.URL;
 
 public class FileField extends MsgField {
-    String description;
+    public String description;
     private static final Cleaner cleaner = Cleaner.create();
 
     private static class State implements Runnable {

@@ -3,9 +3,7 @@ package com.nekoyu.universe.openaiadapter;
 import com.google.gson.Gson;
 import com.google.gson.JsonSyntaxException;
 import com.nekoyu.Universe.API.MessageChannel.MCMessage;
-import com.nekoyu.Universe.API.MessageChannel.MFChain;
 import com.nekoyu.Universe.API.MessageChannel.MessageField.ImageField;
-import com.nekoyu.Universe.API.MessageChannel.MessageField.MetaField;
 import com.nekoyu.Universe.API.MessageChannel.MessageField.MsgField;
 import com.nekoyu.Universe.API.MessageChannel.MessageField.TextField;
 import com.nekoyu.Universe.API.MessageChannel.MessageList;
@@ -22,16 +20,10 @@ import com.nekoyu.universe.openaiadapter.RequestBodies.AliyunBailianReq;
 import com.nekoyu.universe.openaiadapter.RequestBodies.OpenAIReq;
 import okhttp3.*;
 import okio.BufferedSource;
-import org.checkerframework.checker.units.qual.A;
 import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
-import java.lang.reflect.Array;
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -120,7 +112,7 @@ public class OpenAIChannel extends LLMProvider implements Embedding {
                 if (role.equals("tool") && m.getMetainfo("tool_call_id") instanceof String tool_call_id) message.tool_call_id = tool_call_id;
             } else message.role = "user";
             for (MsgField mf : m.messageFields) {
-                if (mf instanceof ImageField imageField) {
+                if (!(Objects.equals(message.role, "assistant") && Objects.equals(speciallyAdaptation, "dashscope")) && mf instanceof ImageField imageField) {
                     message.content.add(new ImageUrlPiece(imageField.getUrl().toString()));
                 } else message.content.add(new TextPiece(mf.toString()));
             }

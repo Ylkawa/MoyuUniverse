@@ -6,7 +6,10 @@ import com.nekoyu.Universe.API.MessageChannel.MessageField.MsgField;
 import com.nekoyu.Universe.API.MessageChannel.MessageField.TextField;
 import com.nekoyu.Universe.API.MessageChannel.MessageList;
 
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Objects;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import static com.nekoyu.Universe.AIChat.AIChat.formatTimestamp;
@@ -15,6 +18,7 @@ public class Topic {
     AtomicBoolean responding = new AtomicBoolean(false);
     MessageList messages = new MessageList();
     SessionConfig sessionCfg;
+    Map<UUID, Memory.Item> activatingMemory = new HashMap<>();
 
     public Topic(SessionConfig sessionCfg) {
         this.sessionCfg = sessionCfg;

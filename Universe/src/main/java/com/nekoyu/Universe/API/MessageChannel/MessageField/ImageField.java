@@ -166,6 +166,7 @@ public class ImageField extends FileField {
 
     @Override
     public String toString() {
-        return "[图片]";
+        if (this.description != null) return this.description;
+        else return "[图片]";
     }
 }

@@ -99,6 +99,10 @@ public class Memory {
     }
 
     public List<Item> query(List<Float> queryVector) {
+        return query(queryVector, null);
+    }
+
+    public List<Item> query(List<Float> queryVector, String locationId) {
         try {
             Common.Condition notDeletedCondition = Common.Condition.newBuilder()
                     .setField(
@@ -113,32 +117,52 @@ public class Memory {
                     )
                     .build();
 
-            Common.Filter filter = Common.Filter.newBuilder()
-                    .addMust(notDeletedCondition)
-                    .build();
+            Common.Filter.Builder filterBuilder = Common.Filter.newBuilder()
+                    .addMust(notDeletedCondition);
+
+            if (locationId != null && !locationId.isBlank()) {
+                Common.Condition locationCondition = Common.Condition.newBuilder()
+                        .setField(
+                                Common.FieldCondition.newBuilder()
+                                        .setKey("location_id")
+                                        .setMatch(
+                                                Common.Match.newBuilder()
+                                                        .setKeyword(locationId)
+                                                        .build()
+                                        )
+                                        .build()
+                        )
+                        .build();
+
+                filterBuilder.addMust(locationCondition);
+            }
 
             List<Points.ScoredPoint> result = client.searchAsync(
                     Points.SearchPoints.newBuilder()
                             .setCollectionName(collection)
                             .setVectorName(vectorName)
                             .addAllVector(queryVector)
-                            .setFilter(filter)
+                            .setFilter(filterBuilder.build())
                             .setLimit(10)
-                            .setWithPayload(Points.WithPayloadSelector.newBuilder()
-                                    .setEnable(true)
-                                    .build())
+                            .setWithPayload(
+                                    Points.WithPayloadSelector.newBuilder()
+                                            .setEnable(true)
+                                            .build()
+                            )
                             .build()
             ).get();
+
             List<Item> items = new ArrayList<>();
             for (Points.ScoredPoint point : result) {
                 Item item = new Item();
                 item.score = point.getScore();
-                // point id
+
                 if (point.hasId() && point.getId().hasUuid()) {
                     item.id = UUID.fromString(point.getId().getUuid());
                 }
+
                 var payload = point.getPayloadMap();
-                // content
+
                 if (payload.containsKey("content")) {
                     item.content = payload.get("content").getStringValue();
                 }
@@ -158,6 +182,7 @@ public class Memory {
                 if (payload.containsKey("confidence")) {
                     item.confidence = (float) payload.get("confidence").getDoubleValue();
                 }
+
                 items.add(item);
             }
 

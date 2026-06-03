@@ -22,5 +22,6 @@ public class Config {
         String provider = null;
         String embeddingProvider = null;
         String model = null;
+        boolean enable_thinking = false;
     }
 }
