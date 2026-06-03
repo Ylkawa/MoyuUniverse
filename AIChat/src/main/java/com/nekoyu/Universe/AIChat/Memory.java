@@ -7,10 +7,7 @@ import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.EmbeddingRequest;
 import com.nekoyu.Universe.API.Providers.LLMProvider.RespBodies.EmbeddingResponse;
 import com.nekoyu.Universe.API.Providers.Provider;
 import com.nekoyu.Universe.Universe;
-import io.qdrant.client.PointIdFactory;
-import io.qdrant.client.QdrantClient;
-import io.qdrant.client.QdrantGrpcClient;
-import io.qdrant.client.ValueFactory;
+import io.qdrant.client.*;
 import io.qdrant.client.grpc.Common;
 import io.qdrant.client.grpc.Points;
 import io.qdrant.client.grpc.JsonWithInt.Value;
@@ -24,6 +21,8 @@ import java.util.*;
 import java.util.concurrent.ExecutionException;
 
 import static com.nekoyu.Universe.Utils.Time.formatTimestamp;
+import static io.qdrant.client.VectorFactory.vector;
+import static io.qdrant.client.VectorsFactory.namedVectors;
 import static io.qdrant.client.VectorsFactory.vectors;
 
 public class Memory {
@@ -31,6 +30,7 @@ public class Memory {
     private final String collection;
     private final Logger logger = LoggerFactory.getLogger(Memory.class);
     private QdrantClient client;
+    private String vectorName;
 
     public Memory(Config.Qdrant config) throws IOException {
         Provider provider = (Provider) Universe.Providers.get(config.provider);
@@ -42,6 +42,7 @@ public class Memory {
             if (config.secretKey != null) builder.withApiKey(config.secretKey);
             client = new QdrantClient(builder.build());
             collection = config.collection;
+            vectorName = config.vectorName;
             boolean exists = client.collectionExistsAsync(collection).get();
             if (!exists) {
                 logger.info("数据集 {} 不存在，将尝试自动创建.", collection);
@@ -119,9 +120,13 @@ public class Memory {
             List<Points.ScoredPoint> result = client.searchAsync(
                     Points.SearchPoints.newBuilder()
                             .setCollectionName(collection)
+                            .setVectorName(vectorName)
                             .addAllVector(queryVector)
                             .setFilter(filter)
                             .setLimit(10)
+                            .setWithPayload(Points.WithPayloadSelector.newBuilder()
+                                    .setEnable(true)
+                                    .build())
                             .build()
             ).get();
             List<Item> items = new ArrayList<>();
@@ -218,7 +223,7 @@ public class Memory {
                                         .setUuid(String.valueOf(item.id))
                                         .build()
                         )
-                        .setVectors(vectors(vector))
+                        .setVectors(namedVectors(Map.of(vectorName, vector(vector))))
                         .putAllPayload(payload)
                         .build();
 
@@ -247,7 +252,7 @@ public class Memory {
 
             Points.PointStruct point = Points.PointStruct.newBuilder()
                     .setId(PointIdFactory.id(uuid))
-                    .setVectors(vectors(vector))
+                    .setVectors(namedVectors(Map.of(vectorName, vector(vector))))
                     .putAllPayload(payload)
                     .build();
 
@@ -322,6 +327,9 @@ public class Memory {
                             .setCollectionName(collection)
                             .setFilter(filter)
                             .setLimit(limit)
+                            .setWithPayload(Points.WithPayloadSelector.newBuilder()
+                                    .setEnable(true)
+                                    .build())
                             .build()
             ).get();
 

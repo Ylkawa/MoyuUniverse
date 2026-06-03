@@ -23,6 +23,7 @@ public class OpenAIAdapter extends Law {
                 channel.logger = LoggerFactory.getLogger("OpenAI C - " + cfg.ProviderId);
                 channel.apikey = cfg.APIKey;
                 channel.defaultModel = cfg.DefaultModel;
+                channel.defaultEmbeddingModel = cfg.DefaultEmbeddingModel;
                 channel.setBaseurl(cfg.BaseUrl);
                 Universe.Providers.put(cfg.ProviderId, channel);
             } catch (FileNotFoundException e) {

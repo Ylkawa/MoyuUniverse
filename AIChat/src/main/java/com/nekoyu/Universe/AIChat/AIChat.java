@@ -287,6 +287,14 @@ public class AIChat extends Law {
     @Override
     public void run() {
         for (SessionConfig sessionCfg : configs) {
+            LLMProvider llmProvider;
+            try {
+                llmProvider = (LLMProvider) Universe.Providers.get(sessionCfg.Provider);
+            } catch (ClassCastException e) {
+                logger.error("Provider {} 不是有效的LLMProvider", sessionCfg.Provider);
+                continue;
+            }
+            boolean leading = (sessionCfg.PromptFirst + sessionCfg.PromptLast + globalCfg.PromptFirst + globalCfg.PromptLast).contains("%LEADING%");
             Universe.MessageChannelManager.listenToSession(sessionCfg.SessionId, mcm -> {
                 Topic topic = activatingTopics.get(mcm.sessionId);
                 if (topic != null) topic.addMsg(mcm);
@@ -302,104 +310,105 @@ public class AIChat extends Law {
                     }
                     if (topic.responding.compareAndSet(false, true)) { // 阻止同时回复多个消息
                         try {
-                            Object provider = Universe.Providers.get(sessionCfg.Provider);
-                            if (provider instanceof LLMProvider lp) {
-                                Assistant assistant = lp.newAssistant(sessionCfg.Model);
-                                if (sessionCfg.Tools != null) {
-                                    for (String tool : sessionCfg.Tools) {
-                                        llmFunctions.get(tool);
-                                        for (LLMFunction func : llmFunctions.get(tool)) {  // FIXME Tool 可能被重复添加而无保护
-                                            assistant.addTool(func);
-                                        }
-                                    } // 为 assistant 添加指定的 tools // 如果不存在这个 tool 就不添加
-                                }
-                                if (sessionCfg.subAgents != null) for (String subAgentName : sessionCfg.subAgents) {
-                                    Assistant subAgent = subAgents.get(subAgentName);
-                                    // 作为 tool 添加，以供 assistant 调用 subAgent
-                                    LLMFunction llmFunction = new LLMFunction(subAgentName, subAgent.getDescription(), new LLMFunction.Parameters("object", new String[]{"Question"}, new String[]{"Question"}), args -> {
-                                        MCMessage m = new MCMessage();
-                                        m.messageFields.add(new TextField(args.get("Question")));
-                                        MessageList ml = new MessageList();
-                                        ml.add(m);
-                                        StringBuilder sb = new StringBuilder();
-                                        try {
-                                            subAgent.completions(ml, sb::append);
-                                            return sb.toString();
-                                        } catch (IOException e) {
-                                            throw new RuntimeException(e);
-                                        }
-                                    });
-                                    assistant.addTool(llmFunction);
-                                } // 为 assistant 添加 subAgent
-                                // 先让插件处理事件 插件提供局部的PlaceHolder
-                                var reqEv = new RequestEvent();
-                                reqEv.locationId = mcm.getLocationId();
-                                for (var plug : aiChatPlugins) {
-                                    try {
-                                        plug.onRequest(reqEv);
-                                    } catch (Exception e) {
-                                        logger.error("{} 在处理 RequestEvent 发生错误", plug.id, e);
+                            Assistant assistant = llmProvider.newAssistant(sessionCfg.Model);
+                            if (sessionCfg.Tools != null) {
+                                for (String tool : sessionCfg.Tools) {
+                                    llmFunctions.get(tool);
+                                    for (LLMFunction func : llmFunctions.get(tool)) {  // FIXME Tool 可能被重复添加而无保护
+                                        assistant.addTool(func);
                                     }
-                                }
-                                reqEv.messageList = topic.messages;
-                                reqEv.placeholders.put("TIME", formatTimestamp(System.currentTimeMillis()));
-                                reqEv.placeholders.put("SESSION_LOCATION_ID", mcm.getLocationId());
-                                reqEv.placeholders.put("ACCOUNT_NICKNAME", mcm.receiver.getName());
-                                StringBuilder emojiSetAvailable = new StringBuilder();
-                                for (String emojiName : emojisCollect.keySet()) {
-                                    if (emojiName != null) emojiSetAvailable.append(emojiName).append(" ");
-                                }
-                                reqEv.placeholders.put("AVAILABLE_EMOJI", emojiSetAvailable.toString());
-
-                                if (vectorMemory != null) {
+                                } // 为 assistant 添加指定的 tools // 如果不存在这个 tool 就不添加
+                            }
+                            if (sessionCfg.subAgents != null) for (String subAgentName : sessionCfg.subAgents) {
+                                Assistant subAgent = subAgents.get(subAgentName);
+                                // 作为 tool 添加，以供 assistant 调用 subAgent
+                                LLMFunction llmFunction = new LLMFunction(subAgentName, subAgent.getDescription(), new LLMFunction.Parameters("object", new String[]{"Question"}, new String[]{"Question"}), args -> {
+                                    MCMessage m = new MCMessage();
+                                    m.messageFields.add(new TextField(args.get("Question")));
+                                    MessageList ml = new MessageList();
+                                    ml.add(m);
+                                    StringBuilder sb = new StringBuilder();
                                     try {
-                                        StringBuilder sb = new StringBuilder();
-                                        for (var obj : vectorMemory.getLastMemoryItems(topic.messages.getLocationIds(), 50)) {
-                                            sb.append(obj.confidence)
-                                                    .append(" ")
-                                                    .append(Time.formatTimestamp(obj.updateAt))
-                                                    .append("[")
-                                                    .append(obj.locationId)
-                                                    .append("]: ")
-                                                    .append(obj.content)
-                                                    .append("\n");
-                                        }
-                                        reqEv.placeholders.put("MEMORY", sb.toString());
-                                    } catch (Exception e) {
-                                        logger.error("无法获取记忆", e);
+                                        subAgent.completions(ml, sb::append);
+                                        return sb.toString();
+                                    } catch (IOException e) {
+                                        throw new RuntimeException(e);
                                     }
-                                }
-
+                                });
+                                assistant.addTool(llmFunction);
+                            } // 为 assistant 添加 subAgent
+                            // 先让插件处理事件 插件提供局部的PlaceHolder
+                            var reqEv = new RequestEvent();
+                            reqEv.locationId = mcm.getLocationId();
+                            for (var plug : aiChatPlugins) {
                                 try {
-                                    MessageList openaiMl = topic.getOpenAIML();
-                                    // 设置 System Prompt
-                                    assistant.setSystemPromptFirst(PlaceHolder.replace(globalCfg.PromptFirst + sessionCfg.PromptFirst, reqEv.placeholders));
-                                    assistant.setSystemPromptLast(PlaceHolder.replace(globalCfg.PromptLast + sessionCfg.PromptLast, reqEv.placeholders));
-                                    // Extensional Args
-                                    ExtensionalArgs extensionalArgs = new ExtensionalArgs();
-                                    extensionalArgs.placeholders.put("_LocationID", mcm.getLocationId());
-                                    assistant.setThinking(sessionCfg.enable_thinking);
-                                    extensionalArgs.assistant = mcm.receiver;
-                                    // 接收响应 tokens
-                                    StringBuilder replyTokens = new StringBuilder();
-                                    assistant.completions(openaiMl, extensionalArgs, outputs -> {
-                                        String[] split = outputs.split("\n\n", 2); // 每一次接收够一段就回复一次消息
-                                        if (split.length > 1) {
-                                            replyTokens.append(split[0]);
-                                            if (!replyTokens.isEmpty()) mcm.reply(decoupleMark(replyTokens.toString()));
-                                            replyTokens.setLength(0);
-                                            replyTokens.append(split[1]);
-                                        } else {
-                                            replyTokens.append(split[0]);
-                                        }
-                                    });
-                                    if (!replyTokens.isEmpty()) mcm.reply(decoupleMark(replyTokens.toString()));
-                                } catch (IOException e) {
-                                    logger.error("生成回复时出错", e);
+                                    plug.onRequest(reqEv);
+                                } catch (Exception e) {
+                                    logger.error("{} 在处理 RequestEvent 发生错误", plug.id, e);
                                 }
-                            } else {
-                                if (provider == null) logger.warn("无此适配器 {}", sessionCfg.Provider);
-                                else logger.warn("定义的AI服务适配器 {} 无效", sessionCfg.Provider);
+                            }
+                            reqEv.messageList = topic.messages;
+                            reqEv.placeholders.put("TIME", formatTimestamp(System.currentTimeMillis())); // 时间
+                            reqEv.placeholders.put("SESSION_LOCATION_ID", mcm.getLocationId()); // 会话 LocationId
+                            reqEv.placeholders.put("ACCOUNT_NICKNAME", mcm.receiver.getName()); // 账号昵称
+                            if (leading) try {
+                                String lead = leading(mcm, topic.messages);
+                                reqEv.placeholders.put("LEADING", lead);
+                            } catch (IOException e) {
+                                logger.warn("Leading失效", e);
+                                reqEv.placeholders.put("LEADING", "Failed");
+                            }
+                            StringBuilder emojiSetAvailable = new StringBuilder();
+                            for (String emojiName : emojisCollect.keySet()) {
+                                if (emojiName != null) emojiSetAvailable.append(emojiName).append(" ");
+                            }
+                            reqEv.placeholders.put("AVAILABLE_EMOJI", emojiSetAvailable.toString());
+
+                            if (vectorMemory != null) {
+                                try {
+                                    StringBuilder sb = new StringBuilder();
+                                    for (var obj : vectorMemory.getLastMemoryItems(topic.messages.getLocationIds(), 50)) {
+                                        sb.append(obj.confidence)
+                                                .append(" ")
+                                                .append(Time.formatTimestamp(obj.updateAt))
+                                                .append("[")
+                                                .append(obj.locationId)
+                                                .append("]: ")
+                                                .append(obj.content)
+                                                .append("\n");
+                                    }
+                                    reqEv.placeholders.put("MEMORY", sb.toString());
+                                } catch (Exception e) {
+                                    logger.error("无法获取记忆", e);
+                                }
+                            }
+
+                            try {
+                                MessageList openaiMl = topic.getOpenAIML();
+                                // 设置 System Prompt
+                                assistant.setSystemPromptFirst(PlaceHolder.replace(globalCfg.PromptFirst + sessionCfg.PromptFirst, reqEv.placeholders));
+                                assistant.setSystemPromptLast(PlaceHolder.replace(globalCfg.PromptLast + sessionCfg.PromptLast, reqEv.placeholders));
+                                // Extensional Args
+                                ExtensionalArgs extensionalArgs = new ExtensionalArgs();
+                                extensionalArgs.placeholders.put("_LocationID", mcm.getLocationId());
+                                assistant.setThinking(sessionCfg.enable_thinking);
+                                extensionalArgs.assistant = mcm.receiver;
+                                // 接收响应 tokens
+                                StringBuilder replyTokens = new StringBuilder();
+                                assistant.completions(openaiMl, extensionalArgs, outputs -> {
+                                    String[] split = outputs.split("\n\n", 2); // 每一次接收够一段就回复一次消息
+                                    if (split.length > 1) {
+                                        replyTokens.append(split[0]);
+                                        if (!replyTokens.isEmpty()) mcm.reply(decoupleMark(replyTokens.toString()));
+                                        replyTokens.setLength(0);
+                                        replyTokens.append(split[1]);
+                                    } else {
+                                        replyTokens.append(split[0]);
+                                    }
+                                });
+                                if (!replyTokens.isEmpty()) mcm.reply(decoupleMark(replyTokens.toString()));
+                            } catch (IOException e) {
+                                logger.error("生成回复时出错", e);
                             }
                         } finally {
                             topic.responding.set(false);
@@ -425,26 +434,20 @@ public class AIChat extends Law {
             Universe.MessageChannelManager.listenToPost(sessionCfg.SessionId, mcp -> {
                 if (sessionCfg.Trigger.equals("every") || mcp.messageString.contains(sessionCfg.Keyword) || mcp.level >= 2) {
                     logger.info("接收到MCPost");
-                    Object provider = Universe.Providers.get(sessionCfg.Provider);
-                    if (provider instanceof LLMProvider) {
-                        if (vectorMemory != null) {
-                            MessageList ml = new MessageList();
-                            MCMessage msg = new MCMessage();
-                            msg.putMetainfo("role", "user");
-                            msg.messageFields.add(new TextField(mcp.poster.getName() + " (" + mcp.poster.getLocationId() + ") [" + formatTimestamp(System.currentTimeMillis()) + "]:\n\n"));
-                            // name(locationId)[2026-04-11 12:19:44]:\n\n
-                            msg.messageFields = mcp.messageFields;
-                            ml.add(msg);
-                            try {
-                                constructMemory(mcp.getLocationId(), ml);
-                            } catch (RuntimeException e) {
-                                logger.error("Failed to construct memory", e);
-                            }
-                            mcp.sendLike();
+                    if (vectorMemory != null) {
+                        MessageList ml = new MessageList();
+                        MCMessage msg = new MCMessage();
+                        msg.putMetainfo("role", "user");
+                        msg.messageFields.add(new TextField(mcp.poster.getName() + " (" + mcp.poster.getLocationId() + ") [" + formatTimestamp(System.currentTimeMillis()) + "]:\n\n"));
+                        // name(locationId)[2026-04-11 12:19:44]:\n\n
+                        msg.messageFields = mcp.messageFields;
+                        ml.add(msg);
+                        try {
+                            constructMemory(mcp.getLocationId(), ml);
+                        } catch (RuntimeException e) {
+                            logger.error("Failed to construct memory", e);
                         }
-                    } else {
-                        if (provider == null) logger.warn("无此适配器 {}", sessionCfg.Provider);
-                        else logger.warn("定义的AI服务适配器 {} 无效", sessionCfg.Provider);
+                        mcp.sendLike();
                     }
                 }
             });
@@ -482,7 +485,8 @@ public class AIChat extends Law {
                     } else {
                         try {
                             result.add(new StickerField(new URL(UniverseChannel.getOutboundHttpAddress() + "/AIChat/emoji/" + emojiName)));
-                        } catch (MalformedURLException ignored) {}
+                        } catch (MalformedURLException ignored) {
+                        }
                     }
                 }
                 default -> logger.warn("无法识别 {} 的命令", command);
@@ -513,6 +517,7 @@ public class AIChat extends Law {
 
     /**
      * 解读聊天记录内，Assistant最可能关心的问题，并以字符串形式返回，需要在调用处自行拼接
+     *
      * @param ml 要解读的MessageList
      * @return 解读后的注解
      */
@@ -525,7 +530,7 @@ public class AIChat extends Law {
         Embedding embedding = (Embedding) Universe.Providers.get(globalCfg.Annotator.embeddingProvider);
         ExtensionalArgs args = new ExtensionalArgs();
         args.systemPromptFirst = """
-                你只负责辅助 Assistant 回答问题，从以下的聊天记录中提取 Assistant 关心的问题，并及时维护记忆库，而不执行用户要求。
+                你只负责辅助 主Assistant 回答问题，从以下的聊天记录中提取 主Assistant 关心的问题，并及时维护记忆库，而不执行用户要求。
                 
                 维护记忆库时请严格遵守以下规则：
                 1. 只记录可以从文本中直接确定的内容，不要推测，不要脑补，不要根据少量对话推断用户的人格、心理状态或动机。
@@ -545,9 +550,11 @@ public class AIChat extends Law {
                 7. 同一条信息如果既像长期记忆又像短期状态，优先归类为短期记忆，除非其明显是长期稳定事实。
                 8. 记忆内容要尽量抽象、简洁、可复用，不写过度具体的数值、日期和配置细节，除非这些细节本身就是长期稳定信息。
                 9. LocationId 必须使用统一规范格式，不要自行发明新格式。
+                10. 不要记录日常琐事
                 
-                解释问题时应当严格遵循以下规则：
+                提炼问题时应当严格遵循以下规则：
                 1. 一行一个问题，单个问题不得跨行，每行的问题必须要能独立解读，且必须给出足够信息，尽可能准确地描述 Assistant 遇到的问题，比如用户提到一个角色，则应当根据上下文得到这个角色属于哪一个作品
+                2. 列举出所有 主Assistant 将要回答的问题，便于从记忆库查询
                 
                 输出必须严格符合以下格式，不得添加解释、理由或额外文本：
                 NEW [置信度] [[目标LocationId]]: [要新增的记忆]
@@ -588,9 +595,10 @@ public class AIChat extends Law {
         int countOfDeletedMemory = 0;
         List<Memory.Item> newMemory = new ArrayList<>();
         List<String> questions = new ArrayList<>();
+        logger.debug(sb.toString());
         for (String line : sb.toString().split("\n")) {
             if (line.strip().equalsIgnoreCase("END")) break; // 允许LLM主动结束记忆更新和注释
-            String[] split = line.split(" ");
+            String[] split = line.split(" ", 2);
             switch (split[0].toUpperCase()) {
                 case "NEW", "UPDATE", "DELETE" -> {
                     final Pattern UPDATE_PATTERN = Pattern.compile("^UPDATE\\s+(\\d+)\\s+([0-9]*\\.?[0-9]+)\\s*:\\s*(.+)$");
@@ -627,38 +635,40 @@ public class AIChat extends Law {
                         continue;
                     }
                 }
-                case "QUIZ" -> {
-                    questions.add(split[1]);
-                }
+                case "QUIZ" -> questions.add(split[1]);
             }
         }
-        vectorMemory.insert(newMemory);
+        if (!newMemory.isEmpty()) vectorMemory.insert(newMemory);
         EmbeddingRequest req = new EmbeddingRequest();
         for (String quiz : questions) {
             req.message.add(new MFChain(new TextField(quiz)));
         }
-        List<List<Float>> vectors = new ArrayList<>();
-        EmbeddingResponse res = embedding.embedding(req);
-        for (var data : res.data) {
-            for (double v : data.embedding) {
+        List<Memory.Item> results = new ArrayList<>();
+        StringBuilder ret = new StringBuilder();
+        if (!questions.isEmpty()) {
+            logger.debug("Questions in this round: {}", questions);
+            List<List<Float>> vectors = new ArrayList<>();
+            EmbeddingResponse res = embedding.embedding(req);
+            for (var data : res.data) {
                 List<Float> vector = new ArrayList<>();
-                vector.add((float) v);
+                for (double v : data.embedding) {
+                    vector.add((float) v);
+                }
                 vectors.add(vector);
             }
-        }
-        List<Memory.Item> results = new ArrayList<>();
-        for (List<Float> vector : vectors) {
-            List<Memory.Item> result = vectorMemory.query(vector);
-            results.addAll(result);
-        }
-        StringBuilder ret = new StringBuilder()
-                .append("本地记忆内容：\n");
-        for (Memory.Item item : results) {
-            ret.append(item.toString()).append("\n");
+            for (List<Float> vector : vectors) {
+                List<Memory.Item> result = vectorMemory.query(vector);
+                results.addAll(result);
+            }
+            ret.append("本地记忆内容：\n");
+            for (Memory.Item item : results) {
+                ret.append(item.toString()).append("\n");
+            }
         }
         String log = "";
-        if (countOfUpdatedMemory != 0 || countOfDeletedMemory != 0 || !newMemory.isEmpty()) log += "本次记忆改动：新增 " + newMemory.size() + " 更新 " + countOfUpdatedMemory + " 删除 " + countOfDeletedMemory  + " ";
-        if (!results.isEmpty()) log += "命中 "  + results.size() + " 条本地记忆";
+        if (countOfUpdatedMemory != 0 || countOfDeletedMemory != 0 || !newMemory.isEmpty())
+            log += "本次记忆改动：新增 " + newMemory.size() + " 更新 " + countOfUpdatedMemory + " 删除 " + countOfDeletedMemory + " ";
+        if (!results.isEmpty()) log += "命中 " + results.size() + " 条本地记忆";
         if (!log.isEmpty()) logger.info(log);
         return ret.toString();
     }

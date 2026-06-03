@@ -299,6 +299,7 @@ public class OpenAIChannel extends LLMProvider implements Embedding {
         OAIEmbeddingRequest request = new OAIEmbeddingRequest();
         if (embeddingRequest.model != null && !embeddingRequest.model.isEmpty()) request.model = embeddingRequest.model;
         else request.model = defaultEmbeddingModel;
+        if (request.model == null) throw new RuntimeException("Model not defined");
         for (var msg : embeddingRequest.message) {
             request.input.add(msg.toString());
         }
@@ -308,7 +309,9 @@ public class OpenAIChannel extends LLMProvider implements Embedding {
                 .post(RequestBody.create(gson.toJson(request), MediaType.get("application/json; charset=utf-8")))
                 .build();
         try (Response resp = client.newCall(req).execute()) {
+            if (!resp.isSuccessful()) throw new IOException("Unexpected code " + resp.body().string());
             String string = resp.body().string();
+            logger.debug(string);
             EmbeddingResponse embeddingResponse = gson.fromJson(string, EmbeddingResponse.class);
             if (embeddingResponse.usage != null) logger.info("Embedding-Usage: {} Tokens", embeddingResponse.usage.prompt_tokens); // 无言了，百炼的 API 默认不返回 usage
             return embeddingResponse;
