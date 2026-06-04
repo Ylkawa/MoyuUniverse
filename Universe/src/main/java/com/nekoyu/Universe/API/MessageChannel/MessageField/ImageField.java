@@ -101,8 +101,10 @@ public class ImageField extends FileField {
             // 设备制造商和型号
             ExifIFD0Directory ifd0Dir = getMetadata().getFirstDirectoryOfType(ExifIFD0Directory.class);
             if (ifd0Dir != null) {
-                descriptionBuilder.append("\n设备制造商: ").append(ifd0Dir.getString(ExifIFD0Directory.TAG_MAKE));
-                descriptionBuilder.append("\n设备型号: ").append(ifd0Dir.getString(ExifIFD0Directory.TAG_MODEL));
+                String tag_make = ifd0Dir.getString(ExifIFD0Directory.TAG_MAKE);
+                if (tag_make != null) descriptionBuilder.append("\n设备制造商: ").append(tag_make);
+                String tag_model = ifd0Dir.getString(ExifIFD0Directory.TAG_MODEL);
+                if (tag_model != null) descriptionBuilder.append("\n设备型号: ").append(tag_model);
             }
             // 拍摄时间
             ExifSubIFDDirectory exifDir = getMetadata().getFirstDirectoryOfType(ExifSubIFDDirectory.class);
