@@ -23,14 +23,13 @@ import java.util.concurrent.ExecutionException;
 import static com.nekoyu.Universe.Utils.Time.formatTimestamp;
 import static io.qdrant.client.VectorFactory.vector;
 import static io.qdrant.client.VectorsFactory.namedVectors;
-import static io.qdrant.client.VectorsFactory.vectors;
 
 public class Memory {
     private final Embedding provider;
     private final String collection;
     private final Logger logger = LoggerFactory.getLogger(Memory.class);
-    private QdrantClient client;
-    private String vectorName;
+    private final QdrantClient client;
+    private final String vectorName;
 
     public Memory(Config.Qdrant config) throws IOException {
         Provider provider = (Provider) Universe.Providers.get(config.provider);
@@ -86,23 +85,7 @@ public class Memory {
         }
     }
 
-    public List<Item> query(String quiz) {
-        List<Float> queryVector = new ArrayList<>();
-        try {
-            for (double v : embedding(quiz)) {
-                queryVector.add((float) v);
-            }
-            return query(queryVector);
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-    }
-
-    public List<Item> query(List<Float> queryVector) {
-        return query(queryVector, null);
-    }
-
-    public List<Item> query(List<Float> queryVector, String locationId) {
+    public List<Item> query(List<Float> queryVector, List<String> locationIds) {
         try {
             Common.Condition notDeletedCondition = Common.Condition.newBuilder()
                     .setField(
@@ -120,22 +103,31 @@ public class Memory {
             Common.Filter.Builder filterBuilder = Common.Filter.newBuilder()
                     .addMust(notDeletedCondition);
 
-            if (locationId != null && !locationId.isBlank()) {
-                Common.Condition locationCondition = Common.Condition.newBuilder()
-                        .setField(
-                                Common.FieldCondition.newBuilder()
-                                        .setKey("location_id")
-                                        .setMatch(
-                                                Common.Match.newBuilder()
-                                                        .setKeyword(locationId)
-                                                        .build()
-                                        )
-                                        .build()
-                        )
-                        .build();
+            List<Common.Condition> locationConditions = locationIds.stream()
+                    .map(id -> Common.Condition.newBuilder()
+                            .setField(
+                                    Common.FieldCondition.newBuilder()
+                                            .setKey("location_id")
+                                            .setMatch(
+                                                    Common.Match.newBuilder()
+                                                            .setKeyword(id)
+                                                            .build()
+                                            )
+                                            .build()
+                            )
+                            .build()
+                    )
+                    .toList();
 
-                filterBuilder.addMust(locationCondition);
-            }
+            filterBuilder.addMust(
+                    Common.Condition.newBuilder()
+                            .setFilter(
+                                    Common.Filter.newBuilder()
+                                            .addAllShould(locationConditions)
+                                            .build()
+                            )
+                            .build()
+            );
 
             List<Points.ScoredPoint> result = client.searchAsync(
                     Points.SearchPoints.newBuilder()
@@ -144,6 +136,7 @@ public class Memory {
                             .addAllVector(queryVector)
                             .setFilter(filterBuilder.build())
                             .setLimit(10)
+                            .setScoreThreshold(0.7f)
                             .setWithPayload(
                                     Points.WithPayloadSelector.newBuilder()
                                             .setEnable(true)
@@ -288,7 +281,7 @@ public class Memory {
     }
 
     /**
-    此方法不会真实删除数据，只会对已有数据进行隐藏（置信度改到-1.0）
+     * 此方法不会真实删除数据，只会对已有数据进行隐藏（置信度改到-1.0）
      */
     public void delete(UUID uuid) {
         try {
@@ -430,8 +423,7 @@ public class Memory {
 
         @Override
         public String toString() {
-            return "[mem_id=" + id
-                    + "|time=" + formatTimestamp(updateAt)
+            return "|time=" + formatTimestamp(updateAt)
                     + "|confidence=" + confidence
                     + "|loc=" + locationId + "]: "
                     + content;

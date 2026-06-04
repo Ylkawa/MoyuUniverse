@@ -526,6 +526,7 @@ public class AIChat extends Law {
      */
     public String leading(MCMessage mcm, Topic topic) throws IOException {
         MessageList ml = (MessageList) topic.messages.clone();
+        List<String> locationIds = topic.messages.getLocationIds();
         List<Memory.Item> memories = vectorMemory.getLastMemoryItems(ml.getLocationIds(), 20);
         RequestEvent reqEv = new RequestEvent();
         reqEv.placeholders.put("TIME", formatTimestamp(System.currentTimeMillis()));
@@ -592,7 +593,7 @@ public class AIChat extends Law {
                 memoryPrompt.append(memObj.toString());
             }
             if (!topic.activatingMemory.isEmpty()) {
-                topic.activatingMemory.values().forEach(memObj -> memoryPrompt.append(memObj.toString()).append("\n"));
+                topic.activatingMemory.values().forEach(memObj -> memoryPrompt.append(memObj.id).append("|").append(memObj).append("\n"));
             }
         }
         args.systemPromptLast = memoryPrompt.toString();
@@ -602,7 +603,11 @@ public class AIChat extends Law {
         int countOfUpdatedMemory = 0;
         int countOfDeletedMemory = 0;
         List<Memory.Item> newMemory = new ArrayList<>();
-        List<String[]> questions = new ArrayList<>();
+        class Quiz {
+            List<String> locationIds = new ArrayList<>();
+            String question;
+        }
+        List<Quiz> questions = new ArrayList<>();
         logger.debug(sb.toString());
         for (String line : sb.toString().split("\n")) {
             if (line.strip().equalsIgnoreCase("END")) break; // 允许LLM主动结束记忆更新和注释
@@ -667,19 +672,26 @@ public class AIChat extends Law {
                         logger.warn("傻子模型 {} 赢了，照着模板抄一个错的参数👍无法按用户实施精确查找记忆", globalCfg.Annotator.model);
                         cmdArgs = null;
                     }
-                    questions.add(new String[]{cmdArgs, quiz});
+                    Quiz selection = new Quiz();
+                    if (cmdArgs != null && locationIds.contains(cmdArgs)) {
+                        selection.locationIds.add(cmdArgs);
+                    } else selection.locationIds = locationIds;
+                    selection.question = quiz;
+                    questions.add(selection);
                 }
             }
         }
         if (!newMemory.isEmpty()) vectorMemory.insert(newMemory);
         EmbeddingRequest req = new EmbeddingRequest();
-        for (String[] quiz : questions) {
-            req.message.add(new MFChain(new TextField(quiz[1])));
+        for (Quiz quiz : questions) {
+            req.message.add(new MFChain(new TextField(quiz.question)));
         }
         List<Memory.Item> results = new ArrayList<>();
         StringBuilder ret = new StringBuilder();
         if (!questions.isEmpty()) {
-            logger.debug("Questions in this round: {}", questions);
+            List<String> strings = new ArrayList<>();
+            questions.forEach(question -> strings.add(question.question));
+            logger.debug("Questions in this round: {}", strings);
             EmbeddingResponse res = embedding.embedding(req);
             if (res.data.size() != questions.size()) {
                 throw new RuntimeException("Embedding的结果数量不正确，逻辑中断");
@@ -691,7 +703,7 @@ public class AIChat extends Law {
                     vector.add((float) v);
                 }
                 List<Memory.Item> result =
-                        vectorMemory.query(vector, questions.get(idx)[0]);
+                        vectorMemory.query(vector, questions.get(idx).locationIds);
                 results.addAll(result);
             }
             results.forEach(result -> topic.activatingMemory.put(result.id, result));
