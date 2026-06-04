@@ -11,6 +11,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static com.nekoyu.Universe.AIChat.AIChat.formatTimestamp;
 
@@ -19,6 +20,8 @@ public class Topic {
     MessageList messages = new MessageList();
     SessionConfig sessionCfg;
     Map<UUID, Memory.Item> activatingMemory = new HashMap<>();
+//    AtomicInteger refererCount = new AtomicInteger(1);
+//    Map<Integer, MsgField> refObj = new HashMap<>();
 
     public Topic(SessionConfig sessionCfg) {
         this.sessionCfg = sessionCfg;
@@ -43,6 +46,9 @@ public class Topic {
                 if (mf instanceof ImageField i) {
                     oaiM.messageFields.add(mf);
                     oaiM.messageFields.add(new TextField(i.solveMetadata()));
+//                    int refId = refererCount.getAndIncrement();
+//                    refObj.put(refId, mf);
+//                    oaiM.messageFields.add(new TextField("Ref_ID: " + refId + "\n"));
                 } else if (mf instanceof TextField) {
                     oaiM.messageFields.add(mf);
                 } else {
@@ -108,7 +114,7 @@ public class Topic {
         }
 
         // 保底：如果预算太小导致一个块都放不下，至少保留最后一个完整块
-        if (keep == 0 && messages.size() > 0) {
+        if (keep == 0 && !messages.isEmpty()) {
             keep = firstBlockSize;
         }
 

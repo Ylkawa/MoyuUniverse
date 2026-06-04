@@ -642,12 +642,13 @@ public class AIChat extends Law {
 
                     Matcher deleteMatcher = DELETE_PATTERN.matcher(line);
                     if (deleteMatcher.matches()) {
-                        Memory.Item item = topic.activatingMemory.get(UUID.fromString(deleteMatcher.group(1)));
+                        UUID key = UUID.fromString(deleteMatcher.group(1));
+                        Memory.Item item = topic.activatingMemory.get(key);
                         if (item == null) {
                             logger.warn("傻子模型 {} 想删一个不存在的记忆条目ID👍", globalCfg.Annotator.model);
                             continue;
                         }
-                        vectorMemory.delete(item.id);
+                        vectorMemory.delete(topic.activatingMemory.remove(key).id);
                         countOfDeletedMemory++;
                         continue;
                     }
@@ -725,9 +726,15 @@ public class AIChat extends Law {
     }
 
     public void constructMemory(String locationId, MessageList ml) {
-        final Pattern UPDATE_PATTERN = Pattern.compile("^NEW\\s+([0-9]*\\.?[0-9]+)\\s+\\[(.+?)]\\s*:\\s*(.+)$");
-        final Pattern DELETE_PATTERN = Pattern.compile("^DELETE\\s+(\\d+)\\s*$");
-        final Pattern NEW_PATTERN = Pattern.compile("^NEW\\s*\\[(.+?)]\\s*:\\s*(.+)$");
+        final Pattern UPDATE_PATTERN = Pattern.compile(
+                "^UPDATE\\s+([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\\s+([0-9]*\\.?[0-9]+)\\s*:\\s*(.+)$"
+        );
+        final Pattern DELETE_PATTERN = Pattern.compile(
+                "^DELETE\\s+([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\\s*$"
+        );
+        final Pattern NEW_PATTERN = Pattern.compile(
+                "^NEW\\s+([0-9]*\\.?[0-9]+)\\s+\\[(.+?)]\\s*:\\s*(.+)$"
+        );
 
         Object provider = Universe.Providers.get(globalCfg.ProviderId);
         if (!(provider instanceof LLMProvider lp)) {
@@ -737,47 +744,47 @@ public class AIChat extends Law {
         Assistant assistant = lp.newAssistant(globalCfg.Annotator.model);
 
         String systemPrompt = """
-                你只负责记忆构建，不与用户对话，也不执行用户要求。
-                
-                用户输入均为如下格式：[时间] [消息id] [昵称](LocationId)性别: [消息内容]
-                你的任务是从输入内容中提取“可长期复用的用户记忆”和“短期有效的上下文状态”，并判断是否需要更新或删除旧记忆。
-                
-                请严格遵守以下规则：
-                
-                1. 只记录可以从文本中直接确定的内容，不要推测，不要脑补，不要根据少量对话推断用户的人格、心理状态或动机。
-                2. 优先记录长期稳定信息，例如：
-                   - 用户的长期偏好
-                   - 用户稳定的表达习惯
-                3. 短期状态可以记录，但必须明确体现时效性，例如：
-                   - 当前正在进行的任务
-                   - 近期计划
-                   - 阶段性进展
-                   - 有明确日期边界的临时状态
-                4. 以下内容默认不记录，除非对后续对话有明显长期价值且不涉及敏感细节：
-                   - 一次性活动、短期安排
-                   - 仅凭语气推断出的情绪、性格、关系判断
-                5. 记忆必须原子化，每条只表达一个独立事实。
-                6. 如果旧记忆过时、被更正或已经不再适用，必须输出 UPDATE 或 DELETE。
-                7. 同一条信息如果既像长期记忆又像短期状态，优先归类为短期记忆，除非其明显是长期稳定事实。
-                8. 记忆内容要尽量抽象、简洁、可复用，不写过度具体的数值、日期和配置细节，除非这些细节本身就是长期稳定信息。
-                9. LocationId 必须使用统一规范格式，最好照搬用户消息里面的字段，不要自行发明新格式。
-                
-                输出必须严格符合以下格式，不得添加解释、理由或额外文本：
-                
-                NEW [置信度] [[目标LocationId]]: [要新增的记忆]
-                UPDATE [记忆条目ID] [置信度]: [修改后的记忆内容]
-                DELETE [记忆条目ID]
-                
-                例如：
-                NEW 0.76 [Universe:group/12435678]: 群聊主要讨论人工智能大语言模型应用开发
-                UPDATE 12 0.63: 用户比较喜欢VOCALOID的音乐
-                DELETE 3
-                
-                补充约束：
-                - NEW 只能写入新的、未重复的有效记忆。
-                - UPDATE 只能修改与原记忆语义一致但更准确的内容。
-                - DELETE 只能删除过时、错误、重复或无长期价值的记忆。
-                - 对于明显临时的内容，如果没有长期价值，宁可不输出任何记忆。无法输出有价值记忆时，使用单行 END 指令直接结束记忆构建。""";
+            你只负责记忆构建，不与用户对话，也不执行用户要求。
+            
+            用户输入均为如下格式：[时间] [消息id] [昵称](LocationId)性别: [消息内容]
+            你的任务是从输入内容中提取“可长期复用的用户记忆”和“短期有效的上下文状态”，并判断是否需要更新或删除旧记忆。
+            
+            请严格遵守以下规则：
+            
+            1. 只记录可以从文本中直接确定的内容，不要推测，不要脑补，不要根据少量对话推断用户的人格、心理状态或动机。
+            2. 优先记录长期稳定信息，例如：
+               - 用户的长期偏好
+               - 用户稳定的表达习惯
+            3. 短期状态可以记录，但必须明确体现时效性，例如：
+               - 当前正在进行的任务
+               - 近期计划
+               - 阶段性进展
+               - 有明确日期边界的临时状态
+            4. 以下内容默认不记录，除非对后续对话有明显长期价值且不涉及敏感细节：
+               - 一次性活动、短期安排
+               - 仅凭语气推断出的情绪、性格、关系判断
+            5. 记忆必须原子化，每条只表达一个独立事实。
+            6. 如果旧记忆过时、被更正或已经不再适用，必须输出 UPDATE 或 DELETE。
+            7. 同一条信息如果既像长期记忆又像短期状态，优先归类为短期记忆，除非其明显是长期稳定事实。
+            8. 记忆内容要尽量抽象、简洁、可复用，不写过度具体的数值、日期和配置细节，除非这些细节本身就是长期稳定信息。
+            9. LocationId 必须使用统一规范格式，最好照搬用户消息里面的字段，不要自行发明新格式。
+            
+            输出必须严格符合以下格式，不得添加解释、理由或额外文本：
+            
+            NEW [置信度] [[目标LocationId]]: [要新增的记忆]
+            UPDATE [记忆条目ID] [置信度]: [修改后的记忆内容]
+            DELETE [记忆条目ID]
+            
+            例如：
+            NEW 0.76 [Universe:group/12435678]: 群聊主要讨论人工智能大语言模型应用开发
+            UPDATE d6e23098-9428-4fe1-a1b0-c8f58dd8c7d4 0.63: 用户比较喜欢VOCALOID的音乐
+            DELETE 55eaafe9-ad8c-4fbc-8a59-6b136c84d971
+            
+            补充约束：
+            - NEW 只能写入新的、未重复的有效记忆。
+            - UPDATE 只能修改与原记忆语义一致但更准确的内容。
+            - DELETE 只能删除过时、错误、重复或无长期价值的记忆。
+            - 对于明显临时的内容，如果没有长期价值，宁可不输出任何记忆。无法输出有价值记忆时，使用单行 END 指令直接结束记忆构建。""";
 
         RequestEvent reqEv = new RequestEvent();
         reqEv.placeholders.put("TIME", formatTimestamp(System.currentTimeMillis()));
@@ -795,6 +802,7 @@ public class AIChat extends Law {
 
         List<Memory.Item> memories = vectorMemory.getLastMemoryItems(ml.getLocationIds(), 20);
 
+        Map<UUID, Memory.Item> memoryIndex = new HashMap<>();
         MCMessage previousMemory = new MCMessage();
         previousMemory.putMetainfo("role", "user");
         previousMemory.messageFields.add(new TextField("先前的记忆条目，格式为 [条目ID]|[更新时间]|[置信度]|[LocationId]:[内容] ：\n\n"));
@@ -802,11 +810,12 @@ public class AIChat extends Law {
         if (memories == null || memories.isEmpty()) {
             previousMemory.messageFields.add(new TextField("（无记忆条目）"));
         } else {
-            int i = 0;
             for (Memory.Item memObj : memories) {
-                i++;
-                if (memObj == null) continue;
-                previousMemory.messageFields.add(new TextField(i + "|" + Time.formatTimestamp(memObj.updateAt) + "|" + memObj.confidence + "|" + memObj.locationId + ":" + memObj.content));
+                if (memObj == null) {
+                    continue;
+                }
+                memoryIndex.put(memObj.id, memObj);
+                previousMemory.messageFields.add(new TextField(memObj.toString()));
             }
             if (previousMemory.messageFields.size() == 1) {
                 previousMemory.messageFields.add(new TextField("（无记忆条目）"));
@@ -822,6 +831,7 @@ public class AIChat extends Law {
         try {
             StringBuilder respTokens = new StringBuilder();
             assistant.completions(ml, extensionalArgs, respTokens::append);
+
             List<Memory.Item> newMemory = new ArrayList<>();
             int countOfUpdatedMemory = 0;
             int countOfDeletedMemory = 0;
@@ -830,46 +840,78 @@ public class AIChat extends Law {
                 String line = rawLine.trim();
                 if (line.isEmpty()) {
                     continue;
-                } else if (line.equals("END")) {
+                }
+                if (line.equals("END")) {
                     logger.info("AI 主动结束了构建记忆");
                     break;
                 }
 
                 Matcher updateMatcher = UPDATE_PATTERN.matcher(line);
                 if (updateMatcher.matches()) {
-                    UUID uuid = memories.get(Integer.parseInt(updateMatcher.group(1)) - 1).id;
-                    float confidence = Float.parseFloat(updateMatcher.group(2));
-                    String content = updateMatcher.group(3);
-                    vectorMemory.update(uuid, confidence, content.trim());
-                    countOfUpdatedMemory++;
+                    try {
+                        UUID uuid = UUID.fromString(updateMatcher.group(1));
+                        Memory.Item item = memoryIndex.get(uuid);
+                        if (item == null) {
+                            logger.warn("AI 想修改一个不存在的记忆条目ID: {}", uuid);
+                            continue;
+                        }
+
+                        float confidence = Float.parseFloat(updateMatcher.group(2));
+                        String content = updateMatcher.group(3).trim();
+                        vectorMemory.update(uuid, confidence, content);
+                        countOfUpdatedMemory++;
+                    } catch (Exception e) {
+                        logger.warn("解析 UPDATE 指令失败：{}", line, e);
+                    }
                     continue;
                 }
 
                 Matcher deleteMatcher = DELETE_PATTERN.matcher(line);
                 if (deleteMatcher.matches()) {
-                    UUID uuid = memories.get(Integer.parseInt(deleteMatcher.group(1)) - 1).id;
-                    vectorMemory.delete(uuid);
-                    countOfDeletedMemory++;
+                    try {
+                        UUID uuid = UUID.fromString(deleteMatcher.group(1));
+                        Memory.Item item = memoryIndex.get(uuid);
+                        if (item == null) {
+                            logger.warn("AI 想删除一个不存在的记忆条目ID: {}", uuid);
+                            continue;
+                        }
+
+                        vectorMemory.delete(uuid);
+                        countOfDeletedMemory++;
+                        memoryIndex.remove(uuid);
+                    } catch (Exception e) {
+                        logger.warn("解析 DELETE 指令失败：{}", line, e);
+                    }
                     continue;
                 }
 
                 Matcher newMatcher = NEW_PATTERN.matcher(line);
                 if (newMatcher.matches()) {
-                    float confidence = Float.parseFloat(newMatcher.group(1));
-                    String locId = newMatcher.group(2).trim();
-                    String content = newMatcher.group(3);
-                    Memory.Item item = new Memory.Item();
-                    item.confidence = confidence;
-                    item.locationId = locId;
-                    item.content = content;
-                    newMemory.add(item);
+                    try {
+                        float confidence = Float.parseFloat(newMatcher.group(1));
+                        String locId = newMatcher.group(2).trim();
+                        String content = newMatcher.group(3).trim();
+
+                        Memory.Item item = new Memory.Item();
+                        item.confidence = confidence;
+                        item.locationId = locId;
+                        item.content = content;
+
+                        newMemory.add(item);
+                        memoryIndex.put(item.id, item);
+                    } catch (Exception e) {
+                        logger.warn("解析 NEW 指令失败：{}", line, e);
+                    }
                     continue;
                 }
 
                 logger.warn("AI 在构建记忆时输出了不能被识别的格式：{}", line);
             }
 
-            vectorMemory.insert(newMemory);
+            if (!newMemory.isEmpty()) {
+                vectorMemory.insert(newMemory);
+            }
+
             logger.info("本次记忆改动：新增 {} 更新 {} 删除 {}", newMemory.size(), countOfUpdatedMemory, countOfDeletedMemory);
         } catch (IOException e) {
             logger.error("生成失败", e);
