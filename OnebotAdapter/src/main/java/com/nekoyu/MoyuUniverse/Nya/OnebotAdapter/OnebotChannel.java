@@ -71,7 +71,7 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
     OkHttpClient okHttpClient = new OkHttpClient();
     ExecutorService onMsgEx = Executors.newCachedThreadPool(); // 处理消息事件的线程池
     boolean isReady = true;
-    Logger logger = LoggerFactory.getLogger(this.getClass());
+    static Logger logger = LoggerFactory.getLogger(OnebotChannel.class);
     URI uri;
     String token;
     boolean enableQZone;
@@ -80,6 +80,8 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
     Map<String, Session> cachedSessions = new ConcurrentHashMap<>(); // 用户账号列表缓存
     boolean good = true; // 实现端健康状态
     boolean online = true; // 实现端在线状态
+    Set<Long> blockedUsers;
+    Set<Long> degradedUsers;
     QZone qZone = null;
 
     public OnebotChannel(String id) {
@@ -180,6 +182,7 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
                             switch (content.getAsJsonObject().get("post_type").getAsString()) {
                                 case "message" -> {
                                     Message message = gson.fromJson(s, Message.class);
+                                    if (blockedUsers.contains(message.sender.user_id)) return; // 不理会屏蔽的用户
                                     MCMessage mcm = new MCMessage();
                                     // 标注消息的基本信息
                                     mcm.time = message.time;
@@ -363,7 +366,7 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
                                     }
                                     // 给消息定级
                                     for (MessageSegment seg : message.message) {
-                                        if (seg.type.equals("at") && seg.data.get("qq").equals(String.valueOf(accountId))) {
+                                        if (!degradedUsers.contains(message.user_id) && seg.type.equals("at") && seg.data.get("qq").equals(String.valueOf(accountId))) {
                                             mcm.level = 2;
                                             break;
                                         }

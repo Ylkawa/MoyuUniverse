@@ -70,6 +70,8 @@ public class OnebotAdapter extends Law {
                             oc.token = config.Token;
                             oc.uri = new URI(config.URI);
                             oc.enableQZone = config.EnableQZone;
+                            oc.blockedUsers = new HashSet<>(config.BlockedUsers);
+                            oc.degradedUsers = new HashSet<>(config.DegradedUsers);
                             if (config.RemoteWebDriver != null && config.RemoteWebDriver.url != null) {
                                 try {
                                     oc.remoteWebDriverURL = new URL(config.RemoteWebDriver.url);

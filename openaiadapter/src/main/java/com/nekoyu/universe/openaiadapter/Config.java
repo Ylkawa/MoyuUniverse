@@ -6,5 +6,4 @@ public class Config {
     String BaseUrl;
     String DefaultModel;
     String DefaultEmbeddingModel;
-    boolean enable_thinking = false;
 }
