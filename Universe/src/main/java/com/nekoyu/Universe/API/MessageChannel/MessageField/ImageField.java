@@ -36,7 +36,6 @@ public class ImageField extends FileField {
 
     public ImageField(URL url) {
         super(url);
-        description = "";
         super.type = "image";
     }
 
