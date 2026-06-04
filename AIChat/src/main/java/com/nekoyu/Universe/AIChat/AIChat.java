@@ -557,14 +557,29 @@ public class AIChat extends Law {
                 8. 记忆内容要尽量抽象、简洁、可复用，不写过度具体的数值、日期和配置细节，除非这些细节本身就是长期稳定信息。
                 9. LocationId 必须使用统一规范格式，最好照搬用户消息里面的字段，不要自行发明新格式。命令中必须提供LocationId的具体值
                 10. 不要记录日常琐事
+                11. 禁止创建语义重复的记忆。
+                12. 发现重复时只能 UPDATE。
                 
                 提炼问题时应当严格遵循以下规则：
                 1. 一行一个问题，单个问题不得跨行，每行的问题必须要能独立解读，且必须给出足够信息，尽可能准确地描述 Assistant 遇到的问题，比如用户提到一个角色，则应当根据上下文得到这个角色属于哪一个作品
                 2. 忽视常识性内容或者上下文有明确提到的内容，再列举出其他所有与 主Assistant将要回答的问题 相关的问题，便于从记忆库和全网找回线索
                 3. 如果问题不仅仅与某一个用户关联，则不需要加括号提供LocationId，直接用指令提问
-                4. 如果问题与某一个用户相关，那么在指令后加一个括号并填入用户的LocationId，并在问题中固定使用“用户”的称呼
+                4. 如果问题与某一个用户相关，那么在指令后加一个括号并填入用户的LocationId，并在问题中固定使用“用户”的称呼""";
+        StringBuilder memoryPrompt = new StringBuilder("先前的记忆条目，格式为 [条目ID]|[更新时间]|[置信度]|[LocationId]:[内容] ：\n\n");
+
+        if ((memories == null || memories.isEmpty()) && topic.activatingMemory == null) {
+            memoryPrompt.append("（无记忆条目）");
+        } else {
+            if (memories != null) for (Memory.Item memObj : memories) {
+                memoryPrompt.append(memObj.toString());
+            }
+            if (!topic.activatingMemory.isEmpty()) {
+                topic.activatingMemory.values().forEach(memObj -> memoryPrompt.append(memObj.id).append("|").append(memObj).append("\n"));
+            }
+        }
+        memoryPrompt.append("""
+                输出必须严格符合以下格式，允许先解释后输出指令，但指令必须在独立行，且指令不允许包含多余参数：
                 
-                输出必须严格符合以下格式，不得添加解释、理由或额外文本：
                 NEW [置信度] [[目标LocationId]]: [要新增的记忆]
                 UPDATE [记忆条目ID] [置信度]: [修改后的记忆内容]
                 DELETE [记忆条目ID]
@@ -583,19 +598,7 @@ public class AIChat extends Law {
                 - UPDATE 只能修改与原记忆语义一致但更准确的内容。
                 - DELETE 只能删除过时、错误、重复或无长期价值的记忆。
                 - 对于明显临时的内容，如果没有长期价值，宁可不输出任何记忆。
-                - 如果不能提取有用记忆和Assistant遇到的非常识性问题，输出一句"END"直接结束输出""";
-        StringBuilder memoryPrompt = new StringBuilder("先前的记忆条目，格式为 [条目ID]|[更新时间]|[置信度]|[LocationId]:[内容] ：\n\n");
-
-        if ((memories == null || memories.isEmpty()) && topic.activatingMemory == null) {
-            memoryPrompt.append("（无记忆条目）");
-        } else {
-            if (memories != null) for (Memory.Item memObj : memories) {
-                memoryPrompt.append(memObj.toString());
-            }
-            if (!topic.activatingMemory.isEmpty()) {
-                topic.activatingMemory.values().forEach(memObj -> memoryPrompt.append(memObj.id).append("|").append(memObj).append("\n"));
-            }
-        }
+                - 如果不能提取有用记忆和Assistant遇到的非常识性问题，输出一句"END"直接结束输出""");
         args.systemPromptLast = memoryPrompt.toString();
 
         StringBuilder sb = new StringBuilder();
@@ -663,6 +666,7 @@ public class AIChat extends Law {
                         item.locationId = locId;
                         item.content = content;
                         newMemory.add(item);
+                        topic.activatingMemory.put(item.id, item);
                         continue;
                     }
                 }

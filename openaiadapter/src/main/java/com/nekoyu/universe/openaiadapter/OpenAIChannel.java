@@ -303,7 +303,6 @@ public class OpenAIChannel extends LLMProvider implements Embedding {
         try (Response resp = client.newCall(req).execute()) {
             if (!resp.isSuccessful()) throw new IOException("Unexpected code " + resp.body().string());
             String string = resp.body().string();
-            logger.debug(string);
             EmbeddingResponse embeddingResponse = gson.fromJson(string, EmbeddingResponse.class);
             if (embeddingResponse.usage != null) logger.info("Embedding-Usage: {} Tokens", embeddingResponse.usage.prompt_tokens); // 无言了，百炼的 API 默认不返回 usage
             return embeddingResponse;

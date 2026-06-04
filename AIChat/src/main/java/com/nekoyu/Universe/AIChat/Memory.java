@@ -413,7 +413,7 @@ public class Memory {
     }
 
     public static class Item {
-        public UUID id;
+        public UUID id = UUID.randomUUID();
         public String content;
         public long createAt;
         public long updateAt;
