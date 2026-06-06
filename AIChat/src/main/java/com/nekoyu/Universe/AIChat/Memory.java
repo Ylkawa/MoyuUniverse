@@ -31,7 +31,7 @@ public class Memory {
     private final QdrantClient client;
     private final String vectorName;
 
-    public Memory(Config.Qdrant config) throws IOException {
+    public Memory(Config.Qdrant config, Config.Memory memCfg) throws IOException {
         Provider provider = (Provider) Universe.Providers.get(config.provider);
         if (provider instanceof Embedding embedding) this.provider = embedding;
         else if (provider != null) throw new IllegalArgumentException("Provider must support Embedding");
@@ -40,8 +40,8 @@ public class Memory {
             var builder = QdrantGrpcClient.newBuilder(config.address, config.port, config.encryptedConnection);
             if (config.secretKey != null) builder.withApiKey(config.secretKey);
             client = new QdrantClient(builder.build());
-            collection = config.collection;
-            vectorName = config.vectorName;
+            collection = memCfg.collection;
+            vectorName = memCfg.vectorName;
             boolean exists = client.collectionExistsAsync(collection).get();
             if (!exists) {
                 logger.info("数据集 {} 不存在，将尝试自动创建.", collection);
@@ -402,7 +402,7 @@ public class Memory {
         }
     }
 
-    private double[] embedding(String text) throws IOException {
+    public double[] embedding(String text) throws IOException {
         EmbeddingRequest embeddingRequest = new EmbeddingRequest();
         MFChain mfc = new MFChain();
         mfc.add(new TextField(text));

@@ -53,7 +53,8 @@ public class AIChat extends Law {
     Map<String, Topic> activatingTopics = new HashMap<>();
     @Nullable
 //    AIChat.Memory MEMORY = null;
-    com.nekoyu.Universe.AIChat.Memory vectorMemory = null;
+    Memory vectorMemory = null;
+    ExternalKnowledgeBase externalKnowledgeBase = null;
     Map<String, Assistant> subAgents = new HashMap<>();
     Multimap<String, File> emojisCollect = ArrayListMultimap.create();
 
@@ -99,8 +100,13 @@ public class AIChat extends Law {
 //            if (globalCfg.SQLConfig != null && globalCfg.SQLConfig.url != null) {
 //                MEMORY = new Memory(globalCfg.SQLConfig);
 //            }
-            if (globalCfg.Qdrant != null && globalCfg.Qdrant.address != null) {
-                vectorMemory = new com.nekoyu.Universe.AIChat.Memory(globalCfg.Qdrant);
+            if (globalCfg.Qdrant != null) {
+                if (globalCfg.Qdrant.address != null) {
+                    vectorMemory = new com.nekoyu.Universe.AIChat.Memory(globalCfg.Qdrant, globalCfg.Memory);
+                }
+                if (globalCfg.ExternalKnowledgeBase != null) {
+                    externalKnowledgeBase = new ExternalKnowledgeBase(globalCfg.Qdrant, globalCfg.ExternalKnowledgeBase);
+                }
             }
         } catch (IOException e) {
             Gson gson = new GsonBuilder()
@@ -564,7 +570,8 @@ public class AIChat extends Law {
                 1. 一行一个问题，单个问题不得跨行，每行的问题必须要能独立解读，且必须给出足够信息，尽可能准确地描述 Assistant 遇到的问题，比如用户提到一个角色，则应当根据上下文得到这个角色属于哪一个作品
                 2. 忽视常识性内容或者上下文有明确提到的内容，再列举出其他所有与 主Assistant将要回答的问题 相关的问题，便于从记忆库和全网找回线索
                 3. 如果问题不仅仅与某一个用户关联，则不需要加括号提供LocationId，直接用指令提问
-                4. 如果问题与某一个用户相关，那么在指令后加一个括号并填入用户的LocationId，并在问题中固定使用“用户”的称呼""";
+                4. 如果问题与某一个用户相关，那么在指令后加一个括号并填入用户的LocationId，并在问题中固定使用“用户”的称呼
+                5. 不要对聊天内容提问，只能向记忆库提问""";
         StringBuilder memoryPrompt = new StringBuilder("先前的记忆条目，格式为 [条目ID]|[更新时间]|[置信度]|[LocationId]:[内容] ：\n\n");
 
         if ((memories == null || memories.isEmpty()) && topic.activatingMemory == null) {
