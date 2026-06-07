@@ -6,6 +6,7 @@ import com.nekoyu.Universe.Universe;
 import io.qdrant.client.QdrantClient;
 import io.qdrant.client.QdrantGrpcClient;
 import io.qdrant.client.grpc.Collections;
+import io.qdrant.client.grpc.Common;
 import io.qdrant.client.grpc.JsonWithInt;
 import io.qdrant.client.grpc.Points;
 import org.slf4j.Logger;
@@ -59,12 +60,32 @@ public class ExternalKnowledgeBase {
     }
 
     public List<Item> query(List<Float> vector, Conditions conditions) throws ExecutionException, InterruptedException {
+        var filterBuilder = Common.Filter.newBuilder();
+        if (conditions.subject != null && !conditions.subject.isEmpty()) {
+            Common.Condition condition =
+                    Common.Condition.newBuilder()
+                            .setField(
+                                    Common.FieldCondition.newBuilder()
+                                            .setKey("subject")
+                                            .setMatch(
+                                                    Common.Match.newBuilder()
+                                                            .setKeyword(conditions.subject)
+                                                            .build()
+                                            )
+                                            .build()
+                            )
+                            .build();
+            filterBuilder.addMust(condition);
+        }
+
         List<Points.ScoredPoint> result = client.searchAsync(
                 Points.SearchPoints.newBuilder()
-                        .setCollectionName("memory")
+                        .setCollectionName(collection)
                         .addAllVector(vector)
+                        .setVectorName(vectorName)
                         .setLimit(10)
                         .setScoreThreshold(0.8f)
+                        .setFilter(filterBuilder.build())
                         .setWithPayload(
                                 Points.WithPayloadSelector.newBuilder()
                                         .setEnable(true)
@@ -84,9 +105,7 @@ public class ExternalKnowledgeBase {
 
         boolean exists = client.collectionExistsAsync(collection).get();
 
-        if (exists) {
-            return;
-        }
+        if (exists) return;
 
         logger.info("知识库 {} 不存在，将自动创建", collection);
 
