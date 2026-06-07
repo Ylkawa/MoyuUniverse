@@ -1,6 +1,10 @@
 package com.nekoyu.Universe.AIChat;
 
+import com.nekoyu.Universe.API.MessageChannel.MFChain;
+import com.nekoyu.Universe.API.MessageChannel.MessageField.TextField;
 import com.nekoyu.Universe.API.Providers.LLMProvider.Embedding;
+import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.EmbeddingRequest;
+import com.nekoyu.Universe.API.Providers.LLMProvider.RespBodies.EmbeddingResponse;
 import com.nekoyu.Universe.API.Providers.Provider;
 import com.nekoyu.Universe.Universe;
 import io.qdrant.client.QdrantClient;
@@ -15,6 +19,9 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.ExecutionException;
+
+import static io.qdrant.client.VectorFactory.vector;
+import static io.qdrant.client.VectorsFactory.namedVectors;
 
 public class ExternalKnowledgeBase {
     private final Embedding provider;
@@ -98,6 +105,59 @@ public class ExternalKnowledgeBase {
             items.add(new Item(UUID.fromString(obj.getId().getUuid()), obj.getPayloadMap()));
         }
         return items;
+    }
+
+    public void insert(List<Item> items) {
+        List<Points.PointStruct> points = new ArrayList<>();
+        try {
+            List<List<Float>> vectors = embedding(items);
+            int i = 0;
+            for (var item : items) {
+                Points.PointStruct point = Points.PointStruct.newBuilder()
+                        .setId(
+                                Common.PointId.newBuilder()
+                                        .setUuid(item.id.toString())
+                                        .build()
+                        )
+                        .setVectors(
+                                namedVectors(Map.of(
+                                        vectorName, vector(vectors.get(i))
+                                )))
+                        .putAllPayload(
+                                item.toPayload()
+                        )
+                        .build();
+
+                points.add(point);
+                i++;
+            }
+
+            client.upsertAsync(
+                    collection,
+                    points
+            ).get();
+        } catch (IOException | InterruptedException | ExecutionException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private List<List<Float>> embedding(List<Item> items) throws IOException {
+        EmbeddingRequest request = new EmbeddingRequest();
+        for (var item : items) {
+            MFChain mfc = new MFChain();
+            mfc.add(new TextField(item.content));
+            request.message.add(mfc);
+        }
+        EmbeddingResponse response = provider.embedding(request);
+        List<List<Float>> embeddings = new ArrayList<>();
+        for (var data : response.data) {
+            List<Float> embedding = new ArrayList<>();
+            for (var a : data.embedding) {
+                embedding.add((float) a);
+            }
+            embeddings.add(embedding);
+        }
+        return embeddings;
     }
 
     private void initCollection()
