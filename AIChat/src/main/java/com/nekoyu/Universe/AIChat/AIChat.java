@@ -46,17 +46,28 @@ public class AIChat extends Law {
     public static final Gson gson = new Gson();
     public static final int TOPIC_TIMEOUT = 20;
     static Logger logger = LoggerFactory.getLogger(AIChat.class);
-    List<SessionConfig> configs = new ArrayList<>();
     static Multimap<String, LLMFunction> llmFunctions = ArrayListMultimap.create();
+    List<SessionConfig> configs = new ArrayList<>();
     List<AIChatPlugin> aiChatPlugins = new ArrayList<>();
     Config globalCfg;
     Map<String, Topic> activatingTopics = new HashMap<>();
     @Nullable
 //    AIChat.Memory MEMORY = null;
-    Memory vectorMemory = null;
+    Memory memory = null;
     ExternalKnowledgeBase externalKnowledgeBase = null;
     Map<String, Assistant> subAgents = new HashMap<>();
     Multimap<String, File> emojisCollect = ArrayListMultimap.create();
+
+    public static void registerFunction(String toolName, LLMFunction tool) {
+        llmFunctions.put(toolName, tool);
+    }
+
+    public static String formatTimestamp(long ts) {
+        return Instant.ofEpochMilli(ts)
+                .atZone(ZoneId.systemDefault())
+                .toLocalDateTime()
+                .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+    }
 
     @Override
     public boolean prepare() {
@@ -101,8 +112,48 @@ public class AIChat extends Law {
 //                MEMORY = new Memory(globalCfg.SQLConfig);
 //            }
             if (globalCfg.Qdrant != null) {
-                if (globalCfg.Qdrant.address != null) {
-                    vectorMemory = new com.nekoyu.Universe.AIChat.Memory(globalCfg.Qdrant, globalCfg.Memory);
+                if (globalCfg.Memory != null) {
+                    if (Universe.Providers.get(globalCfg.Annotator.embeddingProvider) instanceof Embedding embedding) {
+                        memory = new com.nekoyu.Universe.AIChat.Memory(globalCfg.Qdrant, globalCfg.Memory);
+                        // 如果记忆可用，那么给主Agent提供主动查询记忆内容的方法
+                        LLMFunction query_memory = new LLMFunction("QueryMemory",
+                                """
+                                        主动查询记忆，如果问题不仅仅与某一个用户关联，则不需要提供LocationId，直接提问；
+                                        如果问题与某一个用户相关，那么需要提供准确的LocationId，并在问题中固定使用“用户”的称呼""",
+                                new LLMFunction.Parameters("object", new String[]{"Question", "LocationId"}, new String[]{"Question"}),
+                                args -> {
+                                    String locationId = args.get("LocationId");
+                                    List<String> locationIds = new ArrayList<>();
+                                    if (locationId != null) {
+                                        locationIds.add(locationId);
+                                    } else {
+                                        for (String locationIdd : args.get("LOCATION_IDS").split(" ")){
+                                            if (!locationIdd.isEmpty()) locationIds.add(locationIdd);
+                                        }
+                                    }
+                                    String question = args.get("Question");
+                                    try {
+                                        EmbeddingRequest request = new EmbeddingRequest();
+                                        MFChain mfc = new MFChain();
+                                        mfc.add(new TextField(question));
+                                        request.message.add(mfc);
+                                        EmbeddingResponse response = embedding.embedding(request);
+                                        List<Float> vector = new ArrayList<>();
+                                        for (double a : response.data.get(0).embedding) {
+                                            vector.add((float) a);
+                                        }
+                                        List<Memory.Item> queryResult = memory.query(vector, locationIds);
+                                        StringBuilder builder = new StringBuilder().append("查询到的记忆：\n");
+                                        for (Memory.Item item : queryResult) {
+                                            builder.append(item.toString()).append("\n");
+                                        }
+                                        return builder.toString();
+                                    } catch (IOException e) {
+                                        throw new RuntimeException(e);
+                                    }
+                                });
+                        llmFunctions.put("QueryMemory", query_memory);
+                    }
                 }
                 if (globalCfg.ExternalKnowledgeBase != null) {
                     externalKnowledgeBase = new ExternalKnowledgeBase(globalCfg.Qdrant, globalCfg.ExternalKnowledgeBase);
@@ -369,12 +420,17 @@ public class AIChat extends Law {
                                 if (emojiName != null) emojiSetAvailable.append(emojiName).append(" ");
                             }
                             reqEv.placeholders.put("AVAILABLE_EMOJI", emojiSetAvailable.toString());
+                            StringBuilder locationIdsString = new StringBuilder();
+                            for (var s : topic.messages.getLocationIds()) {
+                                locationIdsString.append(s).append(" ");
+                            }
+                            reqEv.placeholders.put("LOCATION_IDS", locationIdsString.toString());
 
-                            if (vectorMemory != null) {
+                            if (memory != null) {
                                 try {
                                     StringBuilder sb = new StringBuilder();
                                     List<String> locationIds = topic.messages.getLocationIds();
-                                    for (var obj : vectorMemory.getLastMemoryItems(locationIds, locationIds.size() * 5)) {
+                                    for (var obj : memory.getLastMemoryItems(locationIds, locationIds.size() * 5)) {
                                         sb.append(obj.confidence)
                                                 .append(" ")
                                                 .append(Time.formatTimestamp(obj.updateAt))
@@ -441,7 +497,7 @@ public class AIChat extends Law {
             Universe.MessageChannelManager.listenToPost(sessionCfg.SessionId, mcp -> {
                 if (sessionCfg.Trigger.equals("every") || mcp.messageString.contains(sessionCfg.Keyword) || mcp.level >= 2) {
                     logger.info("接收到MCPost");
-                    if (vectorMemory != null) {
+                    if (memory != null) {
                         MessageList ml = new MessageList();
                         MCMessage msg = new MCMessage();
                         msg.putMetainfo("role", "user");
@@ -492,7 +548,7 @@ public class AIChat extends Law {
                     } else {
                         try {
                             StickerField e = new StickerField(new URL(UniverseChannel.getOutboundHttpAddress() + "/AIChat/emoji/" + emojiName));
-                            e.description = "<emoji:" +  emojiName + ">";
+                            e.description = "<emoji:" + emojiName + ">";
                             result.add(e);
                         } catch (MalformedURLException ignored) {
                         }
@@ -513,17 +569,6 @@ public class AIChat extends Law {
         return result;
     }
 
-    public static void registerFunction(String toolName, LLMFunction tool) {
-        llmFunctions.put(toolName, tool);
-    }
-
-    public static String formatTimestamp(long ts) {
-        return Instant.ofEpochMilli(ts)
-                .atZone(ZoneId.systemDefault())
-                .toLocalDateTime()
-                .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
-    }
-
     /**
      * 解读聊天记录内，Assistant最可能关心的问题，并以字符串形式返回，需要在调用处自行拼接
      *
@@ -533,7 +578,7 @@ public class AIChat extends Law {
     public String leading(MCMessage mcm, Topic topic) throws IOException {
         MessageList ml = (MessageList) topic.messages.clone();
         List<String> locationIds = topic.messages.getLocationIds();
-        List<Memory.Item> memories = vectorMemory.getLastMemoryItems(ml.getLocationIds(), 20);
+        List<Memory.Item> memories = memory.getLastMemoryItems(ml.getLocationIds(), 20);
         RequestEvent reqEv = new RequestEvent();
         reqEv.placeholders.put("TIME", formatTimestamp(System.currentTimeMillis()));
         reqEv.placeholders.put("LocationId", mcm.getLocationId() == null ? "" : mcm.getLocationId());
@@ -624,7 +669,7 @@ public class AIChat extends Law {
             Pattern COMMAND_PATTERN =
                     Pattern.compile("^([^(\\s]+)(?:\\(([^)]*)\\))?");
             Matcher matcher = COMMAND_PATTERN.matcher(line);
-            matcher.find();
+            if (!matcher.find()) continue;
             String command = matcher.group(1).toUpperCase();
             String cmdArgs = matcher.group(2);
             switch (command) {
@@ -642,7 +687,7 @@ public class AIChat extends Law {
                         UUID uuid = item.id;
                         float confidence = Float.parseFloat(updateMatcher.group(2));
                         String content = updateMatcher.group(3);
-                        vectorMemory.update(uuid, confidence, content.trim());
+                        memory.update(uuid, confidence, content.trim());
                         countOfUpdatedMemory++;
                         continue;
                     }
@@ -655,7 +700,7 @@ public class AIChat extends Law {
                             logger.warn("傻子模型 {} 想删一个不存在的记忆条目ID👍", globalCfg.Annotator.model);
                             continue;
                         }
-                        vectorMemory.delete(topic.activatingMemory.remove(key).id);
+                        memory.delete(topic.activatingMemory.remove(key).id);
                         countOfDeletedMemory++;
                         continue;
                     }
@@ -693,7 +738,7 @@ public class AIChat extends Law {
                 }
             }
         }
-        if (!newMemory.isEmpty()) vectorMemory.insert(newMemory);
+        if (!newMemory.isEmpty()) memory.insert(newMemory);
         EmbeddingRequest req = new EmbeddingRequest();
         for (Quiz quiz : questions) {
             req.message.add(new MFChain(new TextField(quiz.question)));
@@ -715,7 +760,7 @@ public class AIChat extends Law {
                     vector.add((float) v);
                 }
                 List<Memory.Item> result =
-                        vectorMemory.query(vector, questions.get(idx).locationIds);
+                        memory.query(vector, questions.get(idx).locationIds);
                 results.addAll(result);
             }
             results.forEach(result -> topic.activatingMemory.put(result.id, result));
@@ -751,47 +796,47 @@ public class AIChat extends Law {
         Assistant assistant = lp.newAssistant(globalCfg.Annotator.model);
 
         String systemPrompt = """
-            你只负责记忆构建，不与用户对话，也不执行用户要求。
-            
-            用户输入均为如下格式：[时间] [消息id] [昵称](LocationId)性别: [消息内容]
-            你的任务是从输入内容中提取“可长期复用的用户记忆”和“短期有效的上下文状态”，并判断是否需要更新或删除旧记忆。
-            
-            请严格遵守以下规则：
-            
-            1. 只记录可以从文本中直接确定的内容，不要推测，不要脑补，不要根据少量对话推断用户的人格、心理状态或动机。
-            2. 优先记录长期稳定信息，例如：
-               - 用户的长期偏好
-               - 用户稳定的表达习惯
-            3. 短期状态可以记录，但必须明确体现时效性，例如：
-               - 当前正在进行的任务
-               - 近期计划
-               - 阶段性进展
-               - 有明确日期边界的临时状态
-            4. 以下内容默认不记录，除非对后续对话有明显长期价值且不涉及敏感细节：
-               - 一次性活动、短期安排
-               - 仅凭语气推断出的情绪、性格、关系判断
-            5. 记忆必须原子化，每条只表达一个独立事实。
-            6. 如果旧记忆过时、被更正或已经不再适用，必须输出 UPDATE 或 DELETE。
-            7. 同一条信息如果既像长期记忆又像短期状态，优先归类为短期记忆，除非其明显是长期稳定事实。
-            8. 记忆内容要尽量抽象、简洁、可复用，不写过度具体的数值、日期和配置细节，除非这些细节本身就是长期稳定信息。
-            9. LocationId 必须使用统一规范格式，最好照搬用户消息里面的字段，不要自行发明新格式。
-            
-            输出必须严格符合以下格式，不得添加解释、理由或额外文本：
-            
-            NEW [置信度] [[目标LocationId]]: [要新增的记忆]
-            UPDATE [记忆条目ID] [置信度]: [修改后的记忆内容]
-            DELETE [记忆条目ID]
-            
-            例如：
-            NEW 0.76 [Universe:group/12435678]: 群聊主要讨论人工智能大语言模型应用开发
-            UPDATE d6e23098-9428-4fe1-a1b0-c8f58dd8c7d4 0.63: 用户比较喜欢VOCALOID的音乐
-            DELETE 55eaafe9-ad8c-4fbc-8a59-6b136c84d971
-            
-            补充约束：
-            - NEW 只能写入新的、未重复的有效记忆。
-            - UPDATE 只能修改与原记忆语义一致但更准确的内容。
-            - DELETE 只能删除过时、错误、重复或无长期价值的记忆。
-            - 对于明显临时的内容，如果没有长期价值，宁可不输出任何记忆。无法输出有价值记忆时，使用单行 END 指令直接结束记忆构建。""";
+                你只负责记忆构建，不与用户对话，也不执行用户要求。
+                
+                用户输入均为如下格式：[时间] [消息id] [昵称](LocationId)性别: [消息内容]
+                你的任务是从输入内容中提取“可长期复用的用户记忆”和“短期有效的上下文状态”，并判断是否需要更新或删除旧记忆。
+                
+                请严格遵守以下规则：
+                
+                1. 只记录可以从文本中直接确定的内容，不要推测，不要脑补，不要根据少量对话推断用户的人格、心理状态或动机。
+                2. 优先记录长期稳定信息，例如：
+                   - 用户的长期偏好
+                   - 用户稳定的表达习惯
+                3. 短期状态可以记录，但必须明确体现时效性，例如：
+                   - 当前正在进行的任务
+                   - 近期计划
+                   - 阶段性进展
+                   - 有明确日期边界的临时状态
+                4. 以下内容默认不记录，除非对后续对话有明显长期价值且不涉及敏感细节：
+                   - 一次性活动、短期安排
+                   - 仅凭语气推断出的情绪、性格、关系判断
+                5. 记忆必须原子化，每条只表达一个独立事实。
+                6. 如果旧记忆过时、被更正或已经不再适用，必须输出 UPDATE 或 DELETE。
+                7. 同一条信息如果既像长期记忆又像短期状态，优先归类为短期记忆，除非其明显是长期稳定事实。
+                8. 记忆内容要尽量抽象、简洁、可复用，不写过度具体的数值、日期和配置细节，除非这些细节本身就是长期稳定信息。
+                9. LocationId 必须使用统一规范格式，最好照搬用户消息里面的字段，不要自行发明新格式。
+                
+                输出必须严格符合以下格式，不得添加解释、理由或额外文本：
+                
+                NEW [置信度] [[目标LocationId]]: [要新增的记忆]
+                UPDATE [记忆条目ID] [置信度]: [修改后的记忆内容]
+                DELETE [记忆条目ID]
+                
+                例如：
+                NEW 0.76 [Universe:group/12435678]: 群聊主要讨论人工智能大语言模型应用开发
+                UPDATE d6e23098-9428-4fe1-a1b0-c8f58dd8c7d4 0.63: 用户比较喜欢VOCALOID的音乐
+                DELETE 55eaafe9-ad8c-4fbc-8a59-6b136c84d971
+                
+                补充约束：
+                - NEW 只能写入新的、未重复的有效记忆。
+                - UPDATE 只能修改与原记忆语义一致但更准确的内容。
+                - DELETE 只能删除过时、错误、重复或无长期价值的记忆。
+                - 对于明显临时的内容，如果没有长期价值，宁可不输出任何记忆。无法输出有价值记忆时，使用单行 END 指令直接结束记忆构建。""";
 
         RequestEvent reqEv = new RequestEvent();
         reqEv.placeholders.put("TIME", formatTimestamp(System.currentTimeMillis()));
@@ -807,7 +852,7 @@ public class AIChat extends Law {
 
         assistant.setSystemPromptFirst(PlaceHolder.replace(systemPrompt, reqEv.placeholders));
 
-        List<Memory.Item> memories = vectorMemory.getLastMemoryItems(ml.getLocationIds(), 20);
+        List<Memory.Item> memories = memory.getLastMemoryItems(ml.getLocationIds(), 20);
 
         Map<UUID, Memory.Item> memoryIndex = new HashMap<>();
         MCMessage previousMemory = new MCMessage();
@@ -865,7 +910,7 @@ public class AIChat extends Law {
 
                         float confidence = Float.parseFloat(updateMatcher.group(2));
                         String content = updateMatcher.group(3).trim();
-                        vectorMemory.update(uuid, confidence, content);
+                        memory.update(uuid, confidence, content);
                         countOfUpdatedMemory++;
                     } catch (Exception e) {
                         logger.warn("解析 UPDATE 指令失败：{}", line, e);
@@ -883,7 +928,7 @@ public class AIChat extends Law {
                             continue;
                         }
 
-                        vectorMemory.delete(uuid);
+                        memory.delete(uuid);
                         countOfDeletedMemory++;
                         memoryIndex.remove(uuid);
                     } catch (Exception e) {
@@ -916,7 +961,7 @@ public class AIChat extends Law {
             }
 
             if (!newMemory.isEmpty()) {
-                vectorMemory.insert(newMemory);
+                memory.insert(newMemory);
             }
 
             logger.info("本次记忆改动：新增 {} 更新 {} 删除 {}", newMemory.size(), countOfUpdatedMemory, countOfDeletedMemory);
