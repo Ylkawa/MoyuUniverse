@@ -28,6 +28,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import static io.qdrant.client.PointIdFactory.id;
 import static io.qdrant.client.VectorFactory.vector;
 import static io.qdrant.client.VectorsFactory.namedVectors;
 
@@ -301,7 +302,7 @@ public class ExternalKnowledgeBase {
                 .build());
         parseResponse = parser.completions(ml, null);
         parseContent = parseResponse.choices[0].message.content;
-        // TODO: 补全后面的逻辑
+        applyParseContent(parseContent, existItems);
     }
 
     /**
@@ -424,5 +425,119 @@ public class ExternalKnowledgeBase {
 
     public static class Conditions {
         String subject;
+    }
+
+    private static final Pattern NEW_PATTERN =
+            Pattern.compile("^NEW\\s*\\((.*?)\\):\\s*(.+)$");
+    private static final Pattern UPDATE_PATTERN =
+            Pattern.compile("^UPDATE\\s*\\[(\\d+)]\\s*\\((.*?)\\):\\s*(.+)$");
+    private static final Pattern DELETE_PATTERN =
+            Pattern.compile("^DELETE\\s*\\[(\\d+)]\\s*$");
+
+    private void applyParseContent(String parseContent, List<Item> existItems) throws IOException {
+        List<Item> toInsert = new ArrayList<>();
+        Set<UUID> toDelete = new HashSet<>();
+
+        for (String rawLine : parseContent.split("\\R")) {
+            String line = rawLine.trim();
+            if (line.isEmpty()) continue;
+
+            Matcher m;
+
+            m = NEW_PATTERN.matcher(line);
+            if (m.matches()) {
+                String params = m.group(1);
+                String content = m.group(2);
+                toInsert.add(buildItemFromParams(params, content));
+                continue;
+            }
+
+            m = UPDATE_PATTERN.matcher(line);
+            if (m.matches()) {
+                int idx = Integer.parseInt(m.group(1));
+                if (idx < 1 || idx > existItems.size()) continue;
+
+                String params = m.group(2);
+                String content = m.group(3);
+
+                Item old = existItems.get(idx - 1);
+                Item updated = mergeItem(old, params, content);
+                toInsert.add(updated);   // 同 UUID upsert 即可覆盖
+                continue;
+            }
+
+            m = DELETE_PATTERN.matcher(line);
+            if (m.matches()) {
+                int idx = Integer.parseInt(m.group(1));
+                if (idx < 1 || idx > existItems.size()) continue;
+                toDelete.add(existItems.get(idx - 1).id);
+            }
+        }
+
+        if (!toDelete.isEmpty()) {
+            try {
+                client.deleteAsync(
+                        Points.DeletePoints.newBuilder()
+                                .setCollectionName(collection)
+                                .setPoints(Points.PointsSelector.newBuilder()
+                                        .setPoints(Points.PointsIdsList.newBuilder()
+                                                .addAllIds(toDelete.stream()
+                                                        .map(id -> id(UUID.fromString(id.toString())))
+                                                        .toList())
+                                                .build())
+                                        .build())
+                                .build()
+                ).get();
+            } catch (InterruptedException | ExecutionException e) {
+                logger.error("未能正确删除知识条目", e);
+            }
+        }
+
+        if (!toInsert.isEmpty()) {
+            insert(toInsert);
+        }
+    }
+
+    private Item buildItemFromParams(String params, String content) {
+        Item item = new Item();
+        item.content = content.trim();
+        item.subject = findStringParam(params, "subject", "unknown");
+        item.source = findStringParam(params, "source", "web");
+        item.confidence = findFloatParam(params, "confidence", 0.8f);
+        item.importance = findFloatParam(params, "importance", 0.5f);
+        item.decayRate = findFloatParam(params, "decayRate", 1f);
+        item.score = findFloatParam(params, "score", 0.8f);
+        long now = System.currentTimeMillis();
+        item.createdAt = now;
+        item.updatedAt = now;
+        return item;
+    }
+
+    private Item mergeItem(Item old, String params, String content) {
+        old.content = content.trim();
+        String subject = findStringParam(params, "subject", null);
+        if (subject != null) old.subject = subject;
+
+        String source = findStringParam(params, "source", null);
+        if (source != null) old.source = source;
+
+        old.confidence = findFloatParam(params, "confidence", old.confidence);
+        old.importance = findFloatParam(params, "importance", old.importance);
+        old.decayRate = findFloatParam(params, "decayRate", old.decayRate);
+        old.score = findFloatParam(params, "score", old.score);
+        old.updatedAt = System.currentTimeMillis();
+        return old;
+    }
+
+    private String findStringParam(String params, String key, String defaultValue) {
+        Pattern p = Pattern.compile(key + "\\s*=\\s*\"([^\"]*)\"");
+        Matcher m = p.matcher(params);
+        return m.find() ? m.group(1) : defaultValue;
+    }
+
+    private float findFloatParam(String params, String key, float defaultValue) {
+        Pattern p = Pattern.compile(key + "\\s*=\\s*([0-9.]+)");
+        Matcher m = p.matcher(params);
+        return m.find() ? Float.parseFloat(m.group(1)) : defaultValue;
     }
 }
