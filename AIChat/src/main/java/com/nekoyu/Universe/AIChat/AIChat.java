@@ -20,6 +20,9 @@ import com.nekoyu.Universe.API.UniverseChannel;
 import com.nekoyu.Universe.LawsLoader.Law;
 import com.nekoyu.Universe.Universe;
 import com.nekoyu.Universe.Utils.Time;
+import com.zaxxer.hikari.HikariConfig;
+import com.zaxxer.hikari.HikariDataSource;
+import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -31,6 +34,8 @@ import java.net.URL;
 import java.net.URLClassLoader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
+import java.sql.PreparedStatement;
+import java.sql.SQLException;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -52,11 +57,11 @@ public class AIChat extends Law {
     Config globalCfg;
     Map<String, Topic> activatingTopics = new HashMap<>();
     @Nullable
-//    AIChat.Memory MEMORY = null;
     Memory memory = null;
     ExternalKnowledgeBase externalKnowledgeBase = null;
     Map<String, Assistant> subAgents = new HashMap<>();
     Multimap<String, File> emojisCollect = ArrayListMultimap.create();
+    public HikariDataSource dataSource;
 
     public static void registerFunction(String toolName, LLMFunction tool) {
         llmFunctions.put(toolName, tool);
@@ -111,6 +116,16 @@ public class AIChat extends Law {
 //            if (globalCfg.SQLConfig != null && globalCfg.SQLConfig.url != null) {
 //                MEMORY = new Memory(globalCfg.SQLConfig);
 //            }
+            if (globalCfg.SQLConfig != null) {
+                HikariConfig config = new HikariConfig();
+                config.setDriverClassName("com.mysql.cj.jdbc.Driver");
+                config.setJdbcUrl(globalCfg.SQLConfig.url);
+                config.setUsername(globalCfg.SQLConfig.user);
+                config.setPassword(globalCfg.SQLConfig.password);
+                dataSource = new HikariDataSource(config);
+                logger.info("数据库连接成功");
+            }
+
             if (globalCfg.Qdrant != null) {
                 if (globalCfg.Memory != null) {
                     if (Universe.Providers.get(globalCfg.Annotator.embeddingProvider) instanceof Embedding embedding) {
@@ -127,7 +142,7 @@ public class AIChat extends Law {
                                     if (locationId != null) {
                                         locationIds.add(locationId);
                                     } else {
-                                        for (String locationIdd : args.get("LOCATION_IDS").split(" ")){
+                                        for (String locationIdd : args.get("LOCATION_IDS").split(" ")) {
                                             if (!locationIdd.isEmpty()) locationIds.add(locationIdd);
                                         }
                                     }
@@ -261,6 +276,7 @@ public class AIChat extends Law {
         Path emojisDic = Paths.get("./data/AIChat/emojis/");
         loadEmojis(emojisDic);
 
+        final Object lock = new Object();
         new Thread(() -> {
             try {
                 WatchService watchService = FileSystems.getDefault().newWatchService();
@@ -272,7 +288,6 @@ public class AIChat extends Law {
                 );
 
                 final ScheduledExecutorService executorService = Executors.newSingleThreadScheduledExecutor();
-                final Object lock = new Object();
                 ScheduledFuture<?> pendingTask = null;
                 while (true) {
                     try {
@@ -616,7 +631,7 @@ public class AIChat extends Law {
                 2. 忽视常识性内容或者上下文有明确提到的内容，再列举出其他所有与 主Assistant将要回答的问题 相关的问题，便于从记忆库和全网找回线索
                 3. 如果问题不仅仅与某一个用户关联，则不需要加括号提供LocationId，直接用指令提问
                 4. 如果问题与某一个用户相关，那么在指令后加一个括号并填入用户的LocationId，并在问题中固定使用“用户”的称呼
-                5. 不要对聊天内容提问，只能向记忆库提问""";
+                5. 不要对聊天内容提问，只能向记忆库或外置知识库提问""";
         StringBuilder memoryPrompt = new StringBuilder("先前的记忆条目，格式为 [条目ID]|[更新时间]|[置信度]|[LocationId]:[内容] ：\n\n");
 
         if ((memories == null || memories.isEmpty()) && topic.activatingMemory == null) {
@@ -743,7 +758,8 @@ public class AIChat extends Law {
         for (Quiz quiz : questions) {
             req.message.add(new MFChain(new TextField(quiz.question)));
         }
-        List<Memory.Item> results = new ArrayList<>();
+        List<Memory.Item> memoryResults = new ArrayList<>();
+        List<ExternalKnowledgeBase.Item> ekbResults = new ArrayList<>();
         StringBuilder ret = new StringBuilder();
         if (!questions.isEmpty()) {
             List<String> strings = new ArrayList<>();
@@ -759,20 +775,26 @@ public class AIChat extends Law {
                 for (double v : data.embedding) {
                     vector.add((float) v);
                 }
-                List<Memory.Item> result =
+                List<Memory.Item> memoryResult =
                         memory.query(vector, questions.get(idx).locationIds);
-                results.addAll(result);
+                memoryResults.addAll(memoryResult);
+                List<ExternalKnowledgeBase.Item> ekbResult = externalKnowledgeBase.query(vector, null);
+                ekbResults.addAll(ekbResult);
             }
-            results.forEach(result -> topic.activatingMemory.put(result.id, result));
+            memoryResults.forEach(result -> topic.activatingMemory.put(result.id, result));
             ret.append("本地记忆内容：\n");
             for (Memory.Item item : topic.activatingMemory.values()) {
+                ret.append(item.toString()).append("\n");
+            }
+            ret.append("\n知识库内容：\n");
+            for (ExternalKnowledgeBase.Item item : ekbResults) {
                 ret.append(item.toString()).append("\n");
             }
         }
         String log = "";
         if (countOfUpdatedMemory != 0 || countOfDeletedMemory != 0 || !newMemory.isEmpty())
             log += "本次记忆改动：新增 " + newMemory.size() + " 更新 " + countOfUpdatedMemory + " 删除 " + countOfDeletedMemory + " ";
-        if (!results.isEmpty()) log += "命中 " + results.size() + " 条本地记忆";
+        if (!memoryResults.isEmpty()) log += "命中 " + memoryResults.size() + " 条本地记忆";
         if (!log.isEmpty()) logger.info(log);
         return ret.toString();
     }
@@ -969,141 +991,4 @@ public class AIChat extends Law {
             logger.error("生成失败", e);
         }
     }
-
-
-//    public class Memory {
-//        HikariDataSource ds;
-//
-//        public Memory(Config.SQLConfig sqlConfig) {
-//            HikariConfig config = new HikariConfig();
-//            config.setDriverClassName("com.mysql.cj.jdbc.Driver");
-//            config.setJdbcUrl(sqlConfig.url);
-//            config.setUsername(sqlConfig.user);
-//            config.setPassword(sqlConfig.password);
-//            ds = new HikariDataSource(config);
-//            initTable();
-//            logger.info("记忆模块加载成功");
-//        }
-//
-//        public void newMemory(String locationId, String content) {
-//            try (var conn = ds.getConnection();
-//                 PreparedStatement p = conn.prepareStatement("""
-//                         INSERT INTO memories(location_id, content)
-//                         values (?, ?)""")
-//            ) {
-//                p.setString(1, locationId);
-//                p.setString(2, content);
-//                p.execute();
-//            } catch (SQLException e) {
-//                throw new RuntimeException(e);
-//            }
-//        }
-//
-//        public void updateMemory(int memKey, String content) {
-//            try (var conn = ds.getConnection();
-//                 PreparedStatement p = conn.prepareStatement("""
-//                         UPDATE memories
-//                         SET content = (?)
-//                         WHERE mem_key = (?)""")
-//            ) {
-//                p.setString(1, content);
-//                p.setInt(2, memKey);
-//                p.executeUpdate();
-//            } catch (SQLException e) {
-//                throw new RuntimeException(e);
-//            }
-//        }
-//
-//        public void deleteMemory(int memKey) {
-//            try (var conn = ds.getConnection();
-//                 PreparedStatement p = conn.prepareStatement("""
-//                         DELETE FROM memories
-//                         WHERE mem_key = (?)""")
-//            ) {
-//                p.setInt(1, memKey);
-//                p.executeUpdate();
-//            } catch (SQLException e) {
-//                throw new RuntimeException(e);
-//            }
-//        }
-//
-//        public List<MemObj> getMemories(List<String> locIds) {
-//            if (locIds == null || locIds.isEmpty()) {
-//                return List.of();
-//            }
-//
-//            String placeholders = String.join(",", Collections.nCopies(locIds.size(), "?"));
-//
-//            String sql = "SELECT * FROM memories WHERE location_id IN (" + placeholders + ")";
-//
-//            List<MemObj> result = new ArrayList<>();
-//
-//            try (var conn = ds.getConnection();
-//                 PreparedStatement ps = conn.prepareStatement(sql)) {
-//
-//                // 绑定参数
-//                for (int i = 0; i < locIds.size(); i++) {
-//                    ps.setString(i + 1, locIds.get(i));
-//                }
-//
-//                try (ResultSet rs = ps.executeQuery()) {
-//                    while (rs.next()) {
-//                        MemObj obj = new MemObj();
-//                        obj.locationId = rs.getString("location_id");
-//                        obj.memKey = rs.getInt("mem_key");
-//                        obj.content = rs.getString("content");
-//                        obj.updatedAt = rs.getTimestamp("updated_at").toLocalDateTime();
-//                        result.add(obj);
-//                    }
-//                }
-//
-//            } catch (SQLException e) {
-//                throw new RuntimeException(e);
-//            }
-//
-//            return result;
-//        }
-//
-//        public void initTable() {
-//            try (var conn = ds.getConnection();
-//                 PreparedStatement p = conn.prepareStatement("""
-//                         CREATE TABLE IF NOT EXISTS memories (
-//                         mem_key INT AUTO_INCREMENT PRIMARY KEY,
-//                         location_id VARCHAR(255) NOT NULL,
-//                         content TEXT NOT NULL,
-//                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-//                         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-//                         INDEX idx_location_id (location_id)
-//                         )""")
-//            ) {
-//                p.execute();
-//            } catch (SQLException e) {
-//                throw new RuntimeException(e);
-//            }
-//        }
-//
-//        public boolean available() {
-//            return ds.isRunning();
-//        }
-//
-//        public static class MemObj {
-//            int memKey;
-//            String locationId;
-//            String content;
-//            LocalDateTime createdAt;
-//            LocalDateTime updatedAt;
-//
-//            @Override
-//            public String toString() {
-//                return "[mem_id=" + memKey
-//                        + "|time=" + formatTimestamp(updatedAt)
-//                        + "|loc=" + locationId + "]\n"
-//                        + content;
-//            }
-//
-//            public static String formatTimestamp(LocalDateTime time) {
-//                return time.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
-//            }
-//        }
-//    }
 }

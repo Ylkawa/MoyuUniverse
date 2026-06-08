@@ -22,6 +22,7 @@ import okhttp3.*;
 import okio.BufferedSource;
 import org.slf4j.Logger;
 
+import javax.annotation.Nullable;
 import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
@@ -161,7 +162,7 @@ public class OpenAIChannel extends LLMProvider implements Embedding {
                             if (dl.choices != null && dl.choices.length > 0) {
                                 DataLine.Choice choice = dl.choices[0];
                                 if (choice.delta.content != null && !choice.delta.content.isBlank()) {
-                                    bufferCallback.onCompletion(choice.delta.content);
+                                    if (bufferCallback != null) bufferCallback.onCompletion(choice.delta.content);
                                     outputted = true;
                                     content.append(choice.delta.content);
                                     responding.choices[0].message.content += choice.delta.content;
@@ -212,7 +213,7 @@ public class OpenAIChannel extends LLMProvider implements Embedding {
                     case "tool_calls" -> {
                         if (outputted) {
                             responding.choices[0].message.content += "\n\n";
-                            bufferCallback.onCompletion("\n\n");
+                            if (bufferCallback != null) bufferCallback.onCompletion("\n\n");
                         }
                         if (responding.choices[0].message.reasoning_content != null) assistantMcm.putMetainfo("reasoning", responding.choices[0].message.reasoning_content); // 存放思考链
                         Tool_call[] toolCalls = tool_calls.values().toArray(new Tool_call[0]);
