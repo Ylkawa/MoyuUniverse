@@ -293,16 +293,32 @@ public class ExternalKnowledgeBase {
         }
         builder.append("""
                 你需要保证知识条目不重复，如果预先想新增的知识条目与原有的条目重复，请根据实际情况，酌情删除或修改原有的知识条目，再新增新的知识条目
-                输出遵循如下格式：
+                输出严格遵循如下格式，且不输出其他多余内容，也不要对输出内容进行解释：
                 NEW ([参数]): 内容
                 UPDATE [条目编号] ([参数]): 内容
-                DELETE [条目编号]""");
+                DELETE [条目编号]
+                
+                例如：
+                NEW (subject="崩坏星穹铁道", source="https://zh.moegirl.org.cn/%E4%B9%B1%E7%A0%B4", confidence=0.9, importance=0.7, decayRate=1.0): 乱破 是 崩坏星穹铁道 的智识命途虚数属性角色
+                UPDATE [39] (confidence=0.95): 绝区零3.0版本后支持光线追踪和DLSS功能
+                DELETE [63]
+                
+                注意 每一个指令必须在各行独立，且互不影响
+                各参数含义：
+                subject：填游戏、作品名，不包含特殊字符
+                confidence：内容的可信度，范围0.1~1.0
+                importance：内容的重要程度，范围0.1~1.0
+                decayRate：内容的过期速度，比如内容属于持续更新中的作品时，应当设置较高的值，声明内容过期较快，范围0.1~2.0""");
         ml.add(new MCMessage.Builder()
                 .add(new TextField(builder.toString()))
                 .build());
         parseResponse = parser.completions(ml, null);
         parseContent = parseResponse.choices[0].message.content;
         applyParseContent(parseContent, existItems);
+    }
+
+    public List<Item> quiz(String quiz) throws IOException {
+        return quiz(quiz, embedding(List.of(quiz)).get(0));
     }
 
     /**
@@ -335,7 +351,7 @@ public class ExternalKnowledgeBase {
             return items;
         }
         webCatch(quiz);
-        items = new ArrayList<>(); // fetch again
+        items = query(vector, null); // fetch again
         return items;
     }
 
@@ -359,6 +375,8 @@ public class ExternalKnowledgeBase {
 
         public Item() {
             this.id = UUID.randomUUID();
+            this.createdAt = System.currentTimeMillis();
+            this.updatedAt = this.createdAt;
         }
 
         public Item(UUID uuid, Map<String, JsonWithInt.Value> payload) {
@@ -434,7 +452,7 @@ public class ExternalKnowledgeBase {
     private static final Pattern DELETE_PATTERN =
             Pattern.compile("^DELETE\\s*\\[(\\d+)]\\s*$");
 
-    private void applyParseContent(String parseContent, List<Item> existItems) throws IOException {
+    private void applyParseContent(String parseContent, List<Item> existItems) {
         List<Item> toInsert = new ArrayList<>();
         Set<UUID> toDelete = new HashSet<>();
 

@@ -168,6 +168,23 @@ public class AIChat extends Law {
                                     }
                                 });
                         llmFunctions.put("QueryMemory", query_memory);
+                        llmFunctions.put("ExternalKnowledgeBase",
+                                new LLMFunction(
+                                        "QueryExternalKnowledgeBase",
+                                        "查询知识库中内容，当知识库中未能找到有用的知识条目时会当场从互联网查找并得到相关信息",
+                                        new LLMFunction.Parameters("object", new String[]{"question"}, new String[]{"question"}),
+                                        args -> {
+                                            try {
+                                                List<ExternalKnowledgeBase.Item> items = externalKnowledgeBase.quiz(args.get("question"));
+                                                StringBuilder builder = new StringBuilder();
+                                                items.forEach(item -> builder.append(item.toString()).append("\n"));
+                                                return builder.toString();
+                                            } catch (IOException e) {
+                                                logger.error("模型主动调用外部知识库时出错", e);
+                                                return "调用失败" + e.getMessage();
+                                            }
+                                        })
+                        );
                     }
                 }
                 if (globalCfg.ExternalKnowledgeBase != null) {
