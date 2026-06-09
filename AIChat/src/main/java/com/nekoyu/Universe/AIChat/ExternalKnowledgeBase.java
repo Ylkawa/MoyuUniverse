@@ -92,6 +92,18 @@ public class ExternalKnowledgeBase {
     }
 
     /**
+     * 只读查询数据库，注意调用这个方法查询会计算向量并产生消耗
+     * @param question
+     * @param conditions
+     * @return
+     * @throws IOException
+     */
+    public List<Item> query(String question, @Nullable Conditions conditions) throws IOException {
+        List<Float> vector = embedding(List.of(question)).get(0);
+        return query(vector, conditions);
+    }
+
+    /**
      * 只读查询知识库
      * @param vector 问题的向量
      * @param conditions 限定查询范围

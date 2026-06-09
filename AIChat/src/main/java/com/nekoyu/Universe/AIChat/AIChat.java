@@ -32,6 +32,7 @@ import java.lang.reflect.InvocationTargetException;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.URLClassLoader;
+import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.sql.PreparedStatement;
@@ -76,31 +77,6 @@ public class AIChat extends Law {
 
     @Override
     public boolean prepare() {
-        UniverseChannel.addHttpHandler("/AIChat/", exchange -> {
-            if (!exchange.getRequestMethod().equals("GET")) {
-                String resp = "405 Method Not Allowed";
-                exchange.sendResponseHeaders(405, resp.getBytes().length);
-                OutputStream os = exchange.getResponseBody();
-                os.write(resp.getBytes());
-                os.close();
-            }
-            String[] way = exchange.getRequestURI().toString().split("/");
-            Collection<File> collection = emojisCollect.get(way[way.length - 1]);
-            int index = new Random().nextInt(collection.size());
-            File image = (File) collection.toArray()[index];
-            exchange.sendResponseHeaders(200, image.length());
-            try (OutputStream os = exchange.getResponseBody();
-                 FileInputStream fis = new FileInputStream(image)) {
-
-                byte[] buffer = new byte[8192];
-                int len;
-                while ((len = fis.read(buffer)) != -1) {
-                    os.write(buffer, 0, len);
-                }
-            }
-            exchange.sendResponseHeaders(400, 0);
-        });
-
         getDataDir();
         File configDic = new File("./config/AIChat");
         if (!configDic.exists()) configDic.mkdir();
@@ -375,6 +351,64 @@ public class AIChat extends Law {
 
     @Override
     public void run() {
+        UniverseChannel.addHttpHandler("/AIChat/", exchange -> {
+            if (!exchange.getRequestMethod().equals("GET")) {
+                String resp = "405 Method Not Allowed";
+                exchange.sendResponseHeaders(405, resp.getBytes().length);
+                OutputStream os = exchange.getResponseBody();
+                os.write(resp.getBytes());
+                os.close();
+            }
+            try {
+                String[] way = exchange.getRequestURI().toString().split("/");
+                switch (way[2]) {
+                    case "emoji" -> {
+                        Collection<File> collection = emojisCollect.get(way[way.length - 1]);
+                        int index = new Random().nextInt(collection.size());
+                        File image = (File) collection.toArray()[index];
+                        exchange.sendResponseHeaders(200, image.length());
+                        try (OutputStream os = exchange.getResponseBody();
+                             FileInputStream fis = new FileInputStream(image)) {
+
+                            byte[] buffer = new byte[8192];
+                            int len;
+                            while ((len = fis.read(buffer)) != -1) {
+                                os.write(buffer, 0, len);
+                            }
+                        }
+                        exchange.sendResponseHeaders(400, 0);
+                    }
+                    case "ekb" -> {
+                        String question = URLDecoder.decode(way[4], StandardCharsets.UTF_8);
+                        switch (way[3]) {
+                            case "query" -> {
+                                List<ExternalKnowledgeBase.Item> items = externalKnowledgeBase.query(question, null);
+                                String resp = gson.toJson(items);
+                                exchange.sendResponseHeaders(200, resp.getBytes().length);
+                                OutputStream os = exchange.getResponseBody();
+                                os.write(resp.getBytes());
+                                os.flush();
+                                os.close();
+                            }
+                            case "quiz" -> {
+                                List<ExternalKnowledgeBase.Item> items = externalKnowledgeBase.quiz(question);
+                                String resp = gson.toJson(items);
+                                exchange.sendResponseHeaders(200, resp.getBytes().length);
+                                OutputStream os = exchange.getResponseBody();
+                                os.write(resp.getBytes());
+                                os.flush();
+                                os.close();
+                            }
+                        }
+                    }
+                }
+            } catch (IndexOutOfBoundsException e) {
+                exchange.sendResponseHeaders(400, 0);
+            } catch (Exception e) {
+                logger.error("API 出错", e);
+                exchange.sendResponseHeaders(500, 0);
+            }
+        });
         for (SessionConfig sessionCfg : configs) {
             LLMProvider llmProvider;
             try {

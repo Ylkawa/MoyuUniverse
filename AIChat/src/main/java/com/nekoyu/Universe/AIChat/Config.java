@@ -42,7 +42,7 @@ public class Config {
     }
 
     public static class ExternalKnowledgeBase {
-        String collection = "moyu_universe_ekb_memory";
+        String collection = "moyu_universe_aic_ekb";
         String vectorName = "vector";
         String provider = null;
         String embeddingProvider = null;
