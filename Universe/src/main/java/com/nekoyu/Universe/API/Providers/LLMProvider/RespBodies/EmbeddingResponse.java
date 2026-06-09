@@ -1,5 +1,6 @@
 package com.nekoyu.Universe.API.Providers.LLMProvider.RespBodies;
 
+import java.util.ArrayList;
 import java.util.List;
 
 public class EmbeddingResponse {
@@ -9,6 +10,11 @@ public class EmbeddingResponse {
     public Usage usage;
     public String id;
 
+    public EmbeddingResponse() {
+        usage = new Usage();
+        data = new ArrayList<>();
+    }
+
     public static class Embedding {
         public double[] embedding;
         public int index;
@@ -16,7 +22,7 @@ public class EmbeddingResponse {
     }
 
     public static class Usage {
-        public String prompt_tokens;
-        public String total_tokens;
+        public int prompt_tokens = 0;
+        public int total_tokens = 0;
     }
 }

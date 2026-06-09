@@ -3,6 +3,7 @@ package com.nekoyu.universe.openaiadapter;
 import com.google.gson.Gson;
 import com.google.gson.JsonSyntaxException;
 import com.nekoyu.Universe.API.MessageChannel.MCMessage;
+import com.nekoyu.Universe.API.MessageChannel.MFChain;
 import com.nekoyu.Universe.API.MessageChannel.MessageField.ImageField;
 import com.nekoyu.Universe.API.MessageChannel.MessageField.MsgField;
 import com.nekoyu.Universe.API.MessageChannel.MessageField.TextField;
@@ -25,6 +26,9 @@ import org.slf4j.Logger;
 import javax.annotation.Nullable;
 import java.io.IOException;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -106,11 +110,12 @@ public class OpenAIChannel extends LLMProvider implements Embedding {
             if (m.sender.equals(extensionalArgs.assistant)) message.role = "assistant";
             else if (m.getMetainfo("role") instanceof String role) {
                 message.role = role;
-                if (role.equals("assistant") && m.getMetainfo("Tool_calls") instanceof Tool_call[] toolCalls)  {
+                if (role.equals("assistant") && m.getMetainfo("Tool_calls") instanceof Tool_call[] toolCalls) {
                     if (m.getMetainfo("reasoning") instanceof String s) message.reasoning_content = s; // 回传思考链
                     message.tool_calls = toolCalls;
                 }
-                if (role.equals("tool") && m.getMetainfo("tool_call_id") instanceof String tool_call_id) message.tool_call_id = tool_call_id;
+                if (role.equals("tool") && m.getMetainfo("tool_call_id") instanceof String tool_call_id)
+                    message.tool_call_id = tool_call_id;
             } else message.role = "user";
             for (MsgField mf : m.messageFields) {
                 if (!(Objects.equals(message.role, "assistant") && Objects.equals(speciallyAdaptation, "dashscope")) && mf instanceof ImageField imageField) {
@@ -215,7 +220,8 @@ public class OpenAIChannel extends LLMProvider implements Embedding {
                             responding.choices[0].message.content += "\n\n";
                             if (bufferCallback != null) bufferCallback.onCompletion("\n\n");
                         }
-                        if (responding.choices[0].message.reasoning_content != null) assistantMcm.putMetainfo("reasoning", responding.choices[0].message.reasoning_content); // 存放思考链
+                        if (responding.choices[0].message.reasoning_content != null)
+                            assistantMcm.putMetainfo("reasoning", responding.choices[0].message.reasoning_content); // 存放思考链
                         Tool_call[] toolCalls = tool_calls.values().toArray(new Tool_call[0]);
                         assistantMcm.putMetainfo("Tool_calls", toolCalls);
                         boolean next = false;
@@ -268,7 +274,8 @@ public class OpenAIChannel extends LLMProvider implements Embedding {
                         if (next)
                             return completions(ml, completionsRequest, llmFunctions, bufferCallback, extensionalArgs, timeout - 1, responding);
                     }
-                    case "unfinished" -> logger.error("出现意外导致请求未完成\nRaw req: {}", gson.toJson(completionsRequest));
+                    case "unfinished" ->
+                            logger.error("出现意外导致请求未完成\nRaw req: {}", gson.toJson(completionsRequest));
                 }
             } else {
                 logger.error("Error Req Body {}", gson.toJson(completionsRequest));
@@ -298,28 +305,60 @@ public class OpenAIChannel extends LLMProvider implements Embedding {
 
     @Override
     public EmbeddingResponse embedding(EmbeddingRequest embeddingRequest) {
-        // 翻译
-        OAIEmbeddingRequest request = new OAIEmbeddingRequest();
-        if (embeddingRequest.model != null && !embeddingRequest.model.isEmpty()) request.model = embeddingRequest.model;
-        else request.model = defaultEmbeddingModel;
-        if (request.model == null) throw new RuntimeException("Model not defined");
-        for (var msg : embeddingRequest.message) {
-            request.input.add(msg.toString());
+        int batchesNum = (int) Math.ceil((double) embeddingRequest.message.size() / 10); // 分几次请求完成
+        EmbeddingResponse finalResponse = new EmbeddingResponse();
+        Map<Integer, EmbeddingResponse.Embedding> results = new ConcurrentHashMap<>();
+        ExecutorService executor = Executors.newFixedThreadPool(batchesNum);
+        for (int i = 0; i <= batchesNum - 1; i++) {
+            int finalI = i;
+            executor.submit(() -> {
+                int startAt = finalI * 10; // 从第几个开始取
+                int endAt = Math.min(finalI * 10 + 10, embeddingRequest.message.size()); // 从第几个结束
+                // 翻译
+                OAIEmbeddingRequest request = new OAIEmbeddingRequest();
+                List<MFChain> subList = embeddingRequest.message.subList(startAt, endAt);
+                if (embeddingRequest.model != null && !embeddingRequest.model.isEmpty())
+                    request.model = embeddingRequest.model;
+                else request.model = defaultEmbeddingModel;
+                if (request.model == null) throw new RuntimeException("Model not defined");
+                for (var msg : subList) {
+                    request.input.add(msg.toString());
+                }
+                Request req = new Request.Builder()
+                        .url(baseurl + "/embeddings")
+                        .addHeader("Authorization", "Bearer " + apikey)
+                        .post(RequestBody.create(gson.toJson(request), MediaType.get("application/json; charset=utf-8")))
+                        .build();
+                String string = null;
+                try (Response resp = client.newCall(req).execute()) {
+                    string = resp.body().string();
+                    if (!resp.isSuccessful()) throw new IOException("Unexpected code " + string);
+                    EmbeddingResponse embeddingResponse = gson.fromJson(string, EmbeddingResponse.class);
+                    for (var data : embeddingResponse.data) {
+                        data.index += startAt;
+                        results.put(data.index, data);
+                    }
+                    if (finalResponse.object == null) finalResponse.object = embeddingResponse.object;
+                    if (finalResponse.id == null) finalResponse.id = embeddingResponse.id;
+                    if (embeddingResponse.usage != null)
+                        finalResponse.usage.prompt_tokens += embeddingResponse.usage.prompt_tokens; // 无言了，百炼的 API 默认不返回 usage
+                } catch (IOException e) {
+                    logger.error("operation failed with resp body: {}", string, e);
+                }
+            });
         }
-        Request req = new Request.Builder()
-                .url(baseurl + "/embeddings")
-                .addHeader("Authorization", "Bearer " + apikey)
-                .post(RequestBody.create(gson.toJson(request), MediaType.get("application/json; charset=utf-8")))
-                .build();
-        try (Response resp = client.newCall(req).execute()) {
-            if (!resp.isSuccessful()) throw new IOException("Unexpected code " + resp.body().string());
-            String string = resp.body().string();
-            EmbeddingResponse embeddingResponse = gson.fromJson(string, EmbeddingResponse.class);
-            if (embeddingResponse.usage != null) logger.info("Embedding-Usage: {} Tokens", embeddingResponse.usage.prompt_tokens); // 无言了，百炼的 API 默认不返回 usage
-            return embeddingResponse;
-        } catch (IOException e) {
-            throw new RuntimeException(e);
+        executor.shutdown();
+        try {
+            while (!executor.awaitTermination(30, TimeUnit.SECONDS)) {
+                logger.warn("Still awaiting responses");
+            }
+            for (int i = 0; i < embeddingRequest.message.size(); i++) {
+                finalResponse.data.add(results.get(i));
+            }
+        } catch (InterruptedException e) {
+            logger.error(e.getMessage(), e);
         }
+        return finalResponse;
     }
 
     public void setApiKey(String apikey) {
