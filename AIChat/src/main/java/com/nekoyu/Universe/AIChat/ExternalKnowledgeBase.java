@@ -41,6 +41,7 @@ public class ExternalKnowledgeBase {
     private final QdrantClient client;
     private final String vectorName;
     private final Config.ExternalKnowledgeBase ekbCfg;
+    private final List<String> researchTarget = new ArrayList<>();
 
     public ExternalKnowledgeBase(Config.Qdrant config, Config.ExternalKnowledgeBase ekbCfg) throws IOException {
         this.ekbCfg = ekbCfg;
@@ -58,18 +59,18 @@ public class ExternalKnowledgeBase {
             throw new RuntimeException("LLM provider not found");
         }
         try {
-            fetcherProvider = ekbCfg.webCatchAgent.fetcher.provider != null ? (LLMProvider) Universe.Providers.get(ekbCfg.webCatchAgent.fetcher.provider) : llmProvider;
+            fetcherProvider = ekbCfg.webCatch.fetcher.provider != null ? (LLMProvider) Universe.Providers.get(ekbCfg.webCatch.fetcher.provider) : llmProvider;
         } catch (ClassCastException e) {
             logger.error("Fetcher LLMProvider invalid");
         }
         try {
-            parserProvider = ekbCfg.webCatchAgent.parser.provider != null ? (LLMProvider) Universe.Providers.get(ekbCfg.webCatchAgent.parser.provider) : llmProvider;
+            parserProvider = ekbCfg.webCatch.parser.provider != null ? (LLMProvider) Universe.Providers.get(ekbCfg.webCatch.parser.provider) : llmProvider;
         } catch (ClassCastException e) {
             logger.error("Parser LLMProvider invalid");
         }
 
-        if (ekbCfg.webCatchAgent.fetcher.model == null) ekbCfg.webCatchAgent.fetcher.model = ekbCfg.model;
-        if (ekbCfg.webCatchAgent.parser.model == null) ekbCfg.webCatchAgent.parser.model = ekbCfg.model;
+        if (ekbCfg.webCatch.fetcher.model == null) ekbCfg.webCatch.fetcher.model = ekbCfg.model;
+        if (ekbCfg.webCatch.parser.model == null) ekbCfg.webCatch.parser.model = ekbCfg.model;
 
         try {
             var builder = QdrantGrpcClient.newBuilder(
@@ -92,6 +93,22 @@ public class ExternalKnowledgeBase {
         } catch (InterruptedException | ExecutionException e) {
             throw new RuntimeException(e);
         }
+        new Thread(() -> {
+            while (true) {
+                try {
+                    if (researchTarget.isEmpty()) researchTarget.wait();
+                    boolean first = true;
+                    for (String target : researchTarget) {
+                        if (first || isUpdateInNeed(query(target, null))) webCatch(target);
+                        first = false;
+                    }
+                } catch (InterruptedException e) {
+                    logger.error(e.getMessage());
+                } catch (IOException e) {
+                    logger.error(e.getMessage(), e);
+                }
+            }
+        });
     }
 
     /**
@@ -263,11 +280,11 @@ public class ExternalKnowledgeBase {
     }
 
     public void webCatch(@NotNull String quiz) throws IOException {
-        Assistant fetcher = new Assistant(this.fetcherProvider, ekbCfg.webCatchAgent.fetcher.model);
-        fetcher.setThinking(ekbCfg.webCatchAgent.fetcher.enable_thinking);
-        fetcher.setSystemPromptFirst(ekbCfg.webCatchAgent.fetcher.promptFirst);
-        fetcher.setSystemPromptLast(ekbCfg.webCatchAgent.fetcher.promptLast);
-        if (ekbCfg.webCatchAgent.fetcher.tools != null) for (String tool : ekbCfg.webCatchAgent.fetcher.tools) {
+        Assistant fetcher = new Assistant(this.fetcherProvider, ekbCfg.webCatch.fetcher.model);
+        fetcher.setThinking(ekbCfg.webCatch.fetcher.enable_thinking);
+        fetcher.setSystemPromptFirst(ekbCfg.webCatch.fetcher.promptFirst);
+        fetcher.setSystemPromptLast(ekbCfg.webCatch.fetcher.promptLast);
+        if (ekbCfg.webCatch.fetcher.tools != null) for (String tool : ekbCfg.webCatch.fetcher.tools) {
             AIChat.llmFunctions.get(tool).forEach(fetcher::addTool);
         }
         MessageList ml = new MessageList();
@@ -277,10 +294,10 @@ public class ExternalKnowledgeBase {
         CompletionsResponse fetcherResponse = fetcher.completions(ml, null);
         String fetchContent = fetcherResponse.choices[0].message.content; // 得到从互联网上总结出的内容
         // 格式化信息
-        Assistant parser = new Assistant(this.parserProvider, ekbCfg.webCatchAgent.parser.model);
-        parser.setThinking(ekbCfg.webCatchAgent.parser.enable_thinking);
-        parser.setSystemPromptFirst(ekbCfg.webCatchAgent.parser.promptFirst);
-        parser.setSystemPromptLast(ekbCfg.webCatchAgent.parser.promptLast);
+        Assistant parser = new Assistant(this.parserProvider, ekbCfg.webCatch.parser.model);
+        parser.setThinking(ekbCfg.webCatch.parser.enable_thinking);
+        parser.setSystemPromptFirst(ekbCfg.webCatch.parser.promptFirst);
+        parser.setSystemPromptLast(ekbCfg.webCatch.parser.promptLast);
         // 格式化信息不需要tools
         ml = new MessageList();
         ml.add(MCMessage.Builder()
@@ -308,6 +325,7 @@ public class ExternalKnowledgeBase {
         }
         builder.append("""
                 你需要保证知识条目不重复，如果预先想新增的知识条目与原有的条目重复，请根据实际情况，酌情删除或修改原有的知识条目，再新增新的知识条目
+                [内容]必须明确包含知识描述的主体等完整信息，不能省略参数中提供过了的信息
                 输出严格遵循如下格式，且不输出其他多余内容，也不要对输出内容进行解释：
                 NEW ([参数]): 内容
                 UPDATE [条目编号] ([参数]): 内容
@@ -346,6 +364,15 @@ public class ExternalKnowledgeBase {
     public List<Item> quiz(String quiz, List<Float> vector) throws IOException {
         List<Item> items = query(vector, null);
         // Check if the database needs to be updated.
+        boolean updateInNeed = isUpdateInNeed(items);
+        if (updateInNeed) {
+            researchTarget.add(quiz);
+            researchTarget.notifyAll();
+        }
+        return items;
+    }
+
+    private static boolean isUpdateInNeed(List<Item> items) {
         boolean updateInNeed = true;
         for (var item : items) {
             // 计算知识“有效分数”，考虑衰减
@@ -362,12 +389,7 @@ public class ExternalKnowledgeBase {
                 break;
             }
         }
-        if (!updateInNeed) {
-            return items;
-        }
-        webCatch(quiz);
-        items = query(vector, null); // fetch again
-        return items;
+        return updateInNeed;
     }
 
     public static class Item {

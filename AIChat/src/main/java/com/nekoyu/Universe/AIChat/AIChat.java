@@ -89,9 +89,6 @@ public class AIChat extends Law {
         try (Reader reader = new InputStreamReader(
                 new FileInputStream("./config/AIChat/config.json"), StandardCharsets.UTF_8)) {
             globalCfg = gson.fromJson(reader, Config.class);
-//            if (globalCfg.SQLConfig != null && globalCfg.SQLConfig.url != null) {
-//                MEMORY = new Memory(globalCfg.SQLConfig);
-//            }
             if (globalCfg.SQLConfig != null) {
                 HikariConfig config = new HikariConfig();
                 config.setDriverClassName("com.mysql.cj.jdbc.Driver");
@@ -147,7 +144,7 @@ public class AIChat extends Law {
                         llmFunctions.put("ExternalKnowledgeBase",
                                 new LLMFunction(
                                         "QueryExternalKnowledgeBase",
-                                        "查询知识库中内容，当知识库中未能找到有用的知识条目时会当场从互联网查找并得到相关信息",
+                                        "查询知识库中内容，需要调用外部知识时应当优先从知识库查询而非直接联网",
                                         new LLMFunction.Parameters("object", new String[]{"question"}, new String[]{"question"}),
                                         args -> {
                                             try {
@@ -404,6 +401,10 @@ public class AIChat extends Law {
                                 os.write(bytes);
                                 os.flush();
                                 os.close();
+                            }
+                            case "update" -> {
+                                exchange.sendResponseHeaders(200, 0);
+                                externalKnowledgeBase.webCatch(question);
                             }
                         }
                     }

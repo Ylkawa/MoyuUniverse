@@ -360,7 +360,7 @@ public class OpenAIChannel extends LLMProvider implements Embedding {
         } catch (InterruptedException e) {
             logger.error(e.getMessage(), e);
         }
-        if (finalResponse.usage.prompt_tokens != 0) logger.info("Completions-Usage: ({}) {} Tokens", model, finalResponse.usage.prompt_tokens);
+        if (finalResponse.usage.prompt_tokens != 0) logger.info("Embedding-Usage: ({}) {} Tokens", model, finalResponse.usage.prompt_tokens);
         return finalResponse;
     }
 

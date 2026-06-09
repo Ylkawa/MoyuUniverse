@@ -50,7 +50,7 @@ public class Config {
         String embeddingModel = null;
         int dimension = 0;
         boolean enable_thinking = false;
-        WebCatch webCatchAgent = new WebCatch();
+        WebCatch webCatch = new WebCatch();
 
         public static class WebCatch {
             Fetcher fetcher = new Fetcher();
@@ -60,7 +60,7 @@ public class Config {
                 String provider = null;
                 String model = null;
                 List<String> tools;
-                String promptFirst = "你是一个负责从互联网获取信息并整理结果的助手，请你合理利用工具，尽力找到用户询问的问题的答案，与顺便查到的其他知识点不分层级不分先后地一并输出出来，要求明确说明每一条信息的来源网址、可信度、预计知识在多长时间内有效";
+                String promptFirst = "你是一个负责从互联网获取信息并整理结果的助手，请你合理利用工具，尽力找到用户询问的问题的答案，与顺便查到的其他知识点不分层级不分先后地一并输出出来，要求明确说明每一条信息的来源网址、可信度、预计知识在多长时间内有效，尽量采用多来源保证信息可靠";
                 String promptLast = "";
                 boolean enable_thinking = false;
             }

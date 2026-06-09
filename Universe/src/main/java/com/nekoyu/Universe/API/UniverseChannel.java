@@ -23,6 +23,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class UniverseChannel {
@@ -143,6 +144,9 @@ public class UniverseChannel {
 
         try {
             httpServer = HttpServer.create(new InetSocketAddress(httpPort), 0);
+            httpServer.setExecutor(Executors.newFixedThreadPool(
+                    Math.max(4, Runtime.getRuntime().availableProcessors() * 2)
+            ));
             httpServer.start();
         } catch (IOException e) {
             throw new RuntimeException(e);
