@@ -307,6 +307,10 @@ public class OpenAIChannel extends LLMProvider implements Embedding {
     public EmbeddingResponse embedding(EmbeddingRequest embeddingRequest) {
         int batchesNum = (int) Math.ceil((double) embeddingRequest.message.size() / 10); // 分几次请求完成
         EmbeddingResponse finalResponse = new EmbeddingResponse();
+        String model;
+        if (embeddingRequest.model != null && !embeddingRequest.model.isEmpty())
+            model = embeddingRequest.model;
+        else model = defaultEmbeddingModel;
         Map<Integer, EmbeddingResponse.Embedding> results = new ConcurrentHashMap<>();
         ExecutorService executor = Executors.newFixedThreadPool(batchesNum);
         for (int i = 0; i <= batchesNum - 1; i++) {
@@ -317,9 +321,7 @@ public class OpenAIChannel extends LLMProvider implements Embedding {
                 // 翻译
                 OAIEmbeddingRequest request = new OAIEmbeddingRequest();
                 List<MFChain> subList = embeddingRequest.message.subList(startAt, endAt);
-                if (embeddingRequest.model != null && !embeddingRequest.model.isEmpty())
-                    request.model = embeddingRequest.model;
-                else request.model = defaultEmbeddingModel;
+                request.model = model;
                 if (request.model == null) throw new RuntimeException("Model not defined");
                 for (var msg : subList) {
                     request.input.add(msg.toString());
@@ -358,6 +360,7 @@ public class OpenAIChannel extends LLMProvider implements Embedding {
         } catch (InterruptedException e) {
             logger.error(e.getMessage(), e);
         }
+        if (finalResponse.usage.prompt_tokens != 0) logger.info("Completions-Usage: ({}) {} Tokens", model, finalResponse.usage.prompt_tokens);
         return finalResponse;
     }
 

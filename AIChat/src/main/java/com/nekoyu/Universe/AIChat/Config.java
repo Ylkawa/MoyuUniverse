@@ -62,6 +62,7 @@ public class Config {
                 List<String> tools;
                 String promptFirst = "你是一个负责从互联网获取信息并整理结果的助手，请你合理利用工具，尽力找到用户询问的问题的答案，与顺便查到的其他知识点不分层级不分先后地一并输出出来，要求明确说明每一条信息的来源网址、可信度、预计知识在多长时间内有效";
                 String promptLast = "";
+                boolean enable_thinking = false;
             }
 
             public static class Parser {
@@ -69,6 +70,7 @@ public class Config {
                 String model = null;
                 String promptFirst = "你是一个负责维护知识库的助手，请你按照用户指引完成知识库的整理工作";
                 String promptLast = "";
+                boolean enable_thinking = false;
             }
         }
     }

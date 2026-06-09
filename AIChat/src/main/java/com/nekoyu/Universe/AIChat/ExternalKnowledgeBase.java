@@ -68,6 +68,9 @@ public class ExternalKnowledgeBase {
             logger.error("Parser LLMProvider invalid");
         }
 
+        if (ekbCfg.webCatchAgent.fetcher.model == null) ekbCfg.webCatchAgent.fetcher.model = ekbCfg.model;
+        if (ekbCfg.webCatchAgent.parser.model == null) ekbCfg.webCatchAgent.parser.model = ekbCfg.model;
+
         try {
             var builder = QdrantGrpcClient.newBuilder(
                     config.address,
@@ -261,7 +264,7 @@ public class ExternalKnowledgeBase {
 
     public void webCatch(@NotNull String quiz) throws IOException {
         Assistant fetcher = new Assistant(this.fetcherProvider, ekbCfg.webCatchAgent.fetcher.model);
-        fetcher.setThinking(true);
+        fetcher.setThinking(ekbCfg.webCatchAgent.fetcher.enable_thinking);
         fetcher.setSystemPromptFirst(ekbCfg.webCatchAgent.fetcher.promptFirst);
         fetcher.setSystemPromptLast(ekbCfg.webCatchAgent.fetcher.promptLast);
         if (ekbCfg.webCatchAgent.fetcher.tools != null) for (String tool : ekbCfg.webCatchAgent.fetcher.tools) {
@@ -275,7 +278,7 @@ public class ExternalKnowledgeBase {
         String fetchContent = fetcherResponse.choices[0].message.content; // 得到从互联网上总结出的内容
         // 格式化信息
         Assistant parser = new Assistant(this.parserProvider, ekbCfg.webCatchAgent.parser.model);
-        parser.setThinking(true);
+        parser.setThinking(ekbCfg.webCatchAgent.parser.enable_thinking);
         parser.setSystemPromptFirst(ekbCfg.webCatchAgent.parser.promptFirst);
         parser.setSystemPromptLast(ekbCfg.webCatchAgent.parser.promptLast);
         // 格式化信息不需要tools
@@ -354,7 +357,7 @@ public class ExternalKnowledgeBase {
             float effectiveScore = item.score - (ageDays * 0.01f * item.decayRate);
 
             // 判断阈值，既考虑关联度，也考虑是否过期
-            if (effectiveScore > 0.8f) {
+            if (effectiveScore > 0.6f) {
                 updateInNeed = false;  // 已存在相似且有效的知识
                 break;
             }
