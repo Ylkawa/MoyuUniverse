@@ -223,10 +223,20 @@ public class OpenAIChannel extends LLMProvider implements Embedding {
                             if (tool_call.function.arguments.startsWith("\""))
                                 tool_call.function.arguments = tool_call.function.arguments.substring(1, tool_call.function.arguments.length() - 1); // 不知道为什么DeepSeek喜欢在arg前后各加一个"，删了
                             logger.debug(gson.toJson(tool_call));
-                            LLMFunction llmFunction = llmFunctions.get(tool_call.function.name);
                             MCMessage toolMcm = new MCMessage();
                             toolMcm.putMetainfo("role", "tool");
                             toolMcm.putMetainfo("tool_call_id", tool_call.id);
+                            if (llmFunctions == null) {
+                                logger.error("LLMFunctions is null and LLM is trying to call a undefined function {}", tool_call.function.name);
+                                toolMcm.messageFields.add(new TextField("None function exist, stop calling functions."));
+                                return completions(ml, completionsRequest, llmFunctions, bufferCallback, extensionalArgs, timeout - 1, responding);
+                            }
+                            LLMFunction llmFunction = llmFunctions.get(tool_call.function.name);
+                            if (llmFunction == null) {
+                                logger.error("LLM is trying to call a undefined function {}", tool_call.function.name);
+                                toolMcm.messageFields.add(new TextField("You're trying to call a undefined function " + tool_call.function.name + "."));
+                                return completions(ml, completionsRequest, llmFunctions, bufferCallback, extensionalArgs, timeout - 1, responding);
+                            }
                             Map args = null;
                             try {
                                 args = gson.fromJson(tool_call.function.arguments, HashMap.class);
