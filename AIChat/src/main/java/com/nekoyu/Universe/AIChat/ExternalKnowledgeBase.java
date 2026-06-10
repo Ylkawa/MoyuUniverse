@@ -102,9 +102,9 @@ public class ExternalKnowledgeBase {
                     // 解决列表中的问题
                     if (isUpdateInNeed(query(target, null))) {
                         logger.info("知识库正在研究 \"{}\"", target);
-                        webCatch(target); // 以防万一同一个问题前面已经得到答案了，而进行不必要的多余学习
+                        if (isUpdateInNeed(query(target, null))) constructItems(fetch(target)); // 只有判定需要更新时才继续更新
                         logger.info("\"{}\" 研究完成", target);
-                    } else logger.info("");
+                    } else logger.info("跳过对 {} 的研究", target);
                 } catch (InterruptedException e) {
                     logger.error(e.getMessage());
                 } catch (IOException e) {
@@ -284,7 +284,14 @@ public class ExternalKnowledgeBase {
         ).get();
     }
 
-    public void webCatch(@NotNull String quiz) throws IOException {
+    /**
+     * 返回fetcher从互联网抓取得到的信息
+     *
+     * @param quiz 问题
+     * @return 非结构化的自然语言，如果需要入库则需要constructItems
+     * @throws IOException 抓取过程中遇到的问题
+     */
+    public String fetch(@NotNull String quiz) throws IOException {
         Assistant fetcher = new Assistant(this.fetcherProvider, ekbCfg.webCatch.fetcher.model);
         fetcher.setThinking(ekbCfg.webCatch.fetcher.enable_thinking);
         fetcher.setSystemPromptFirst(ekbCfg.webCatch.fetcher.promptFirst);
@@ -297,7 +304,12 @@ public class ExternalKnowledgeBase {
                 .add(new TextField(quiz))
                 .build());
         CompletionsResponse fetcherResponse = fetcher.completions(ml, null);
-        String fetchContent = fetcherResponse.choices[0].message.content; // 得到从互联网上总结出的内容
+        // 得到从互联网上总结出的内容
+        return fetcherResponse.choices[0].message.content;
+    }
+
+    public void constructItems(String fetchContent) throws IOException {
+        MessageList ml;
         // 格式化信息
         Assistant parser = new Assistant(this.parserProvider, ekbCfg.webCatch.parser.model);
         parser.setThinking(ekbCfg.webCatch.parser.enable_thinking);
@@ -365,6 +377,32 @@ public class ExternalKnowledgeBase {
         parseResponse = parser.completions(ml, null);
         parseContent = parseResponse.choices[0].message.content;
         applyParseContent(parseContent, existItems.values().stream().toList());
+    }
+
+    /**
+     * 面向LLM的搜索功能，不保证返回的数据格式
+     * @return 知识库中查到结果时返回结构化数据，没查到结果时返回 Fetcher从互联网上找到的粗加工信息
+     */
+    public String search(String quiz) throws IOException {
+        List<Item> items = query(embedding(List.of(quiz)).get(0), null);
+        if (!items.isEmpty()) {
+            StringBuilder result = new StringBuilder();
+            if (isUpdateInNeed(items)) researchTarget.offer(quiz);
+            for (var item : items) {
+                result.append(item.toString()).append("\n");
+            }
+            return result.toString();
+        } else {
+            String fetchResult = fetch(quiz);
+            new Thread(() -> {
+                try {
+                    constructItems(fetchResult);
+                } catch (IOException e) {
+                    logger.error("", e);
+                }
+            }).start();
+            return fetchResult;
+        }
     }
 
     public List<Item> quiz(String quiz) throws IOException {

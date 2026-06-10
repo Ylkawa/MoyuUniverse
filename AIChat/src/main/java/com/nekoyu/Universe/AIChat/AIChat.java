@@ -22,7 +22,6 @@ import com.nekoyu.Universe.Universe;
 import com.nekoyu.Universe.Utils.Time;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
-import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -35,8 +34,6 @@ import java.net.URLClassLoader;
 import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
-import java.sql.PreparedStatement;
-import java.sql.SQLException;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -148,10 +145,7 @@ public class AIChat extends Law {
                                         new LLMFunction.Parameters("object", new String[]{"question"}, new String[]{"question"}),
                                         args -> {
                                             try {
-                                                List<ExternalKnowledgeBase.Item> items = externalKnowledgeBase.quiz(args.get("question"));
-                                                StringBuilder builder = new StringBuilder();
-                                                items.forEach(item -> builder.append(item.toString()).append("\n"));
-                                                return builder.toString();
+                                                return externalKnowledgeBase.search(args.get("question"));
                                             } catch (IOException e) {
                                                 logger.error("模型主动调用外部知识库时出错", e);
                                                 return "调用失败" + e.getMessage();
@@ -404,7 +398,7 @@ public class AIChat extends Law {
                             }
                             case "update" -> {
                                 exchange.sendResponseHeaders(200, 0);
-                                externalKnowledgeBase.webCatch(question);
+                                externalKnowledgeBase.constructItems(externalKnowledgeBase.fetch(question));
                             }
                         }
                     }
