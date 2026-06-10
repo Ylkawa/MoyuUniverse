@@ -24,7 +24,9 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.util.*;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.ExecutionException;
+import java.util.concurrent.LinkedBlockingQueue;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -41,7 +43,7 @@ public class ExternalKnowledgeBase {
     private final QdrantClient client;
     private final String vectorName;
     private final Config.ExternalKnowledgeBase ekbCfg;
-    private final List<String> researchTarget = new ArrayList<>();
+    private final BlockingQueue<String> researchTarget = new LinkedBlockingQueue<>();
 
     public ExternalKnowledgeBase(Config.Qdrant config, Config.ExternalKnowledgeBase ekbCfg) throws IOException {
         this.ekbCfg = ekbCfg;
@@ -96,27 +98,29 @@ public class ExternalKnowledgeBase {
         new Thread(() -> {
             while (true) {
                 try {
-                    if (researchTarget.isEmpty()) researchTarget.wait();
-                    boolean first = true;
-                    for (String target : researchTarget) {
-                        if (first || isUpdateInNeed(query(target, null))) webCatch(target);
-                        first = false;
-                    }
+                    String target = researchTarget.take();
+                    // 解决列表中的问题
+                    if (isUpdateInNeed(query(target, null))) {
+                        logger.info("知识库正在研究 \"{}\"", target);
+                        webCatch(target); // 以防万一同一个问题前面已经得到答案了，而进行不必要的多余学习
+                        logger.info("\"{}\" 研究完成", target);
+                    } else logger.info("");
                 } catch (InterruptedException e) {
                     logger.error(e.getMessage());
                 } catch (IOException e) {
                     logger.error(e.getMessage(), e);
                 }
             }
-        });
+        }).start();
     }
 
     /**
      * 只读查询数据库，注意调用这个方法查询会计算向量并产生消耗
-     * @param question
-     * @param conditions
-     * @return
-     * @throws IOException
+     *
+     * @param question   问题
+     * @param conditions 限定查询范围
+     * @return 相关的知识条目
+     * @throws IOException 查询中发生的意外情况
      */
     public List<Item> query(String question, @Nullable Conditions conditions) throws IOException {
         List<Float> vector = embedding(List.of(question)).get(0);
@@ -125,7 +129,8 @@ public class ExternalKnowledgeBase {
 
     /**
      * 只读查询知识库
-     * @param vector 问题的向量
+     *
+     * @param vector     问题的向量
      * @param conditions 限定查询范围
      * @return 相关的知识条目
      * @throws IOException 查询中发生的意外情况
@@ -301,7 +306,8 @@ public class ExternalKnowledgeBase {
         // 格式化信息不需要tools
         ml = new MessageList();
         ml.add(MCMessage.Builder()
-                .add(new TextField("请根据如下信息，逐行输出能从中提炼出的信息"))
+                .add(new TextField("""
+                        你是一个负责维护知识库的助手。请根据输入内容，把信息提炼成可以直接入库的知识条目。每一行只输出一条知识，内容必须简洁、明确、可检索。每条都要尽量包含主体、主题、常见问法、别名、核心结论。不要输出来源过程、版本讨论过程、解释过程、无关扩展。对于配队、阵容、攻略、角色推荐类内容，必须明确写出结论和关键组合。只输出纯文本，每条知识占一行，不要输出标题、编号、列表符号、markdown。"""))
                 .build());
         ml.add(MCMessage.Builder()
                 .add(new TextField(fetchContent))
@@ -313,41 +319,52 @@ public class ExternalKnowledgeBase {
             strings.add(s.trim());
         }
         List<List<Float>> vectors = embedding(strings); // 计算向量
-        List<Item> existItems = new ArrayList<>(); // 并找回相关的知识条目
+        Map<UUID, Item> existItems = new HashMap<>(); // 并找回相关的知识条目
         for (var vector : vectors) {
-            existItems.addAll(query(vector, null));
+            for (var item : query(vector, null)) {
+                existItems.putIfAbsent(item.id, item);
+            }
         }
         int i = 0;
         StringBuilder builder = new StringBuilder().append("先前知识库中已经存在的相关条目：\n");
-        for (var item : existItems) {
+        for (var item : existItems.values()) {
             i++; // 从一开始往后面递增编号
             builder.append("[").append(i).append("] ").append(item.toString()).append("\n");
         }
         builder.append("""
-                你需要保证知识条目不重复，如果预先想新增的知识条目与原有的条目重复，请根据实际情况，酌情删除或修改原有的知识条目，再新增新的知识条目
-                [内容]必须明确包含知识描述的主体等完整信息，不能省略参数中提供过了的信息
-                输出严格遵循如下格式，且不输出其他多余内容，也不要对输出内容进行解释：
-                NEW ([参数]): 内容
-                UPDATE [条目编号] ([参数]): 内容
+                你是一个负责维护知识库去重与更新的助手。
+                
+                现在给你的是：
+                1. 待入库的新知识条目
+                2. 先前知识库中已存在的相似条目
+                
+                你的任务是判断这些条目之间的关系，并输出最终操作指令。
+                
+                判定规则：
+                1. 如果主体相同、主题相同、核心结论相同，只是表述不同，视为重复，优先 UPDATE 旧条目，不要重复 NEW。
+                2. 如果主体相同、主题相同，但新内容补充了新的关键条件、替代方案、限制或更准确结论，视为更新，使用 UPDATE。
+                3. 如果主体相同，但知识点不同，属于互补信息，保留原条目并 NEW 新条目。
+                4. 如果旧条目已过时、结论被新版本替代，使用 DELETE 删除旧条目，再 NEW 新条目。
+                5. 不要因为措辞相近就误判为重复；要看核心结论是否一致。
+                6. 不要丢失主体、主题、核心结论这三项信息。
+                7. 如果无法确定是否重复，优先保留信息更完整的一条，并尽量用 UPDATE 合并。
+                
+                输出格式严格为：
+                NEW (subject="...", topic="...", aliases="...", confidence=..., importance=..., decayRate=...): 内容
+                UPDATE [条目编号] (confidence=...): 内容
                 DELETE [条目编号]
                 
-                例如：
-                NEW (subject="崩坏星穹铁道", source="https://zh.moegirl.org.cn/%E4%B9%B1%E7%A0%B4", confidence=0.9, importance=0.7, decayRate=1.0): 乱破 是 崩坏星穹铁道 的智识命途虚数属性角色
-                UPDATE [39] (confidence=0.95): 绝区零3.0版本后支持光线追踪和DLSS功能
-                DELETE [63]
-                
-                注意 每一个指令必须在各行独立，且互不影响
-                各参数含义：
-                subject：填游戏、作品名，不包含特殊字符
-                confidence：内容的可信度，范围0.1~1.0
-                importance：内容的重要程度，范围0.1~1.0
-                decayRate：内容的过期速度，比如内容属于持续更新中的作品时，应当设置较高的值，声明内容过期较快，范围0.1~2.0""");
+                注意：
+                - 每一条指令必须单独一行。
+                - 不要输出解释。
+                - 不要输出额外说明。
+                - 不要把多个操作合并成一条。""");
         ml.add(new MCMessage.Builder()
                 .add(new TextField(builder.toString()))
                 .build());
         parseResponse = parser.completions(ml, null);
         parseContent = parseResponse.choices[0].message.content;
-        applyParseContent(parseContent, existItems);
+        applyParseContent(parseContent, existItems.values().stream().toList());
     }
 
     public List<Item> quiz(String quiz) throws IOException {
@@ -356,7 +373,8 @@ public class ExternalKnowledgeBase {
 
     /**
      * 查询知识库内容，并尽量自动修补缺失或过期的知识
-     * @param quiz 问题
+     *
+     * @param quiz   问题
      * @param vector 问题的向量
      * @return 相关知识条目
      * @throws IOException 查询中发生的错误
@@ -366,8 +384,7 @@ public class ExternalKnowledgeBase {
         // Check if the database needs to be updated.
         boolean updateInNeed = isUpdateInNeed(items);
         if (updateInNeed) {
-            researchTarget.add(quiz);
-            researchTarget.notifyAll();
+            researchTarget.offer(quiz);
         }
         return items;
     }
@@ -551,6 +568,8 @@ public class ExternalKnowledgeBase {
         if (!toInsert.isEmpty()) {
             insert(toInsert);
         }
+
+        logger.info("知识库联网抓取结果：新增/修改条目 {} 个  删除条目 {} 个", toInsert.size(), toDelete.size());
     }
 
     private Item buildItemFromParams(String params, String content) {

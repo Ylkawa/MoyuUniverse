@@ -144,7 +144,7 @@ public class AIChat extends Law {
                         llmFunctions.put("ExternalKnowledgeBase",
                                 new LLMFunction(
                                         "QueryExternalKnowledgeBase",
-                                        "查询知识库中内容，需要调用外部知识时应当优先从知识库查询而非直接联网",
+                                        "查询知识库中内容，需要调用外部知识时应当优先从知识库查询而非直接联网，参数为需要知道的问题，必须是完整的句子",
                                         new LLMFunction.Parameters("object", new String[]{"question"}, new String[]{"question"}),
                                         args -> {
                                             try {
