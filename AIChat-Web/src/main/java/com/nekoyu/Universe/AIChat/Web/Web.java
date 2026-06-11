@@ -85,8 +85,7 @@ public class Web extends AIChatPlugin {
 
         LLMFunction visitUrl = new LLMFunction("VisitWebPage",
                 """
-                        获取部分受支持的网页中的信息（内容会被精简）仅支持哔哩哔哩视频和用户空间、YouTube视频、Wikipedia、萌娘百科词条
-                        例: https://www.bilibili.com/video/BV1SC4y1J7De , https://space.bilibili.com/497423225 , https://www.youtube.com/watch?v=EkREmibZp3E""",
+                        获取部分受支持的网页中的信息（内容会被精简）仅支持哔哩哔哩视频和用户空间、YouTube视频、Wikipedia词条、萌娘百科词条、Biligame Wiki词条""",
                 new LLMFunction.Parameters("object", new String[]{"URL"}, new String[]{"URL"}),
                 args -> visitUrl(args.get("URL")));
         registerFunction("VisitURL", visitUrl);
@@ -331,8 +330,8 @@ public class Web extends AIChatPlugin {
                     }
                 }
             }
-            if (domain.endsWith("moegirl.org.cn") || domain.endsWith("wikipedia.org")) {
-                return com.nekoyu.Universe.AIChat.Web.MediaWiki.Client.query(com.nekoyu.Universe.AIChat.Web.MediaWiki.Client.rewriteUrl(url)).toString();
+            if (domain.endsWith("moegirl.org.cn") || domain.endsWith("wikipedia.org") || domain.endsWith("wiki.biligame.com")) {
+                return com.nekoyu.Universe.AIChat.Web.MediaWiki.Client.query(url).toString();
             }
             return "不支持的链接类型, 请停止访问此链接";
         }
