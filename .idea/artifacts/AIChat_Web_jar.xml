@@ -4,6 +4,7 @@
     <root id="archive" name="AIChat-Web.jar">
       <element id="module-output" name="AIChat-Web" />
       <element id="file-copy" path="$PROJECT_DIR$/AIChat-Web/src/main/resources/plug.properties" />
+      <element id="extracted-dir" path="$MAVEN_REPOSITORY$/org/jsoup/jsoup/1.16.1/jsoup-1.16.1.jar" path-in-jar="/" />
     </root>
   </artifact>
 </component>

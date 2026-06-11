@@ -11,13 +11,22 @@ import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.LLMFunction;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
+import org.jsoup.Jsoup;
+import org.jsoup.nodes.Document;
+import org.openqa.selenium.JavascriptExecutor;
+import org.openqa.selenium.chrome.ChromeOptions;
+import org.openqa.selenium.remote.RemoteWebDriver;
+import org.openqa.selenium.support.ui.WebDriverWait;
 
 import java.io.FileNotFoundException;
 import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.net.InetSocketAddress;
+import java.net.MalformedURLException;
 import java.net.Proxy;
+import java.net.URL;
+import java.time.Duration;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -333,7 +342,30 @@ public class Web extends AIChatPlugin {
             if (domain.endsWith("moegirl.org.cn") || domain.endsWith("wikipedia.org") || domain.endsWith("wiki.biligame.com")) {
                 return com.nekoyu.Universe.AIChat.Web.MediaWiki.Client.query(url).toString();
             }
-            return "不支持的链接类型, 请停止访问此链接";
+
+            if (config.Selenium == null) return "不支持的链接类型, 请停止访问此链接";
+            // 特殊适配未命中，Fallback到直接返回网页内容
+            try {
+                RemoteWebDriver driver = new RemoteWebDriver(
+                        new URL(config.Selenium.URL),
+                        new ChromeOptions()
+                );
+                driver.get(url);
+                WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(30));
+
+                wait.until(webDriver ->
+                        ((JavascriptExecutor) webDriver)
+                                .executeScript("return document.readyState")
+                                .equals("complete")
+                );
+
+                Document document = Jsoup.parse(driver.getPageSource());
+                String text = document.body().text();
+                if (text.length() < 5000) return text;
+                else return text.substring(0, 5000);
+            } catch (MalformedURLException e) {
+                logger.error(e.getMessage());
+            }
         }
         return "未知原因导致访问失败";
     }

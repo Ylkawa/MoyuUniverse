@@ -10,6 +10,7 @@ public class Config {
     String SearchEngineID;
     String SerpApiKey;
     SearchParam SearchParam = new SearchParam();
+    SeleniumConfig Selenium = null;
 
     public Config() {
         EnableProxy = false;
@@ -24,5 +25,9 @@ public class Config {
         public String language;
         public String country;
         public String location;
+    }
+
+    public static class SeleniumConfig {
+        String URL;
     }
 }
