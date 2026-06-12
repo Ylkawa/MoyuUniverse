@@ -7,6 +7,8 @@ import com.nekoyu.Universe.AIChat.Web.BiliBiliAPI.*;
 import com.nekoyu.Universe.AIChat.Web.SearchAPI.SearchResult;
 import com.nekoyu.Universe.AIChat.Web.YouTubeAPI.CommentThreadListResponse;
 import com.nekoyu.Universe.AIChat.Web.YouTubeAPI.VideoListResponse;
+import com.nekoyu.Universe.API.MessageChannel.MFChain;
+import com.nekoyu.Universe.API.MessageChannel.MessageField.TextField;
 import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.LLMFunction;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
@@ -88,15 +90,21 @@ public class Web extends AIChatPlugin {
         var dst = new LLMFunction("WebSearch",
                 "全网搜索内容，仅当用户要求或者要回答的内容具有时效性时使用",
                 new LLMFunction.Parameters("object", new String[]{"搜索词"}, new String[]{"搜索词"}),
-                args -> search(args.get("搜索词"))
+                args -> {
+                    MFChain mfc = new MFChain();
+                    mfc.add(new TextField(search(args.get("搜索词"))));
+                    return mfc;
+                }
         );
         registerFunction("WebSearch", dst);
 
         LLMFunction visitUrl = new LLMFunction("VisitWebPage",
                 """
-                        获取部分受支持的网页中的信息（内容会被精简）仅支持哔哩哔哩视频和用户空间、YouTube视频、Wikipedia词条、萌娘百科词条、Biligame Wiki词条""",
+                        获取部分受支持的网页中的信息（内容会被精简）仅支持哔哩哔哩视频和用户空间、YouTube视频、Wikipedia词条、萌娘百科词条、Biligame Wiki词条、游民星空Handbook""",
                 new LLMFunction.Parameters("object", new String[]{"URL"}, new String[]{"URL"}),
-                args -> visitUrl(args.get("URL")));
+                args -> {
+                    return visitUrl(args.get("URL"));
+                });
         registerFunction("VisitURL", visitUrl);
     }
 
@@ -123,7 +131,7 @@ public class Web extends AIChatPlugin {
         }
     }
 
-    private String visitUrl(String url) {
+    private MFChain visitUrl(String url) {
         Matcher matcher0 = Pattern.compile("^https?://([^/]+)(?:/.*)?$").matcher(url);
         if (matcher0.find()) {
             String domain = matcher0.group(1);
@@ -180,32 +188,32 @@ public class Web extends AIChatPlugin {
                                     } else {
                                         sb.append("\n\n无法获取评论区");
                                     }
-                                    return sb.toString();
+                                    return new MFChain(sb.toString());
                                 }
                                 case -400 -> {
-                                    return bv + "请求错误";
+                                    return new MFChain(bv + "请求错误");
                                 }
                                 case -403 -> {
-                                    return bv + "权限不足";
+                                    return new MFChain(bv + "权限不足");
                                 }
                                 case -404 -> {
-                                    return bv + "不存在";
+                                    return new MFChain(bv + "不存在");
                                 }
                                 case 62002 -> {
-                                    return bv + "不可见";
+                                    return new MFChain(bv + "不可见");
                                 }
                                 case 62004 -> {
-                                    return bv + "审核中";
+                                    return new MFChain(bv + "审核中");
                                 }
                                 case 62012 -> {
-                                    return bv + "仅 UP主 自己可见";
+                                    return new MFChain(bv + "仅 UP主 自己可见");
                                 }
                                 default -> {
-                                    return bv + "未知响应码" + info.code;
+                                    return new MFChain(bv + "意外响应码" + info.code);
                                 }
                             }
                         } catch (IOException e) {
-                            return "请求失败" + e.getMessage();
+                            return new MFChain("请求失败" + e.getMessage());
                         }
                     }
                 }
@@ -293,22 +301,22 @@ public class Web extends AIChatPlugin {
                                 }
                             }
                             logger.debug(respBuilder.toString());
-                            return respBuilder.toString();
+                            return new MFChain(respBuilder.toString());
                         } catch (IOException e) {
-                            return "未知错误: " + e.getMessage();
+                            return new MFChain("未知错误: " + e.getMessage());
                         } catch (NullPointerException e) {
-                            return "获取信息失败!";
+                            return new MFChain("获取信息失败!");
                         }
                     }
                 }
                 case "www.youtube.com" -> {
-                    if (ytbClient == null) return "YouTube 访问能力未激活";
+                    if (ytbClient == null) return new MFChain("YouTube 访问能力未激活");
                     Matcher matcher = Pattern.compile("v=([A-Za-z0-9_-]{11})").matcher(url);
                     if (matcher.find()) {
                         try {
                             String videoId = matcher.group(1);
                             VideoListResponse vlr = ytbClient.getVideoListResponse(videoId);
-                            if (vlr.items.length == 0) return videoId + " 不是有效的YouTube视频";
+                            if (vlr.items.length == 0) return new MFChain(videoId + " 不是有效的YouTube视频");
                             StringBuilder respBuilder = new StringBuilder();
                             respBuilder.append("[YouTube视频信息] {");
                             var video = vlr.items[0];
@@ -332,18 +340,27 @@ public class Web extends AIChatPlugin {
                                 respBuilder.append("\n\n无法获取评论区信息");
                             }
                             respBuilder.append("\n}");
-                            return respBuilder.toString();
+                            return new MFChain(respBuilder.toString());
                         } catch (IOException e) {
-                            return "调用 API 时出错" + e.getMessage();
+                            return new MFChain("调用 API 时出错" + e.getMessage());
+                        }
+                    }
+                }
+                case "www.gamersky.com" -> {
+                    if (url.contains(".com/handbook")) {
+                        try {
+                            return GamerSky.Handbook.fetchContent(url);
+                        } catch (IOException e) {
+                            throw new RuntimeException(e);
                         }
                     }
                 }
             }
             if (domain.endsWith("moegirl.org.cn") || domain.endsWith("wikipedia.org") || domain.endsWith("wiki.biligame.com")) {
-                return com.nekoyu.Universe.AIChat.Web.MediaWiki.Client.query(url).toString();
+                return new MFChain(com.nekoyu.Universe.AIChat.Web.MediaWiki.Client.query(url).toString());
             }
 
-            if (config.Selenium == null) return "不支持的链接类型, 请停止访问此链接";
+            if (config.Selenium == null) return new MFChain("不支持的链接类型, 请停止访问此链接");
             // 特殊适配未命中，Fallback到直接返回网页内容
             try {
                 RemoteWebDriver driver = new RemoteWebDriver(
@@ -361,12 +378,12 @@ public class Web extends AIChatPlugin {
 
                 Document document = Jsoup.parse(driver.getPageSource());
                 String text = document.body().text();
-                if (text.length() < 5000) return text;
-                else return text.substring(0, 5000);
+                if (text.length() < 5000) return new MFChain(text);
+                else return new MFChain(text.substring(0, 5000));
             } catch (MalformedURLException e) {
                 logger.error(e.getMessage());
             }
         }
-        return "未知原因导致访问失败";
+        return new MFChain("未知原因导致访问失败");
     }
 }

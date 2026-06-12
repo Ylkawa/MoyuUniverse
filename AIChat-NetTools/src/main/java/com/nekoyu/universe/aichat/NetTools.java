@@ -2,6 +2,8 @@ package com.nekoyu.universe.aichat;
 
 import com.nekoyu.Universe.AIChat.AIChat;
 import com.nekoyu.Universe.AIChat.AIChatPlugin;
+import com.nekoyu.Universe.API.MessageChannel.MFChain;
+import com.nekoyu.Universe.API.MessageChannel.MessageField.TextField;
 import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.LLMFunction;
 import okhttp3.HttpUrl;
 import okhttp3.OkHttpClient;
@@ -31,9 +33,13 @@ public class NetTools extends AIChatPlugin {
                                     .build())
                             .build();
                     try (Response response = client.newCall(req).execute()) {
-                        return response.body().string();
+                        MFChain mfc = new MFChain();
+                        mfc.add(new TextField(response.body().string()));
+                        return mfc;
                     } catch (IOException e) {
-                        return "查询失败: " + e.getMessage();
+                        MFChain mfc = new MFChain();
+                        mfc.add(new TextField("查询失败: " + e.getMessage()));
+                        return mfc;
                     }
                 })
                 .build());
@@ -52,9 +58,13 @@ public class NetTools extends AIChatPlugin {
                                     .build())
                             .build();
                     try (Response response = client.newCall(req).execute()) {
-                        return response.body().string();
+                        MFChain mfc = new MFChain();
+                        mfc.add(new TextField(response.body().string()));
+                        return mfc;
                     } catch (IOException e) {
-                        return "查询失败: " + e.getMessage();
+                        MFChain mfc = new MFChain();
+                        mfc.add(new TextField("查询失败: " + e.getMessage()));
+                        return mfc;
                     }
                 })
                 .build()

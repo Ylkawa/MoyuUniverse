@@ -1,6 +1,7 @@
 package com.nekoyu.Universe.API.MessageChannel;
 
 import com.nekoyu.Universe.API.MessageChannel.MessageField.MsgField;
+import com.nekoyu.Universe.API.MessageChannel.MessageField.TextField;
 
 import java.util.LinkedList;
 import java.util.concurrent.ExecutorService;
@@ -53,5 +54,9 @@ public class MFChain extends LinkedList<MsgField> {
     @Override
     public String toString() {
         return solveAll(false);
+    }
+
+    public MFChain(String text) {
+        add(new TextField(text));
     }
 }

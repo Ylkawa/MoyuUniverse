@@ -1,6 +1,7 @@
 package com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies;
 
 import com.google.gson.annotations.SerializedName;
+import com.nekoyu.Universe.API.MessageChannel.MFChain;
 
 import java.util.*;
 
@@ -124,6 +125,6 @@ public class LLMFunction {
     }
 
     public interface Callback {
-        String callback(Map<String, String> args);
+        MFChain callback(Map<String, String> args);
     }
 }

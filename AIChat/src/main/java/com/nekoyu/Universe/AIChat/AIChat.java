@@ -132,7 +132,9 @@ public class AIChat extends Law {
                                         for (Memory.Item item : queryResult) {
                                             builder.append(item.toString()).append("\n");
                                         }
-                                        return builder.toString();
+                                        MFChain result = new MFChain();
+                                        result.add(new TextField(builder.toString()));
+                                        return result;
                                     } catch (IOException e) {
                                         throw new RuntimeException(e);
                                     }
@@ -145,10 +147,14 @@ public class AIChat extends Law {
                                         new LLMFunction.Parameters("object", new String[]{"question"}, new String[]{"question"}),
                                         args -> {
                                             try {
-                                                return externalKnowledgeBase.search(args.get("question"));
+                                                MFChain result = new MFChain();
+                                                result.add(new TextField(externalKnowledgeBase.search(args.get("question"))));
+                                                return result;
                                             } catch (IOException e) {
+                                                MFChain result = new MFChain();
+                                                result.add(new TextField("调用失败" + e.getMessage()));
                                                 logger.error("模型主动调用外部知识库时出错", e);
-                                                return "调用失败" + e.getMessage();
+                                                return result;
                                             }
                                         })
                         );
@@ -454,7 +460,9 @@ public class AIChat extends Law {
                                     StringBuilder sb = new StringBuilder();
                                     try {
                                         subAgent.completions(ml, sb::append);
-                                        return sb.toString();
+                                        MFChain mfc = new MFChain();
+                                        mfc.add(new TextField(sb.toString()));
+                                        return mfc;
                                     } catch (IOException e) {
                                         throw new RuntimeException(e);
                                     }

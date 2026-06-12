@@ -256,17 +256,19 @@ public class OpenAIChannel extends LLMProvider implements Embedding {
                                 }
                             }
                             if (args != null) args.putAll(extensionalArgs.placeholders);
-                            String ctt;
-                            if (args == null)
-                                ctt = "未知原因的工具调用错误";
-                            else try {
+                            MFChain ctt;
+                            if (args == null) {
+                                ctt = new MFChain();
+                                ctt.add(new TextField("未知原因的工具调用错误"));
+                            } else try {
                                 ctt = llmFunction.callback.callback(args);
                             } catch (Exception e) {
-                                ctt = "调用工具失败: " + e.getMessage();
+                                ctt = new MFChain();
+                                ctt.add(new TextField("调用工具失败: " + e.getMessage()));
                             }
                             if (ctt != null) {
                                 next = true;
-                                toolMcm.messageFields.add(new TextField(ctt));
+                                toolMcm.messageFields = ctt;
                             }
                             ml.add(toolMcm);
                             logger.info("Assistant 调用了 {}，参数 {}", tool_call.function.name, tool_call.function.arguments);
