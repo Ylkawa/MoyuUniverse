@@ -375,39 +375,39 @@ public class AIChat extends Law {
                         }
                         exchange.sendResponseHeaders(400, 0);
                     }
-                    case "ekb" -> {
-                        String question = URLDecoder.decode(way[4], StandardCharsets.UTF_8);
-                        exchange.getResponseHeaders().set(
-                                "Content-Type",
-                                "application/json; charset=UTF-8"
-                        );
-                        switch (way[3]) {
-                            case "query" -> {
-                                List<ExternalKnowledgeBase.Item> items = externalKnowledgeBase.query(question, null);
-                                String resp = gson.toJson(items);
-                                byte[] bytes = resp.getBytes(StandardCharsets.UTF_8);
-                                exchange.sendResponseHeaders(200, bytes.length);
-                                OutputStream os = exchange.getResponseBody();
-                                os.write(bytes);
-                                os.flush();
-                                os.close();
-                            }
-                            case "quiz" -> {
-                                List<ExternalKnowledgeBase.Item> items = externalKnowledgeBase.quiz(question);
-                                String resp = gson.toJson(items);
-                                byte[] bytes = resp.getBytes(StandardCharsets.UTF_8);
-                                exchange.sendResponseHeaders(200, bytes.length);
-                                OutputStream os = exchange.getResponseBody();
-                                os.write(bytes);
-                                os.flush();
-                                os.close();
-                            }
-                            case "update" -> {
-                                exchange.sendResponseHeaders(200, 0);
-                                externalKnowledgeBase.constructItems(externalKnowledgeBase.fetch(question));
-                            }
-                        }
-                    }
+//                    case "ekb" -> {
+//                        String question = URLDecoder.decode(way[4], StandardCharsets.UTF_8);
+//                        exchange.getResponseHeaders().set(
+//                                "Content-Type",
+//                                "application/json; charset=UTF-8"
+//                        );
+//                        switch (way[3]) {
+//                            case "query" -> {
+//                                List<ExternalKnowledgeBase.Item> items = externalKnowledgeBase.query(question, null);
+//                                String resp = gson.toJson(items);
+//                                byte[] bytes = resp.getBytes(StandardCharsets.UTF_8);
+//                                exchange.sendResponseHeaders(200, bytes.length);
+//                                OutputStream os = exchange.getResponseBody();
+//                                os.write(bytes);
+//                                os.flush();
+//                                os.close();
+//                            }
+//                            case "quiz" -> {
+//                                List<ExternalKnowledgeBase.Item> items = externalKnowledgeBase.quiz(question);
+//                                String resp = gson.toJson(items);
+//                                byte[] bytes = resp.getBytes(StandardCharsets.UTF_8);
+//                                exchange.sendResponseHeaders(200, bytes.length);
+//                                OutputStream os = exchange.getResponseBody();
+//                                os.write(bytes);
+//                                os.flush();
+//                                os.close();
+//                            }
+//                            case "update" -> {
+//                                exchange.sendResponseHeaders(200, 0);
+//                                externalKnowledgeBase.constructItems(externalKnowledgeBase.fetch(question));
+//                            }
+//                        }
+//                    }
                 }
             } catch (IndexOutOfBoundsException e) {
                 exchange.sendResponseHeaders(400, 0);

@@ -360,7 +360,7 @@ public class Web extends AIChatPlugin {
                 return new MFChain(com.nekoyu.Universe.AIChat.Web.MediaWiki.Client.query(url).toString());
             }
 
-            if (config.Selenium == null) return new MFChain("不支持的链接类型, 请停止访问此链接");
+            if (config.Selenium == null) return new MFChain("不支持的链接类型, 请停止访问此链接，只允许访问支持的页面");
             // 特殊适配未命中，Fallback到直接返回网页内容
             try {
                 RemoteWebDriver driver = new RemoteWebDriver(

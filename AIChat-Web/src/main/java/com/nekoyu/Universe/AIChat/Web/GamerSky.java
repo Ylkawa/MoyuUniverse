@@ -64,7 +64,7 @@ public class GamerSky {
                 if (!element.text().isEmpty()) mfc.add(new TextField(element.text() + "\n"));
             }
             if (element.tag().toString().equals("a") && element.attr("href").endsWith(".jpg")) {
-                mfc.add(new ImageField(new URL(element.attr("href"))));
+                mfc.add(new ImageField(new URL(element.attr("href").split("\\?")[1])));
             }
         }
     }

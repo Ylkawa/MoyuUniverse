@@ -271,7 +271,7 @@ public class OpenAIChannel extends LLMProvider implements Embedding {
                                 toolMcm.messageFields = ctt;
                             }
                             ml.add(toolMcm);
-                            logger.info("Assistant 调用了 {}，参数 {}", tool_call.function.name, tool_call.function.arguments);
+                            logger.info("{} 调用了 {}，参数 {}", completionsRequest.model, tool_call.function.name, tool_call.function.arguments);
                         }
                         if (next)
                             return completions(ml, completionsRequest, llmFunctions, bufferCallback, extensionalArgs, timeout - 1, responding);
