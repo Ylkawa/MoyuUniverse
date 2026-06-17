@@ -373,7 +373,6 @@ public class AIChat extends Law {
                                 os.write(buffer, 0, len);
                             }
                         }
-                        exchange.sendResponseHeaders(400, 0);
                     }
 //                    case "ekb" -> {
 //                        String question = URLDecoder.decode(way[4], StandardCharsets.UTF_8);
@@ -408,6 +407,7 @@ public class AIChat extends Law {
 //                            }
 //                        }
 //                    }
+                    default -> exchange.sendResponseHeaders(400, 0);
                 }
             } catch (IndexOutOfBoundsException e) {
                 exchange.sendResponseHeaders(400, 0);

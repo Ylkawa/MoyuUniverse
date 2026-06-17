@@ -68,8 +68,10 @@ public class Web extends AIChatPlugin {
                 ytbClient = new com.nekoyu.Universe.AIChat.Web.YouTubeAPI.Client(config.GoogleAPIKey);
             ytbClient.setProxy(proxy);
             switch (config.SearchProvider) {
-                case "SerpApiGoogle" -> searchClient = new com.nekoyu.Universe.AIChat.Web.SearchAPI.SerpApi.GoogleSearch.Client(config.SerpApiKey, proxy);
-                case "Google" -> searchClient = new com.nekoyu.Universe.AIChat.Web.SearchAPI.Google.Client(config.GoogleAPIKey, config.SearchEngineID); // 废了但是还是写一下
+                case "SerpApiGoogle" ->
+                        searchClient = new com.nekoyu.Universe.AIChat.Web.SearchAPI.SerpApi.GoogleSearch.Client(config.SerpApiKey, proxy);
+                case "Google" ->
+                        searchClient = new com.nekoyu.Universe.AIChat.Web.SearchAPI.Google.Client(config.GoogleAPIKey, config.SearchEngineID); // 废了但是还是写一下
             }
             searchClient.setSearchParam(config.SearchParam);
         } catch (FileNotFoundException e) {
@@ -100,7 +102,7 @@ public class Web extends AIChatPlugin {
 
         LLMFunction visitUrl = new LLMFunction("VisitWebPage",
                 """
-                        获取部分受支持的网页中的信息（内容会被精简）仅支持哔哩哔哩视频和用户空间、YouTube视频、Wikipedia词条、萌娘百科词条、Biligame Wiki词条、游民星空Handbook""",
+                        获取部分受支持的网页中的信息（内容会被精简）仅支持哔哩哔哩视频和用户空间、YouTube视频、Wikipedia词条、萌娘百科词条、Biligame Wiki词条、游民星空Handbook、米游社文章，访问其他链接会被拒绝""",
                 new LLMFunction.Parameters("object", new String[]{"URL"}, new String[]{"URL"}),
                 args -> {
                     return visitUrl(args.get("URL"));
@@ -350,6 +352,34 @@ public class Web extends AIChatPlugin {
                     if (url.contains(".com/handbook")) {
                         try {
                             return GamerSky.Handbook.fetchContent(url);
+                        } catch (IOException e) {
+                            throw new RuntimeException(e);
+                        }
+                    }
+                }
+                case "www.miyoushe.com" -> {
+                    Pattern pattern = Pattern.compile("^https://www.miyoushe.com/(?<Game>\\w+)/article/(?<PostId>\\d+)");
+                    Matcher matcher = pattern.matcher(url);
+                    if (matcher.find()) {
+                        String game = matcher.group("Game");
+                        int postId = Integer.parseInt(matcher.group("PostId"));
+                        int gameId = -1;
+                        switch (game) {
+                            case "bh3" -> gameId = 1;
+                            case "ys" -> gameId = 2;
+                            case "bh2" -> gameId = 3;
+                            case "wd" -> gameId = 4;
+                            case "dby" -> gameId = 5;
+                            case "sr" -> gameId = 6;
+                            case "zzz" -> gameId = 8;
+                            case "hna" -> gameId = 9;
+                            case "planet" -> gameId = 10;
+                        }
+                        if (gameId != -1) try {
+                            Miyoushe.Post post = Miyoushe.fetchPost(gameId, postId);
+                            MFChain result = new MFChain(post.title);
+                            result.addAll(post.content);
+                            return result;
                         } catch (IOException e) {
                             throw new RuntimeException(e);
                         }

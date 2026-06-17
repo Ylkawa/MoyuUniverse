@@ -1,5 +1,6 @@
 package com.nekoyu.Universe.API.MessageChannel;
 
+import com.nekoyu.Universe.API.MessageChannel.MessageField.ImageField;
 import com.nekoyu.Universe.API.MessageChannel.MessageField.MsgField;
 import com.nekoyu.Universe.API.MessageChannel.MessageField.TextField;
 
@@ -58,5 +59,24 @@ public class MFChain extends LinkedList<MsgField> {
 
     public MFChain(String text) {
         add(new TextField(text));
+    }
+
+    public static class Builder {
+        MFChain mfChain;
+        public Builder() {
+            mfChain = new MFChain();
+        }
+        public void text(String text) {
+            this.mfChain.add(new TextField(text));
+        }
+        public void text(TextField textField) {
+            this.mfChain.add(textField);
+        }
+        public void image(ImageField image) {
+            this.mfChain.add(image);
+        }
+        public MFChain build() {
+            return mfChain;
+        }
     }
 }
