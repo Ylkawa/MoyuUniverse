@@ -22,6 +22,7 @@ public class SearchResult {
         public URL link = null;
         public String title = null;
         public String snippet = null;
+        public List<Extension> extensions = new ArrayList<Extension>();
     }
 
     public static class SiteItem extends Item {
@@ -35,6 +36,14 @@ public class SearchResult {
             public String title;
             public URL link;
         }
+    }
+
+    public static class Extension {
+        public String type;
+        public URL link;
+        public String text;
+        public String description;
+        public boolean extended;
     }
 
     public static class LocationItem extends Item {

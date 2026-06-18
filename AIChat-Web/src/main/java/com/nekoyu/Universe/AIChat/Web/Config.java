@@ -9,6 +9,8 @@ public class Config {
     boolean EnableYouTubeAPI;
     String SearchEngineID;
     String SerpApiKey;
+    String BrightDataApiKey;
+    String BrightDataZone;
     SearchParam SearchParam = new SearchParam();
     SeleniumConfig Selenium = null;
 

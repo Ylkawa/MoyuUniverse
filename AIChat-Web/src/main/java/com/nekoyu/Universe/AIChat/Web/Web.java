@@ -72,6 +72,8 @@ public class Web extends AIChatPlugin {
                         searchClient = new com.nekoyu.Universe.AIChat.Web.SearchAPI.SerpApi.GoogleSearch.Client(config.SerpApiKey, proxy);
                 case "Google" ->
                         searchClient = new com.nekoyu.Universe.AIChat.Web.SearchAPI.Google.Client(config.GoogleAPIKey, config.SearchEngineID); // 废了但是还是写一下
+                case "BrightDataGoogle" ->
+                        searchClient = new com.nekoyu.Universe.AIChat.Web.SearchAPI.BrightData.GoogleSearch.Client(config.BrightDataApiKey, config.BrightDataZone);
             }
             searchClient.setSearchParam(config.SearchParam);
         } catch (FileNotFoundException e) {
@@ -125,6 +127,12 @@ public class Web extends AIChatPlugin {
                 sb.append("{\n");
                 sb.append("「").append(item.title).append("」 - ").append(item.link).append("\n");
                 sb.append("摘要: ").append(item.snippet).append("\n");
+                if (item.extensions != null) {
+                    sb.append("站内页面：\n");
+                    for (SearchResult.Extension extension : item.extensions) {
+                        sb.append(extension.text).append(" | ").append(extension.description).append(" | ").append(extension.link).append("\n");
+                    }
+                }
                 sb.append("}\n\n");
             }
             return sb.toString();
