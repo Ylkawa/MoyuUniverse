@@ -1,7 +1,5 @@
 package com.nekoyu.Universe.API.MessageChannel;
 
-import com.nekoyu.Universe.Universe;
-
 import javax.annotation.Nullable;
 import java.util.ArrayList;
 import java.util.List;
@@ -30,10 +28,10 @@ public class MCPost {
     }
 
     public void sendLike() {
-        Universe.MessageChannelManager.sendLikeToPost(sessionId);
+        MessageChannelManager.sendLikeToPost(sessionId);
     }
     public void reply(MFChain message) {
-        Universe.MessageChannelManager.replyPost(sessionId, message);
+        MessageChannelManager.replyPost(sessionId, message);
     }
 
     public String getLocationId() {

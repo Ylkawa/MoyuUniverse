@@ -31,7 +31,6 @@ import java.lang.reflect.InvocationTargetException;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.URLClassLoader;
-import java.net.URLDecoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.time.Instant;
@@ -425,7 +424,7 @@ public class AIChat extends Law {
                 continue;
             }
             boolean leading = (sessionCfg.PromptFirst + sessionCfg.PromptLast + globalCfg.PromptFirst + globalCfg.PromptLast).contains("%LEADING%");
-            Universe.MessageChannelManager.listenToSession(sessionCfg.SessionId, mcm -> {
+            MessageChannelManager.listenToSession(sessionCfg.SessionId, mcm -> {
                 Topic topic = activatingTopics.get(mcm.sessionId);
                 if (topic != null) topic.addMsg(mcm);
                 // 检测消息是否应当回复
@@ -433,7 +432,7 @@ public class AIChat extends Law {
                     if (topic == null) {
                         topic = new Topic(sessionCfg);
                         activatingTopics.put(mcm.sessionId, topic);
-                        MessageList ml = (MessageList) Universe.MessageChannelManager.getMessageHistory(sessionCfg.SessionId).clone();
+                        MessageList ml = (MessageList) MessageChannelManager.getMessageHistory(sessionCfg.SessionId).clone();
                         for (MCMessage m : ml) {
                             topic.addMsg(m);
                         }
@@ -569,7 +568,7 @@ public class AIChat extends Law {
                     }
                 }
             });
-            Universe.MessageChannelManager.listenToPost(sessionCfg.SessionId, mcp -> {
+            MessageChannelManager.listenToPost(sessionCfg.SessionId, mcp -> {
                 if (sessionCfg.Trigger.equals("every") || mcp.messageString.contains(sessionCfg.Keyword) || mcp.level >= 2) {
                     logger.info("接收到MCPost");
                     if (memory != null) {

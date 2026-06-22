@@ -4,9 +4,9 @@ import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.Multimap;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.nekoyu.Universe.API.MessageChannel.MessageChannelManager;
 import com.nekoyu.Universe.API.UniverseChannel;
 import com.nekoyu.Universe.LawsLoader.Law;
-import com.nekoyu.Universe.Universe;
 
 import java.io.*;
 import java.net.URLDecoder;
@@ -20,7 +20,6 @@ public class AliyunWebhook extends Law {
         .disableHtmlEscaping()
         .setPrettyPrinting()   // 可选，让 JSON 更好看
         .create();
-    ;
     Multimap<String, String> forwarding = ArrayListMultimap.create();
 
     @Override
@@ -78,7 +77,7 @@ public class AliyunWebhook extends Law {
                 message.append("\n").append(params.get("alertName")).append(": ").append(params.get("triggerLevel"));
                 for (String sessionId : forwarding.get(subpath)) {
                     if (sessionId == null || sessionId.isEmpty()) continue;
-                    Universe.MessageChannelManager.sendMessage(sessionId, message.toString());
+                    MessageChannelManager.sendMessage(sessionId, message.toString());
                     logMsg.append(" ").append(sessionId).append(";");
                 }
                 logger.info(logMsg.toString());

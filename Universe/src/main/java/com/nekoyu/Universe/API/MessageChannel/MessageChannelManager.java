@@ -6,6 +6,10 @@ import com.nekoyu.Universe.API.MessageChannel.Features.Administration;
 import com.nekoyu.Universe.API.MessageChannel.Features.PostChat;
 import com.nekoyu.Universe.API.MessageChannel.Features.SessionChat;
 import com.nekoyu.Universe.API.MessageChannel.MessageField.TextField;
+import com.nekoyu.Universe.API.MessageChannel.events.AddFriendRequest;
+import com.nekoyu.Universe.API.MessageChannel.events.AddGroupRequest;
+import com.nekoyu.Universe.API.MessageChannel.events.InviteGroupRequest;
+import com.nekoyu.Universe.API.MessageChannel.events.MCEvent;
 import com.nekoyu.Universe.Utils.ColorUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -15,34 +19,34 @@ import java.util.*;
 import java.util.regex.Pattern;
 
 public class MessageChannelManager {
-    int MESSAGE_LIST_MAX_SIZE = 20;
-    public Map<String, MessageChannel> MessageChannels = new HashMap<>();
-    Multimap<String, MCMListener> sessionListeners = ArrayListMultimap.create();
-    Multimap<String, MCPListener> postListeners = ArrayListMultimap.create();
-    Logger logger = LoggerFactory.getLogger(getClass());
-    Logger messagingLogger = LoggerFactory.getLogger("Messaging");
-    Map<String, MessageList> messageHistory = new HashMap<>();
+    static int MESSAGE_LIST_MAX_SIZE = 20;
+    static public Map<String, MessageChannel> MessageChannels = new HashMap<>();
+    static Multimap<String, MCMListener> sessionListeners = ArrayListMultimap.create();
+    static Multimap<String, MCPListener> postListeners = ArrayListMultimap.create();
+    public static Logger logger = LoggerFactory.getLogger(MessageChannelManager.class);
+    static Logger messagingLogger = LoggerFactory.getLogger("Messaging");
+    static Map<String, MessageList> messageHistory = new HashMap<>();
 
-    public void registerChannel(String id, MessageChannel mc) {
+    static public void registerChannel(String id, MessageChannel mc) {
         MessageChannels.put(id, mc);
     }
 
-    public MessageChannel getChannel(String id) {
+    static public MessageChannel getChannel(String id) {
         return MessageChannels.get(id);
     }
 
-    public void listenToSession(String regex, MCMListener mcmL) {
+    static public void listenToSession(String regex, MCMListener mcmL) {
         sessionListeners.put(regex, mcmL);
     }
 
-    public void listenToPost(String regex, MCPListener mcpL) {
+    static public void listenToPost(String regex, MCPListener mcpL) {
         postListeners.put(regex, mcpL);
     }
 
     /**
      * 处理接收到的消息
      */
-    public void onMessage(MessageChannel mc, MCMessage mcm) {
+    static public void onMessage(MessageChannel mc, MCMessage mcm) {
         if (mcm.sessionId != null && !mcm.sessionId.isEmpty()) {
             mcm.messageString = mcm.solveAll(false);
             String fg = "";
@@ -98,7 +102,7 @@ public class MessageChannelManager {
         }
     }
 
-    public void onMessage(MessageChannel mc, MCPost mcp) {
+    static public void onMessage(MessageChannel mc, MCPost mcp) {
         mcp.messageString = mcp.messageFields.toString();
         String preview = mcp.messageString.replaceAll("\n", " ");
         if (preview.length() > 20) preview = preview.substring(0, 20) + "...";
@@ -125,10 +129,20 @@ public class MessageChannelManager {
         }
     }
 
+    static public void onEvent(MessageChannel mc, MCEvent event) {
+        if (event instanceof AddFriendRequest addFriendRequest) {
+            logger.info("[好友申请] {}({}) : {}", addFriendRequest.requestor.getName(), addFriendRequest.requestor.getLocationId(), addFriendRequest.commit);
+        } else if (event instanceof AddGroupRequest addGroupRequest) {
+            logger.info("[加群申请] {}({}) : {}", addGroupRequest.requestor.getName(), addGroupRequest.requestor.getLocationId(), addGroupRequest.commit);
+        } else if (event instanceof InviteGroupRequest inviteGroupRequest) {
+            logger.info("[拉群申请] {}({}) : {}", inviteGroupRequest.requestor.getName(), inviteGroupRequest.requestor.getLocationId(), inviteGroupRequest.commit);
+        }
+    }
+
     /**
      * 处理消息撤回的事件
      */
-    public void onMessageRecall(String sessionId, long msgId) {
+    static public void onMessageRecall(String sessionId, long msgId) {
         MessageList messageList = messageHistory.get(sessionId);
         if (messageList == null) return;
         MCMessage mcm = messageList.getMsg(msgId);
@@ -140,7 +154,7 @@ public class MessageChannelManager {
     /**
      * 设置会话名称
      */
-    public void setSessionName(String sessionId, String name) throws UnsupportedAction {
+    static public void setSessionName(String sessionId, String name) throws UnsupportedAction {
         String[] split = sessionId.split(":");
         MessageChannel mc = MessageChannels.get(split[0]);
         if (mc == null) throw new UnsupportedAction("无此MessageChannel");
@@ -149,7 +163,7 @@ public class MessageChannelManager {
         } else throw new UnsupportedAction(mc.ID + " doesn't support administration");
     }
 
-    public void sendMessage(String sessionId, String message) {
+    static public void sendMessage(String sessionId, String message) {
         MFChain msg = new MFChain();
         msg.add(new TextField(message));
         sendMessage(sessionId, msg);
@@ -159,7 +173,7 @@ public class MessageChannelManager {
      * 发送消息
      * sessionId 必须为全局sessionId
      */
-    public void sendMessage(String sessionId, MFChain message) {
+    public static void sendMessage(String sessionId, MFChain message) {
         String[] target = sessionId.split(":");
         MessageChannel mc = getChannel(target[0]);
         if (mc == null) throw new RuntimeException("不存在此MessageChannel");
@@ -202,11 +216,11 @@ public class MessageChannelManager {
         } else throw new UnsupportedAction(mc.ID + " doesn't support session chat");
     }
 
-    public void replyPost(String sessionId, MFChain message) {
+    static public void replyPost(String sessionId, MFChain message) {
         String[] split = sessionId.split(":");
         if (getChannel(split[0]) instanceof PostChat pc) pc.replyPost(split[1], message);
     }
-    public void sendLikeToPost(String sessionId) {
+    static public void sendLikeToPost(String sessionId) {
         String[] split = sessionId.split(":", 2);
         if (getChannel(split[0]) instanceof PostChat pc) pc.sendLike(split[1]);
         else logger.warn("target channel is not support send like operation");
@@ -217,11 +231,11 @@ public class MessageChannelManager {
      * 返回的消息最大长度为20
      *
      */
-    public MessageList getMessageHistory(String sessionId) {
+    static public MessageList getMessageHistory(String sessionId) {
         return messageHistory.get(sessionId);
     }
 
-    public Session getSessionInfo(String sessionId) {
+    static public Session getSession(String sessionId) {
         String[] split = sessionId.split(":", 2);
         return getChannel(split[0]).getSession(split[1]);
     }

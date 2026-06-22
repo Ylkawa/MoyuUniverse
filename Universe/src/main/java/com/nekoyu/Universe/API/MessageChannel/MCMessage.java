@@ -1,12 +1,8 @@
 package com.nekoyu.Universe.API.MessageChannel;
 
 import com.nekoyu.Universe.API.MessageChannel.MessageField.MsgField;
-import com.nekoyu.Universe.Universe;
 
 import java.util.*;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.TimeUnit;
 
 public class MCMessage {
     public Session session;
@@ -29,7 +25,6 @@ public class MCMessage {
         sender = new Account();
         receiver = new Account();
         messageFields = new MFChain();
-        level = 0;
     }
 
     public static Builder Builder() {
@@ -55,11 +50,11 @@ public class MCMessage {
     }
 
     public void reply(String message) {
-        Universe.MessageChannelManager.sendMessage(sessionId, message);
+        MessageChannelManager.sendMessage(sessionId, message);
     }
 
     public void reply(MFChain message) {
-        Universe.MessageChannelManager.sendMessage(sessionId, message);
+        MessageChannelManager.sendMessage(sessionId, message);
     }
 
     public Object getMetainfo(String key) {

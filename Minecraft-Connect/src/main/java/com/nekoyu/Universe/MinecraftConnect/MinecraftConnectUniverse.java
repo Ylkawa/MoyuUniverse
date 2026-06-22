@@ -3,12 +3,10 @@ package com.nekoyu.Universe.MinecraftConnect;
 import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.Multimap;
 import com.nekoyu.Universe.API.*;
-import com.nekoyu.Universe.API.MessageChannel.MCMessage;
-import com.nekoyu.Universe.API.MessageChannel.MCPost;
 import com.nekoyu.Universe.API.MessageChannel.MCMListener;
+import com.nekoyu.Universe.API.MessageChannel.MessageChannelManager;
 import com.nekoyu.Universe.API.MessageChannel.MessageField.ImageField;
 import com.nekoyu.Universe.LawsLoader.Law;
-import com.nekoyu.Universe.Universe;
 import org.yaml.snakeyaml.Yaml;
 
 import java.awt.*;
@@ -89,7 +87,7 @@ public class MinecraftConnectUniverse extends Law implements UniverseListener {
 
                 UniverseChannel.broadcast(target, ucm);
             };
-            Universe.MessageChannelManager.listenToSession(entry.getKey(), mcl);
+            MessageChannelManager.listenToSession(entry.getKey(), mcl);
         }
     }
 
@@ -118,7 +116,7 @@ public class MinecraftConnectUniverse extends Law implements UniverseListener {
                     logger.warn("没有为 {} 定义有效的转发规则", planet.getID());
                 }
                 for (String value : defineOfForward) {
-                    Universe.MessageChannelManager.sendMessage(value, args.get("Joiner") + " 加入了服务器");
+                    MessageChannelManager.sendMessage(value, args.get("Joiner") + " 加入了服务器");
                 }
             }
             case "player_leave_game" -> {
@@ -126,7 +124,7 @@ public class MinecraftConnectUniverse extends Law implements UniverseListener {
                     logger.warn("没有为 {} 定义有效的转发规则", planet.getID());
                 }
                 for (String value : defineOfForward) {
-                    Universe.MessageChannelManager.sendMessage(value, args.get("Leaver") + " 退出了服务器");
+                    MessageChannelManager.sendMessage(value, args.get("Leaver") + " 退出了服务器");
                 }
             }
         }

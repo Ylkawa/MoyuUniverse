@@ -1,6 +1,7 @@
 package com.nekoyu.Universe.ColorGroupName;
 
 import com.google.gson.Gson;
+import com.nekoyu.Universe.API.MessageChannel.MessageChannelManager;
 import com.nekoyu.Universe.API.MessageChannel.UnsupportedAction;
 import com.nekoyu.Universe.API.PlaceHolder;
 import com.nekoyu.Universe.LawsLoader.Law;
@@ -61,7 +62,7 @@ public class ColorGroupName extends Law {
                     if (!sessionName.equals(currentName.get(entry.getKey()))) {
                         currentName.put(entry.getKey(), sessionName);
                         try {
-                            Universe.MessageChannelManager.setSessionName(entry.getKey(), sessionName);
+                            MessageChannelManager.setSessionName(entry.getKey(), sessionName);
                         } catch (UnsupportedAction e) {
                             logger.warn("{}: {}", e.getMessage(), entry.getKey());
                             keepAble = false;

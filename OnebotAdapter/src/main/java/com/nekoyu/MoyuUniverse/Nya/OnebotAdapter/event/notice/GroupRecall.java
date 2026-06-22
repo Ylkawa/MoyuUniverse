@@ -1,6 +1,4 @@
-package com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.event.Notices;
-
-import com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.event.Notice;
+package com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.event.notice;
 
 public class GroupRecall extends Notice {
     public long group_id;

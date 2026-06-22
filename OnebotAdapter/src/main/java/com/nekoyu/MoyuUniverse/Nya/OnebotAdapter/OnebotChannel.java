@@ -4,24 +4,26 @@ import com.google.gson.*;
 import com.google.gson.typeadapters.RuntimeTypeAdapterFactory;
 import com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.MsgFields.Image;
 import com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.MsgFields.Text;
-import com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.event.JsonMessages.JsonMessage;
-import com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.event.JsonMessages.com_tencent_miniapp_01;
-import com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.event.JsonMessages.com_tencent_miniapp_lua;
-import com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.event.JsonMessages.com_tencent_tuwen_lua;
-import com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.event.Message;
+import com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.event.message.JsonMessages.JsonMessage;
+import com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.event.message.JsonMessages.com_tencent_miniapp_01;
+import com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.event.message.JsonMessages.com_tencent_miniapp_lua;
+import com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.event.message.JsonMessages.com_tencent_tuwen_lua;
+import com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.event.message.Message;
 import com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.MsgFields.MessageSegment;
-import com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.event.Meta_Event;
-import com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.event.Notice;
-import com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.event.Notices.FriendRecall;
-import com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.event.Notices.GroupRecall;
+import com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.event.meta_event.Meta_Event;
+import com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.event.notice.Notice;
+import com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.event.notice.FriendRecall;
+import com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.event.notice.GroupRecall;
 import com.nekoyu.Universe.API.MessageChannel.*;
 import com.nekoyu.Universe.API.MessageChannel.Features.Administration;
+import com.nekoyu.Universe.API.MessageChannel.Features.SessionManagement;
 import com.nekoyu.Universe.API.MessageChannel.Features.PostChat;
 import com.nekoyu.Universe.API.MessageChannel.Features.SessionChat;
 import com.nekoyu.Universe.API.MessageChannel.MessageField.*;
 import com.nekoyu.Universe.API.MessageChannel.MessageField.TextField;
-import com.nekoyu.Universe.API.MessageSession;
-import com.nekoyu.Universe.Universe;
+import com.nekoyu.Universe.API.MessageChannel.events.AddGroupRequest;
+import com.nekoyu.Universe.API.MessageChannel.events.AddFriendRequest;
+import com.nekoyu.Universe.API.MessageChannel.events.InviteGroupRequest;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
@@ -39,11 +41,9 @@ import org.openqa.selenium.support.ui.WebDriverWait;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.awt.*;
 import java.io.IOException;
-import java.net.MalformedURLException;
-import java.net.URI;
-import java.net.URL;
+import java.net.*;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.*;
 import java.util.List;
@@ -51,7 +51,7 @@ import java.util.concurrent.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-public class OnebotChannel extends MessageChannel implements SessionChat, PostChat, Administration {
+public class OnebotChannel extends MessageChannel implements SessionChat, PostChat, Administration, SessionManagement {
     static final Gson gson;
     private static final ScheduledExecutorService scheduler =
             Executors.newSingleThreadScheduledExecutor();
@@ -93,16 +93,6 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
                 throw new RuntimeException(e);
             }
         }).start();
-    }
-
-    @Override
-    public MessageSession getChatSession(String sessionId) {
-        String[] sessionParam = sessionId.split("/", 2);
-        return switch (sessionParam[0]) {
-            case "private", "user" -> message -> sendPrivateMessage(sessionParam[1], message);
-            case "group" -> message -> sendGroupMessage(sessionParam[1], message);
-            default -> null;
-        };
     }
 
     private int sendGroupMessage(String id, LinkedList<MsgField> message) {
@@ -417,11 +407,41 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
                                     switch (notice.notice_type) {
                                         case "group_recall" -> {
                                             GroupRecall groupRecall = gson.fromJson(s, GroupRecall.class);
-                                            Universe.MessageChannelManager.onMessageRecall(ID + ":group/" + groupRecall.group_id, groupRecall.message_id);
+                                            MessageChannelManager.onMessageRecall(ID + ":group/" + groupRecall.group_id, groupRecall.message_id);
                                         }
                                         case "friend_recall" -> {
                                             FriendRecall friendRecall = gson.fromJson(s, FriendRecall.class);
-                                            Universe.MessageChannelManager.onMessageRecall(ID + ":private/" + friendRecall.user_id, friendRecall.message_id);
+                                            MessageChannelManager.onMessageRecall(ID + ":private/" + friendRecall.user_id, friendRecall.message_id);
+                                        }
+                                    }
+                                }
+                                case "request" -> {
+                                    var request = gson.fromJson(s, com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.event.request.Request.class);
+                                    switch (request.request_type) {
+                                        case "friend" -> { // 加好友请求
+                                            AddFriendRequest addFriendRequest = new AddFriendRequest();
+                                            addFriendRequest.requestor = (Account) getSession("user/" + request.user_id);
+                                            addFriendRequest.target = loginAccount;
+                                            addFriendRequest.commit = request.comment;
+                                            String eventId = "addFriend/" + URLEncoder.encode(request.flag, StandardCharsets.UTF_8);
+                                            broadcastEvent(eventId, addFriendRequest);
+                                        }
+                                        case "group" -> {
+                                            if (request.sub_type.equals("add")) { // 入群请求
+                                                AddGroupRequest addGroupRequest = new AddGroupRequest();
+                                                addGroupRequest.requestor = (Account) getSession("user/" + request.user_id);
+                                                addGroupRequest.target = (Group) getSession("group/" + request.group_id);
+                                                addGroupRequest.commit = request.comment;
+                                                String eventId = "addGroup/" + URLEncoder.encode(request.flag, StandardCharsets.UTF_8);
+                                                broadcastEvent(eventId, addGroupRequest);
+                                            } else if (request.sub_type.equals("invite")) { // 邀请入群
+                                                InviteGroupRequest inviteGroupRequest = new InviteGroupRequest();
+                                                inviteGroupRequest.requestor = (Account) getSession("user/" + request.user_id);
+                                                inviteGroupRequest.target = (Group) getSession("group/" + request.group_id);
+                                                inviteGroupRequest.commit = request.comment;
+                                                String eventId = "inviteGroup/" + URLEncoder.encode(request.flag, StandardCharsets.UTF_8);
+                                                broadcastEvent(eventId, inviteGroupRequest);
+                                            }
                                         }
                                     }
                                 }
@@ -429,8 +449,6 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
                                     return;
                                 }
                             }
-                        } catch (JsonSyntaxException ignored) {
-
                         } catch (Throwable e) {
                             logger.error(e.getMessage(), e);
                         }
@@ -456,7 +474,7 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
             }
         };
         wsConnection.connect();
-        Universe.MessageChannelManager.registerChannel(this.ID, this);
+        MessageChannelManager.registerChannel(this.ID, this);
     }
 
     @Override
@@ -606,6 +624,30 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
     public void repost(String sessionId, MFChain message) {
         String[] split = sessionId.split("/");
         if (qZone != null) qZone.addTask(new QZone.Task.RepostTask(split[split.length - 1], message));
+    }
+
+    @Override
+    public void approvalAddGroup(AddGroupRequest request, boolean agree, String reason) {
+        OBRequest obr = new OBRequest("set_group_add_request");
+        obr.params.put("approve", agree);
+        obr.params.put("flag", URLDecoder.decode(request.eventId.split("/")[1], StandardCharsets.UTF_8));
+        obr.params.put("reason", reason);
+        obr.params.put("sub_type", "add");
+    }
+
+    @Override
+    public void approvalAddFriend(AddFriendRequest request, boolean agree) {
+        OBRequest obr = new OBRequest("set_friend_add_request");
+        obr.params.put("approve", agree);
+        obr.params.put("flag", URLDecoder.decode(request.eventId.split("/")[1], StandardCharsets.UTF_8));
+    }
+
+    @Override
+    public void approvalInviteGroup(InviteGroupRequest request, boolean agree) {
+        OBRequest obr = new OBRequest("set_group_add_request");
+        obr.params.put("approve", agree);
+        obr.params.put("flag", URLDecoder.decode(request.eventId.split("/")[1], StandardCharsets.UTF_8));
+        obr.params.put("sub_type", "invite");
     }
 
     private interface Callback {

@@ -1,11 +1,8 @@
 package com.nekoyu.Universe;
 
-import com.nekoyu.Universe.API.MessageChannel.MessageChannelManager;
-import com.nekoyu.Universe.API.MessageChannel.MessageField.ImageField;
 import com.nekoyu.Universe.API.MessageChannel.Solver;
 import com.nekoyu.Universe.API.UniverseChannel;
 import com.nekoyu.Universe.LawsLoader.LawsManager;
-import com.nekoyu.Universe.Utils.ImageUtils;
 import org.apache.logging.log4j.Level;
 import org.apache.logging.log4j.core.config.Configurator;
 import org.slf4j.Logger;
@@ -25,7 +22,6 @@ public class Universe {
     static public Logger logger = LoggerFactory.getLogger(Universe.class);
     static public Properties universeChannelProp = new Properties();
     static public LawsManager LawsManager;
-    static public MessageChannelManager MessageChannelManager = new MessageChannelManager();
     static public Map<String, Object> Providers = new HashMap<>();
     static public Solver pictureSolver = null;
     static public Solver voiceSolver = null;
