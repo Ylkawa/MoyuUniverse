@@ -28,7 +28,8 @@ public abstract class MessageChannel {
 
     protected void broadcastEvent(String eventId, MCEvent event) {
         event.eventId = ID + ":" + eventId;
-        MessageChannelManager.onEvent(this, event);
+        event.messageChannel = this;
+        MessageChannelManager.onEvent(event);
     }
 
     public MessageChannel(String id) {

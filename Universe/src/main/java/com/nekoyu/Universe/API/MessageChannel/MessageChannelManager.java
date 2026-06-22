@@ -129,13 +129,13 @@ public class MessageChannelManager {
         }
     }
 
-    static public void onEvent(MessageChannel mc, MCEvent event) {
+    static public void onEvent(MCEvent event) {
         if (event instanceof AddFriendRequest addFriendRequest) {
-            logger.info("[好友申请] {}({}) : {}", addFriendRequest.requestor.getName(), addFriendRequest.requestor.getLocationId(), addFriendRequest.commit);
+            logger.info("{}[好友申请] {}({}) : {}", event.messageChannel.ID, addFriendRequest.requestor.getName(), addFriendRequest.requestor.getLocationId(), addFriendRequest.commit);
         } else if (event instanceof AddGroupRequest addGroupRequest) {
-            logger.info("[加群申请] {}({}) : {}", addGroupRequest.requestor.getName(), addGroupRequest.requestor.getLocationId(), addGroupRequest.commit);
+            logger.info("{}[加群申请] {}({}) : {}", event.messageChannel.ID, addGroupRequest.requestor.getName(), addGroupRequest.requestor.getLocationId(), addGroupRequest.commit);
         } else if (event instanceof InviteGroupRequest inviteGroupRequest) {
-            logger.info("[拉群申请] {}({}) : {}", inviteGroupRequest.requestor.getName(), inviteGroupRequest.requestor.getLocationId(), inviteGroupRequest.commit);
+            logger.info("{}[拉群申请] {}({}) : {}", event.messageChannel.ID, inviteGroupRequest.requestor.getName(), inviteGroupRequest.requestor.getLocationId(), inviteGroupRequest.commit);
         }
     }
 
