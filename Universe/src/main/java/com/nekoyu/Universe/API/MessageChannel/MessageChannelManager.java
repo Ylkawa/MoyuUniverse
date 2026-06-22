@@ -22,6 +22,7 @@ public class MessageChannelManager {
     static int MESSAGE_LIST_MAX_SIZE = 20;
     static public Map<String, MessageChannel> MessageChannels = new HashMap<>();
     static Multimap<String, MCMListener> sessionListeners = ArrayListMultimap.create();
+    static Multimap<String, MCEListener> eventListeners = ArrayListMultimap.create();
     static Multimap<String, MCPListener> postListeners = ArrayListMultimap.create();
     public static Logger logger = LoggerFactory.getLogger(MessageChannelManager.class);
     static Logger messagingLogger = LoggerFactory.getLogger("Messaging");
@@ -41,6 +42,10 @@ public class MessageChannelManager {
 
     static public void listenToPost(String regex, MCPListener mcpL) {
         postListeners.put(regex, mcpL);
+    }
+
+    static public void listenToEvent(String regex, MCEListener mceL) {
+        eventListeners.put(regex, mceL);
     }
 
     /**
@@ -136,6 +141,16 @@ public class MessageChannelManager {
             logger.info("{}[加群申请] {}({}) : {}", event.messageChannel.ID, addGroupRequest.requestor.getName(), addGroupRequest.requestor.getLocationId(), addGroupRequest.commit);
         } else if (event instanceof InviteGroupRequest inviteGroupRequest) {
             logger.info("{}[拉群申请] {}({}) : {}", event.messageChannel.ID, inviteGroupRequest.requestor.getName(), inviteGroupRequest.requestor.getLocationId(), inviteGroupRequest.commit);
+        }
+
+        for (String regex : eventListeners.keySet()) {
+            if (Pattern.matches(regex, event.eventId)) for (MCEListener mceL : eventListeners.get(regex)) {
+                try {
+                    mceL.onEvent(event);
+                } catch (Exception e) {
+                    logger.error("{} 处理消息时出错", mceL, e);
+                }
+            }
         }
     }
 
