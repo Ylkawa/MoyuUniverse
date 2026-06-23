@@ -6,10 +6,7 @@ import com.nekoyu.Universe.API.MessageChannel.Features.Administration;
 import com.nekoyu.Universe.API.MessageChannel.Features.PostChat;
 import com.nekoyu.Universe.API.MessageChannel.Features.SessionChat;
 import com.nekoyu.Universe.API.MessageChannel.MessageField.TextField;
-import com.nekoyu.Universe.API.MessageChannel.events.AddFriendRequest;
-import com.nekoyu.Universe.API.MessageChannel.events.AddGroupRequest;
-import com.nekoyu.Universe.API.MessageChannel.events.InviteGroupRequest;
-import com.nekoyu.Universe.API.MessageChannel.events.MCEvent;
+import com.nekoyu.Universe.API.MessageChannel.events.*;
 import com.nekoyu.Universe.Utils.ColorUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -141,6 +138,8 @@ public class MessageChannelManager {
             logger.info("{}[加群申请] {}({}) : {}", event.messageChannel.ID, addGroupRequest.requestor.getName(), addGroupRequest.requestor.getLocationId(), addGroupRequest.commit);
         } else if (event instanceof InviteGroupRequest inviteGroupRequest) {
             logger.info("{}[拉群申请] {}({}) : {}", event.messageChannel.ID, inviteGroupRequest.requestor.getName(), inviteGroupRequest.requestor.getLocationId(), inviteGroupRequest.commit);
+        } else if (event instanceof SessionNameChangeEvent sessionNameChangeEvent) {
+            logger.info("{}[会话改名] {}({}) -> {}", sessionNameChangeEvent.messageChannel.ID, sessionNameChangeEvent.previousName, sessionNameChangeEvent.session.getLocationId(), sessionNameChangeEvent.newName);
         }
 
         for (String regex : eventListeners.keySet()) {

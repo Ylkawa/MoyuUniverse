@@ -11,9 +11,10 @@ import com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.event.message.JsonMessages.com_
 import com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.event.message.Message;
 import com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.MsgFields.MessageSegment;
 import com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.event.meta_event.Meta_Event;
+import com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.event.notice.GroupNameChangeNotice;
 import com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.event.notice.Notice;
-import com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.event.notice.FriendRecall;
-import com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.event.notice.GroupRecall;
+import com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.event.notice.FriendRecallNotice;
+import com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.event.notice.GroupRecallNotice;
 import com.nekoyu.Universe.API.MessageChannel.*;
 import com.nekoyu.Universe.API.MessageChannel.Features.Administration;
 import com.nekoyu.Universe.API.MessageChannel.Features.SessionManagement;
@@ -24,6 +25,7 @@ import com.nekoyu.Universe.API.MessageChannel.MessageField.TextField;
 import com.nekoyu.Universe.API.MessageChannel.events.AddGroupRequest;
 import com.nekoyu.Universe.API.MessageChannel.events.AddFriendRequest;
 import com.nekoyu.Universe.API.MessageChannel.events.InviteGroupRequest;
+import com.nekoyu.Universe.API.MessageChannel.events.SessionNameChangeEvent;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
@@ -235,6 +237,7 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
                                                     session.setPlatform("QQ");
                                                     session.setId("all");
                                                     session.setName("全体成员");
+                                                    session.setLocationId("QQ:user/*");
                                                     mcm.messageFields.add(new AtField(session));
                                                 } else {
                                                     var account = getSession("user/" + ms.data.get("qq"));
@@ -406,12 +409,27 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
                                     Notice notice = gson.fromJson(s, Notice.class);
                                     switch (notice.notice_type) {
                                         case "group_recall" -> {
-                                            GroupRecall groupRecall = gson.fromJson(s, GroupRecall.class);
-                                            MessageChannelManager.onMessageRecall(ID + ":group/" + groupRecall.group_id, groupRecall.message_id);
+                                            GroupRecallNotice groupRecallNotice = gson.fromJson(s, GroupRecallNotice.class);
+                                            MessageChannelManager.onMessageRecall(ID + ":group/" + groupRecallNotice.group_id, groupRecallNotice.message_id);
                                         }
                                         case "friend_recall" -> {
-                                            FriendRecall friendRecall = gson.fromJson(s, FriendRecall.class);
-                                            MessageChannelManager.onMessageRecall(ID + ":private/" + friendRecall.user_id, friendRecall.message_id);
+                                            FriendRecallNotice friendRecallNotice = gson.fromJson(s, FriendRecallNotice.class);
+                                            MessageChannelManager.onMessageRecall(ID + ":private/" + friendRecallNotice.user_id, friendRecallNotice.message_id);
+                                        }
+                                        case "notify" -> {
+                                            switch (notice.sub_type) {
+                                                case "group_name" -> {
+                                                    GroupNameChangeNotice groupNameChangeNotice = gson.fromJson(s, GroupNameChangeNotice.class);
+                                                    SessionNameChangeEvent sessionNameChangeEvent = new SessionNameChangeEvent();
+                                                    Session group = getSession("group/" + groupNameChangeNotice.group_id);
+                                                    sessionNameChangeEvent.session = group;
+                                                    sessionNameChangeEvent.operator = (Account) getSession("user/" + groupNameChangeNotice.user_id);
+                                                    sessionNameChangeEvent.previousName = sessionNameChangeEvent.session.getName();
+                                                    sessionNameChangeEvent.newName = groupNameChangeNotice.name_new;
+                                                    group.setName(groupNameChangeNotice.name_new);
+                                                    broadcastEvent("SessionNameChange/group:" + group.getId(), sessionNameChangeEvent);
+                                                }
+                                            }
                                         }
                                     }
                                 }
@@ -590,17 +608,17 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
             if (resp.status.equals("failed")) throw new RuntimeException("Request Failed");
             switch (acc[0]) {
                 case "group" -> {
-                    var groupInfo = new QQGroup();
-                    groupInfo.setName(resp.data.getAsJsonObject().get("group_name").getAsString());
-                    groupInfo.setId(acc[1]);
-                    session = groupInfo;
+                    var group = new QQGroup();
+                    group.setName(resp.data.getAsJsonObject().get("group_name").getAsString());
+                    group.setId(acc[1]);
+                    session = group;
                 }
                 case "user", "private" -> {
-                    var accountInfo = new QQAccount();
-                    accountInfo.setName(resp.data.getAsJsonObject().get("nickname").getAsString());
-                    accountInfo.setId(acc[1]);
-                    accountInfo.setSex(resp.data.getAsJsonObject().get("sex").getAsString());
-                    session = accountInfo;
+                    var account = new QQAccount();
+                    account.setName(resp.data.getAsJsonObject().get("nickname").getAsString());
+                    account.setId(acc[1]);
+                    account.setSex(resp.data.getAsJsonObject().get("sex").getAsString());
+                    session = account;
                 }
             }
             cachedSessions.put(acc[1], session);
@@ -669,6 +687,7 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
         @Override
         public void setId(String id) {
             super.setId(id);
+            setLocationId("QQ:user/" + id);
             try {
                 setAvatar(new ImageField(new URL("https://q.qlogo.cn/headimg_dl?dst_uin=" + id + "&spec=640&img_type=jpg")));
             } catch (MalformedURLException e) {
@@ -684,6 +703,7 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
 
         public void setId(String id) {
             super.setId(id);
+            setLocationId("QQ:group/" + id);
             try {
                 super.setAvatar(new ImageField(new URL("https://p.qlogo.cn/gh/" + id + "/" + id + "/0")));
             } catch (MalformedURLException e) {

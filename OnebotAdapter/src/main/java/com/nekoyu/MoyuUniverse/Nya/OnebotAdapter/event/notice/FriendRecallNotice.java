@@ -1,8 +1,6 @@
 package com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.event.notice;
 
-public class GroupRecall extends Notice {
-    public long group_id;
+public class FriendRecallNotice extends Notice {
     public long user_id;
-    public long operator_id;
     public long message_id;
 }

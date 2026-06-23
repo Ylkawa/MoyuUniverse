@@ -12,6 +12,7 @@ public class Session {
     @Nullable
     ImageField avatar;
     transient Color color;
+    String locationId;
 
     public String getId() {
         return id;
@@ -45,8 +46,12 @@ public class Session {
         this.avatar = avatar;
     }
 
+    public void setLocationId(String locationId) {
+        this.locationId = locationId;
+    }
+
     public String getLocationId() {
-        return platform + ":user/" + id;
+        return locationId;
     }
 
     public Color getColor() {
