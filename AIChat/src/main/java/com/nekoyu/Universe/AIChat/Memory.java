@@ -305,21 +305,23 @@ public class Memory {
             return List.of();
         }
 
-        List<Common.Condition> locationConditions = locationIds.stream()
-                .map(id -> Common.Condition.newBuilder()
-                        .setField(
-                                Common.FieldCondition.newBuilder()
-                                        .setKey("location_id")
-                                        .setMatch(
-                                                Common.Match.newBuilder()
-                                                        .setKeyword(id)
-                                                        .build()
-                                        )
-                                        .build()
-                        )
-                        .build()
-                )
-                .toList();
+        List<Common.Condition> locationConditions = new ArrayList<>();
+
+        for (String locationId : locationIds) {
+            if (locationId != null) locationConditions.add(
+                    Common.Condition.newBuilder()
+                            .setField(
+                                    Common.FieldCondition.newBuilder()
+                                            .setKey("location_id")
+                                            .setMatch(
+                                                    Common.Match.newBuilder()
+                                                            .setKeyword(locationId)
+                                                            .build()
+                                            )
+                                            .build()
+                            ).build()
+            );
+        }
 
         Common.Condition notDeletedCondition = Common.Condition.newBuilder()
                 .setField(
