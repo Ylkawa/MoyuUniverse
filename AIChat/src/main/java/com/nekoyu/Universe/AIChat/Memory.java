@@ -104,6 +104,7 @@ public class Memory {
                     .addMust(notDeletedCondition);
 
             List<Common.Condition> locationConditions = locationIds.stream()
+                    .filter(id -> id != null && !id.isEmpty())
                     .map(id -> Common.Condition.newBuilder()
                             .setField(
                                     Common.FieldCondition.newBuilder()
@@ -119,15 +120,17 @@ public class Memory {
                     )
                     .toList();
 
-            filterBuilder.addMust(
-                    Common.Condition.newBuilder()
-                            .setFilter(
-                                    Common.Filter.newBuilder()
-                                            .addAllShould(locationConditions)
-                                            .build()
-                            )
-                            .build()
-            );
+            if (!locationConditions.isEmpty()) {
+                filterBuilder.addMust(
+                        Common.Condition.newBuilder()
+                                .setFilter(
+                                        Common.Filter.newBuilder()
+                                                .addAllShould(locationConditions)
+                                                .build()
+                                )
+                                .build()
+                );
+            }
 
             List<Points.ScoredPoint> result = client.searchAsync(
                     Points.SearchPoints.newBuilder()
