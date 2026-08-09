@@ -7,7 +7,7 @@ public class CompletionsRequest {
     public String model;
     public boolean stream;
     public List<Message> messages;
-    public List<LLMTool> tools;
+    public List<LLMFunction> tools;
 
     public CompletionsRequest() {
         messages = new LinkedList<>();

@@ -1,6 +1,10 @@
 package com.nekoyu.universe.openaiadapter;
 
 import com.google.gson.Gson;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonParser;
 import com.google.gson.JsonSyntaxException;
 import com.nekoyu.Universe.API.MessageChannel.MCMessage;
 import com.nekoyu.Universe.API.MessageChannel.MFChain;
@@ -15,7 +19,6 @@ import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.LLMFunction;
 import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.*;
 import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.ContentPiece.TextPiece;
 import com.nekoyu.Universe.API.Providers.LLMProvider.RespBodies.CompletionsResponse;
-import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.LLMTool;
 import com.nekoyu.Universe.API.Providers.LLMProvider.RespBodies.EmbeddingResponse;
 import com.nekoyu.universe.openaiadapter.RequestBodies.AliyunBailianReq;
 import com.nekoyu.universe.openaiadapter.RequestBodies.OpenAIReq;
@@ -42,7 +45,6 @@ public class OpenAIChannel extends LLMProvider implements Embedding {
     Logger logger = null;
     OkHttpClient client;
     Gson gson;
-    List<LLMFunction> tools;
     String apikey;
     String baseurl;
     String defaultModel;
@@ -56,7 +58,6 @@ public class OpenAIChannel extends LLMProvider implements Embedding {
                 .writeTimeout(30, TimeUnit.SECONDS)
                 .build();
         gson = new Gson();
-        tools = new ArrayList<>();
     }
 
     @Override
@@ -87,12 +88,7 @@ public class OpenAIChannel extends LLMProvider implements Embedding {
         if (model != null) cr.model = model;
         else cr.model = defaultModel;
         // Add functions if exists
-        if (llmFunctions != null) for (LLMFunction function : llmFunctions.values()) {
-            var oaiTool = new LLMTool();
-            oaiTool.function = function;
-            oaiTool.type = "function";
-            cr.tools.add(oaiTool);
-        }
+        if (llmFunctions != null) cr.tools.addAll(llmFunctions.values());
         if (cr.tools.isEmpty()) cr.tools = null;
         // Transfer Universe message list to OpenAI message list
         cr.stream = true;
@@ -101,6 +97,22 @@ public class OpenAIChannel extends LLMProvider implements Embedding {
         if (completions.usage.total_tokens > 0)
             logger.info("Completions-Usage: ({}) 输入 {} Tokens  输出 {} Tokens", cr.model, completions.usage.prompt_tokens, completions.usage.completion_tokens); // 无言了，百炼的 API 默认不返回 usage
         return completions;
+    }
+
+    /** 序列化请求体，并把中性层的 LLMFunction 列表装进 OpenAI 的 {"type":"function","function":{...}} 外壳 */
+    private String toBody(CompletionsRequest request) {
+        JsonObject body = gson.toJsonTree(request).getAsJsonObject();
+        if (body.has("tools") && !body.get("tools").isJsonNull() && body.getAsJsonArray("tools").size() > 0) {
+            JsonArray wrapped = new JsonArray();
+            for (JsonElement tool : body.getAsJsonArray("tools")) {
+                JsonObject envelope = new JsonObject();
+                envelope.addProperty("type", "function");
+                envelope.add("function", tool);
+                wrapped.add(envelope);
+            }
+            body.add("tools", wrapped);
+        }
+        return body.toString();
     }
 
     public CompletionsResponse completions(MessageList ml, CompletionsRequest completionsRequest, Map<String, LLMFunction> llmFunctions, BufferCallback bufferCallback, ExtensionalArgs extensionalArgs, int timeout, CompletionsResponse responding) throws IOException {
@@ -148,7 +160,7 @@ public class OpenAIChannel extends LLMProvider implements Embedding {
         Request req = new Request.Builder()
                 .url(baseurl + "/chat/completions")
                 .addHeader("Authorization", "Bearer " + apikey)
-                .post(RequestBody.create(gson.toJson(completionsRequest), MediaType.get("application/json; charset=utf-8")))
+                .post(RequestBody.create(toBody(completionsRequest), MediaType.get("application/json; charset=utf-8")))
                 .build();
         try (Response response = client.newCall(req).execute()) {
             if (response.isSuccessful()) {
@@ -243,25 +255,26 @@ public class OpenAIChannel extends LLMProvider implements Embedding {
                                 toolMcm.messageFields.add(new TextField("You're trying to call a undefined function " + tool_call.function.name + "."));
                                 return completions(ml, completionsRequest, llmFunctions, bufferCallback, extensionalArgs, timeout - 1, responding);
                             }
-                            Map args = null;
+                            JsonElement args = null;
                             try {
-                                args = gson.fromJson(tool_call.function.arguments, HashMap.class);
+                                args = JsonParser.parseString(tool_call.function.arguments);
                             } catch (JsonSyntaxException e) {
                                 tool_call.function.arguments.replaceAll("\\\\", ""); // 再捞一下 LLM 的零分试卷
                                 try {
-                                    args = gson.fromJson(tool_call.function.arguments, HashMap.class);
+                                    args = JsonParser.parseString(tool_call.function.arguments);
                                 } catch (JsonSyntaxException ex) {
                                     logger.warn("Assistant 唐完了，输出的参数 Gson 无法解析 {}", tool_call.function.arguments);
                                     toolMcm.messageFields.add(new TextField(ex.getMessage()));
                                 }
                             }
-                            if (args != null) args.putAll(extensionalArgs.placeholders);
+                            if (args != null && args.isJsonObject())
+                                extensionalArgs.placeholders.forEach(args.getAsJsonObject()::addProperty);
                             MFChain ctt;
                             if (args == null) {
                                 ctt = new MFChain();
                                 ctt.add(new TextField("未知原因的工具调用错误"));
                             } else try {
-                                ctt = llmFunction.callback.callback(args);
+                                ctt = llmFunction.callback.call(args);
                             } catch (Exception e) {
                                 ctt = new MFChain();
                                 ctt.add(new TextField("调用工具失败: " + e.getMessage()));

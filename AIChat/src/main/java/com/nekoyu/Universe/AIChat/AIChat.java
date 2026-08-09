@@ -4,6 +4,7 @@ import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.Multimap;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.google.gson.JsonObject;
 import com.nekoyu.Universe.AIChat.Event.RequestEvent;
 import com.nekoyu.Universe.API.MessageChannel.*;
 import com.nekoyu.Universe.API.MessageChannel.MessageField.StickerField;
@@ -13,6 +14,7 @@ import com.nekoyu.Universe.API.Providers.LLMProvider.Assistant;
 import com.nekoyu.Universe.API.Providers.LLMProvider.Embedding;
 import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.EmbeddingRequest;
 import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.ExtensionalArgs;
+import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.JsonSchema;
 import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.LLMFunction;
 import com.nekoyu.Universe.API.Providers.LLMProvider.LLMProvider;
 import com.nekoyu.Universe.API.Providers.LLMProvider.RespBodies.EmbeddingResponse;
@@ -100,22 +102,27 @@ public class AIChat extends Law {
                     if (Universe.Providers.get(globalCfg.Annotator.embeddingProvider) instanceof Embedding embedding) {
                         memory = new com.nekoyu.Universe.AIChat.Memory(globalCfg.Qdrant, globalCfg.Memory);
                         // 如果记忆可用，那么给主Agent提供主动查询记忆内容的方法
-                        LLMFunction query_memory = new LLMFunction("QueryMemory",
-                                """
+                        LLMFunction query_memory = LLMFunction.builder()
+                                .name("QueryMemory")
+                                .description("""
                                         主动查询记忆，如果问题不仅仅与某一个用户关联，则不需要提供LocationId，直接提问；
-                                        如果问题与某一个用户相关，那么需要提供准确的LocationId，并在问题中固定使用“用户”的称呼""",
-                                new LLMFunction.Parameters("object", new String[]{"Question", "LocationId"}, new String[]{"Question"}),
-                                args -> {
-                                    String locationId = args.get("LocationId");
+                                        如果问题与某一个用户相关，那么需要提供准确的LocationId，并在问题中固定使用“用户”的称呼""")
+                                .parameters(JsonSchema.object()
+                                        .property("Question", JsonSchema.string().description("需要查询记忆的问题"))
+                                        .property("LocationId", JsonSchema.string().description("与问题相关的用户的 LocationId"))
+                                        .required("Question"))
+                                .callback(args -> {
+                                    JsonObject o = args.getAsJsonObject();
+                                    String locationId = o.has("LocationId") ? o.get("LocationId").getAsString() : null;
                                     List<String> locationIds = new ArrayList<>();
                                     if (locationId != null) {
                                         locationIds.add(locationId);
                                     } else {
-                                        for (String locationIdd : args.get("LOCATION_IDS").split(" ")) {
+                                        for (String locationIdd : o.get("LOCATION_IDS").getAsString().split(" ")) {
                                             if (!locationIdd.isEmpty()) locationIds.add(locationIdd);
                                         }
                                     }
-                                    String question = args.get("Question");
+                                    String question = o.get("Question").getAsString();
                                     try {
                                         EmbeddingRequest request = new EmbeddingRequest();
                                         MFChain mfc = new MFChain();
@@ -137,17 +144,20 @@ public class AIChat extends Law {
                                     } catch (IOException e) {
                                         throw new RuntimeException(e);
                                     }
-                                });
+                                })
+                                .build();
                         llmFunctions.put("QueryMemory", query_memory);
                         llmFunctions.put("ExternalKnowledgeBase",
-                                new LLMFunction(
-                                        "QueryExternalKnowledgeBase",
-                                        "查询知识库中内容，需要调用外部知识时应当优先从知识库查询而非直接联网，参数为需要知道的问题，必须是完整的句子",
-                                        new LLMFunction.Parameters("object", new String[]{"question"}, new String[]{"question"}),
-                                        args -> {
+                                LLMFunction.builder()
+                                        .name("QueryExternalKnowledgeBase")
+                                        .description("查询知识库中内容，需要调用外部知识时应当优先从知识库查询而非直接联网，参数为需要知道的问题，必须是完整的句子")
+                                        .parameters(JsonSchema.object()
+                                                .property("question", JsonSchema.string().description("需要了解的问题"))
+                                                .required("question"))
+                                        .callback(args -> {
                                             try {
                                                 MFChain result = new MFChain();
-                                                result.add(new TextField(externalKnowledgeBase.search(args.get("question"))));
+                                                result.add(new TextField(externalKnowledgeBase.search(args.getAsJsonObject().get("question").getAsString())));
                                                 return result;
                                             } catch (IOException e) {
                                                 MFChain result = new MFChain();
@@ -156,6 +166,7 @@ public class AIChat extends Law {
                                                 return result;
                                             }
                                         })
+                                        .build()
                         );
                     }
                 }
@@ -451,21 +462,28 @@ public class AIChat extends Law {
                             if (sessionCfg.subAgents != null) for (String subAgentName : sessionCfg.subAgents) {
                                 Assistant subAgent = subAgents.get(subAgentName);
                                 // 作为 tool 添加，以供 assistant 调用 subAgent
-                                LLMFunction llmFunction = new LLMFunction(subAgentName, subAgent.getDescription(), new LLMFunction.Parameters("object", new String[]{"Question"}, new String[]{"Question"}), args -> {
-                                    MCMessage m = new MCMessage();
-                                    m.messageFields.add(new TextField(args.get("Question")));
-                                    MessageList ml = new MessageList();
-                                    ml.add(m);
-                                    StringBuilder sb = new StringBuilder();
-                                    try {
-                                        subAgent.completions(ml, sb::append);
-                                        MFChain mfc = new MFChain();
-                                        mfc.add(new TextField(sb.toString()));
-                                        return mfc;
-                                    } catch (IOException e) {
-                                        throw new RuntimeException(e);
-                                    }
-                                });
+                                LLMFunction llmFunction = LLMFunction.builder()
+                                        .name(subAgentName)
+                                        .description(subAgent.getDescription())
+                                        .parameters(JsonSchema.object()
+                                                .property("Question", JsonSchema.string().description("要交给子代理处理的问题"))
+                                                .required("Question"))
+                                        .callback(args -> {
+                                            MCMessage m = new MCMessage();
+                                            m.messageFields.add(new TextField(args.getAsJsonObject().get("Question").getAsString()));
+                                            MessageList ml = new MessageList();
+                                            ml.add(m);
+                                            StringBuilder sb = new StringBuilder();
+                                            try {
+                                                subAgent.completions(ml, sb::append);
+                                                MFChain mfc = new MFChain();
+                                                mfc.add(new TextField(sb.toString()));
+                                                return mfc;
+                                            } catch (IOException e) {
+                                                throw new RuntimeException(e);
+                                            }
+                                        })
+                                        .build();
                                 assistant.addTool(llmFunction);
                             } // 为 assistant 添加 subAgent
                             // 先让插件处理事件 插件提供局部的PlaceHolder

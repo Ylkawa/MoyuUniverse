@@ -9,7 +9,9 @@ import com.nekoyu.Universe.AIChat.Web.YouTubeAPI.CommentThreadListResponse;
 import com.nekoyu.Universe.AIChat.Web.YouTubeAPI.VideoListResponse;
 import com.nekoyu.Universe.API.MessageChannel.MFChain;
 import com.nekoyu.Universe.API.MessageChannel.MessageField.TextField;
+import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.JsonSchema;
 import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.LLMFunction;
+import com.google.gson.JsonObject;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
@@ -91,24 +93,31 @@ public class Web extends AIChatPlugin {
                 .followRedirects(false) // 不这样设置，短链的重定向会直接跳过去，识别不到
                 .build();
 
-        var dst = new LLMFunction("WebSearch",
-                "全网搜索内容，仅当用户要求或者要回答的内容具有时效性时使用",
-                new LLMFunction.Parameters("object", new String[]{"搜索词"}, new String[]{"搜索词"}),
-                args -> {
+        var dst = LLMFunction.builder()
+                .name("WebSearch")
+                .description("全网搜索内容，仅当用户要求或者要回答的内容具有时效性时使用")
+                .parameters(JsonSchema.object()
+                        .property("搜索词", JsonSchema.string().description("要搜索的关键词"))
+                        .required("搜索词"))
+                .callback(args -> {
                     MFChain mfc = new MFChain();
-                    mfc.add(new TextField(search(args.get("搜索词"))));
+                    mfc.add(new TextField(search(args.getAsJsonObject().get("搜索词").getAsString())));
                     return mfc;
-                }
-        );
+                })
+                .build();
         registerFunction("WebSearch", dst);
 
-        LLMFunction visitUrl = new LLMFunction("VisitWebPage",
-                """
-                        获取部分受支持的网页中的信息（内容会被精简）仅支持哔哩哔哩视频和用户空间、YouTube视频、Wikipedia词条、萌娘百科词条、Biligame Wiki词条、游民星空Handbook、米游社文章，访问其他链接会被拒绝""",
-                new LLMFunction.Parameters("object", new String[]{"URL"}, new String[]{"URL"}),
-                args -> {
-                    return visitUrl(args.get("URL"));
-                });
+        LLMFunction visitUrl = LLMFunction.builder()
+                .name("VisitWebPage")
+                .description("""
+                        获取部分受支持的网页中的信息（内容会被精简）仅支持哔哩哔哩视频和用户空间、YouTube视频、Wikipedia词条、萌娘百科词条、Biligame Wiki词条、游民星空Handbook、米游社文章，访问其他链接会被拒绝""")
+                .parameters(JsonSchema.object()
+                        .property("URL", JsonSchema.string().description("要访问的网页链接"))
+                        .required("URL"))
+                .callback(args -> {
+                    return visitUrl(args.getAsJsonObject().get("URL").getAsString());
+                })
+                .build();
         registerFunction("VisitURL", visitUrl);
     }
 

@@ -4,7 +4,9 @@ import com.nekoyu.Universe.AIChat.AIChat;
 import com.nekoyu.Universe.AIChat.AIChatPlugin;
 import com.nekoyu.Universe.API.MessageChannel.MFChain;
 import com.nekoyu.Universe.API.MessageChannel.MessageField.TextField;
+import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.JsonSchema;
 import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.LLMFunction;
+import com.google.gson.JsonObject;
 import okhttp3.HttpUrl;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
@@ -21,15 +23,18 @@ public class NetTools extends AIChatPlugin {
 
     @Override
     public void onEnable() {
-        registerFunction(new String[]{"WhoisLookup", "NetTools"}, LLMFunction.Builder()
+        registerFunction(new String[]{"WhoisLookup", "NetTools"}, LLMFunction.builder()
                 .name("WhoisLookup")
                 .description("查询某一个域名的 Whois 信息")
-                .parameters(new String[]{"Domain"}, new String[]{"Domain"})
+                .parameters(JsonSchema.object()
+                        .property("Domain", JsonSchema.string().description("要查询的域名"))
+                        .required("Domain"))
                 .callback(args -> {
+                    JsonObject o = args.getAsJsonObject();
                     // Using this API to lookup: https://xxapi.cn/doc/whois
                     Request req = new Request.Builder()
                             .url(HttpUrl.parse("https://v2.xxapi.cn/api/whois").newBuilder() // 暂时不知道怎么 NPE
-                                    .addQueryParameter("domain", args.get("Domain"))
+                                    .addQueryParameter("domain", o.get("Domain").getAsString())
                                     .build())
                             .build();
                     try (Response response = client.newCall(req).execute()) {
@@ -44,16 +49,20 @@ public class NetTools extends AIChatPlugin {
                 })
                 .build());
 
-        registerFunction(new String[]{"DNSLookup", "NetTools"}, LLMFunction.Builder()
+        registerFunction(new String[]{"DNSLookup", "NetTools"}, LLMFunction.builder()
                 .name("DNSLookup")
                 .description("查询某一个域名的 DNS 信息, RR Type 用于指定要解析的记录种类，如 A 和 AAAA ，默认情况下仅解析 A")
-                .parameters(new String[]{"Domain", "RRType"}, new String[]{"Domain"})
+                .parameters(JsonSchema.object()
+                        .property("Domain", JsonSchema.string().description("要查询的域名"))
+                        .property("RRType", JsonSchema.enumType("A", "AAAA", "CNAME", "MX", "NS", "TXT")
+                                .description("要解析的记录种类，默认 A"))
+                        .required("Domain"))
                 .callback(args -> {
-                    String rr = args.get("RRType");
-                    if (rr == null) rr = "A";
+                    JsonObject o = args.getAsJsonObject();
+                    String rr = o.has("RRType") ? o.get("RRType").getAsString() : "A";
                     Request req = new Request.Builder()
                             .url(HttpUrl.parse("https://223.5.5.5/resolve").newBuilder()
-                                    .addQueryParameter("name", args.get("Domain")) // 使用 阿里DNS
+                                    .addQueryParameter("name", o.get("Domain").getAsString()) // 使用 阿里DNS
                                     .addQueryParameter("type", rr.toUpperCase())
                                     .build())
                             .build();
