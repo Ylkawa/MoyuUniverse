@@ -893,10 +893,10 @@ public class AIChat extends Law {
 
     public void constructMemory(String locationId, MessageList ml) {
         final Pattern UPDATE_PATTERN = Pattern.compile(
-                "^UPDATE\\s+([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\\s+([0-9]*\\.?[0-9]+)\\s+([0-9]*\\.?[0-9]+)\\s*:\\s*(.+)$"
+                "^UPDATE\\s+(\\d+)\\s+([0-9]*\\.?[0-9]+)\\s+([0-9]*\\.?[0-9]+)\\s*:\\s*(.+)$"
         );
         final Pattern DELETE_PATTERN = Pattern.compile(
-                "^DELETE\\s+([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\\s*$"
+                "^DELETE\\s+(\\d+)\\s*$"
         );
         final Pattern NEW_PATTERN = Pattern.compile(
                 "^NEW\\s+([0-9]*\\.?[0-9]+)\\s+([0-9]*\\.?[0-9]+)\\s+\\[(.+?)]\\s*:\\s*(.+)$"
@@ -938,13 +938,15 @@ public class AIChat extends Law {
                 输出必须严格符合以下格式，不得添加解释、理由或额外文本：
                 
                 NEW [置信度] [重要度] [[目标LocationId]]: [要新增的记忆]
-                UPDATE [记忆条目ID] [置信度] [重要度]: [修改后的记忆内容]
-                DELETE [记忆条目ID]
+                UPDATE [记忆条目编号] [置信度] [重要度]: [修改后的记忆内容]
+                DELETE [记忆条目编号]
+                
+                记忆条目编号即上方"先前的记忆条目"列表中每行最前面的数字（如 1、2、3），只能对列表中存在的编号执行 UPDATE 或 DELETE。
                 
                 例如：
                 NEW 0.76 0.8 [Universe:group/12435678]: 群聊主要讨论人工智能大语言模型应用开发
-                UPDATE d6e23098-9428-4fe1-a1b0-c8f58dd8c7d4 0.63 0.5: 用户比较喜欢VOCALOID的音乐
-                DELETE 55eaafe9-ad8c-4fbc-8a59-6b136c84d971
+                UPDATE 1 0.63 0.5: 用户比较喜欢VOCALOID的音乐
+                DELETE 2
                 
                 补充约束：
                 - NEW 只能写入新的、未重复的有效记忆。
@@ -978,20 +980,28 @@ public class AIChat extends Law {
             }
         }
 
-        Map<UUID, Memory.Item> memoryIndex = new HashMap<>();
+        Map<Integer, Memory.Item> memoryIndex = new HashMap<>();
         MCMessage previousMemory = new MCMessage();
         previousMemory.putMetainfo("role", "user");
-        previousMemory.messageFields.add(new TextField("先前的记忆条目，格式为 [条目ID]|[更新时间]|[置信度]|[重要度]|[LocationId]:[内容] ：\n\n"));
+        previousMemory.messageFields.add(new TextField("先前的记忆条目，格式为 [数字编号]|[更新时间]|[置信度]|[重要度]|[LocationId]：[内容] ：\n\n"));
 
         if (memories == null || memories.isEmpty()) {
             previousMemory.messageFields.add(new TextField("（无记忆条目）"));
         } else {
+            int itemNumber = 1;
             for (Memory.Item memObj : memories) {
                 if (memObj == null) {
                     continue;
                 }
-                memoryIndex.put(memObj.id, memObj);
-                previousMemory.messageFields.add(new TextField(memObj.toString()));
+                memoryIndex.put(itemNumber, memObj);
+                previousMemory.messageFields.add(new TextField(
+                        itemNumber + "|" + formatTimestamp(memObj.updateAt)
+                                + "|" + memObj.confidence
+                                + "|" + memObj.importance
+                                + "|" + memObj.locationId
+                                + "]：" + memObj.content
+                ));
+                itemNumber++;
             }
             if (previousMemory.messageFields.size() == 1) {
                 previousMemory.messageFields.add(new TextField("（无记忆条目）"));
@@ -1025,17 +1035,17 @@ public class AIChat extends Law {
                 Matcher updateMatcher = UPDATE_PATTERN.matcher(line);
                 if (updateMatcher.matches()) {
                     try {
-                        UUID uuid = UUID.fromString(updateMatcher.group(1));
-                        Memory.Item item = memoryIndex.get(uuid);
+                        int number = Integer.parseInt(updateMatcher.group(1));
+                        Memory.Item item = memoryIndex.get(number);
                         if (item == null) {
-                            logger.warn("AI 想修改一个不存在的记忆条目ID: {}", uuid);
+                            logger.warn("AI 想修改一个不存在的记忆条目编号: {}", number);
                             continue;
                         }
 
                         float confidence = Float.parseFloat(updateMatcher.group(2));
                         float importance = Float.parseFloat(updateMatcher.group(3));
                         String content = updateMatcher.group(4).trim();
-                        memory.update(uuid, confidence, importance, content);
+                        memory.update(item.id, confidence, importance, content);
                         countOfUpdatedMemory++;
                     } catch (Exception e) {
                         logger.warn("解析 UPDATE 指令失败：{}", line, e);
@@ -1046,16 +1056,16 @@ public class AIChat extends Law {
                 Matcher deleteMatcher = DELETE_PATTERN.matcher(line);
                 if (deleteMatcher.matches()) {
                     try {
-                        UUID uuid = UUID.fromString(deleteMatcher.group(1));
-                        Memory.Item item = memoryIndex.get(uuid);
+                        int number = Integer.parseInt(deleteMatcher.group(1));
+                        Memory.Item item = memoryIndex.get(number);
                         if (item == null) {
-                            logger.warn("AI 想删除一个不存在的记忆条目ID: {}", uuid);
+                            logger.warn("AI 想删除一个不存在的记忆条目编号: {}", number);
                             continue;
                         }
 
-                        memory.delete(uuid);
+                        memory.delete(item.id);
                         countOfDeletedMemory++;
-                        memoryIndex.remove(uuid);
+                        memoryIndex.remove(number);
                     } catch (Exception e) {
                         logger.warn("解析 DELETE 指令失败：{}", line, e);
                     }
@@ -1077,7 +1087,6 @@ public class AIChat extends Law {
                         item.content = content;
 
                         newMemory.add(item);
-                        memoryIndex.put(item.id, item);
                     } catch (Exception e) {
                         logger.warn("解析 NEW 指令失败：{}", line, e);
                     }
