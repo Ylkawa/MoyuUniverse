@@ -78,6 +78,14 @@ public class Memory {
                         null, null, null, null
                 ).get();
 
+                // importance index
+                client.createPayloadIndexAsync(
+                        collection,
+                        "importance",
+                        Collections.PayloadSchemaType.Float,
+                        null, null, null, null
+                ).get();
+
                 logger.info("数据集已建立.");
             }
         } catch (InterruptedException | ExecutionException e) {
@@ -138,8 +146,8 @@ public class Memory {
                             .setVectorName(vectorName)
                             .addAllVector(queryVector)
                             .setFilter(filterBuilder.build())
-                            .setLimit(10)
-                            .setScoreThreshold(0.7f)
+                            .setLimit(20)
+                            .setScoreThreshold(0.6f)
                             .setWithPayload(
                                     Points.WithPayloadSelector.newBuilder()
                                             .setEnable(true)
@@ -162,27 +170,34 @@ public class Memory {
                 if (payload.containsKey("content")) {
                     item.content = payload.get("content").getStringValue();
                 }
-                // createAt 创建日期
                 if (payload.containsKey("create_at")) {
                     item.createAt = payload.get("create_at").getIntegerValue();
                 }
-                // updatedAt 修改日期
                 if (payload.containsKey("update_at")) {
                     item.updateAt = payload.get("update_at").getIntegerValue();
                 }
-                // locationId
                 if (payload.containsKey("location_id")) {
                     item.locationId = payload.get("location_id").getStringValue();
                 }
-                // confidence 置信度
                 if (payload.containsKey("confidence")) {
                     item.confidence = (float) payload.get("confidence").getDoubleValue();
+                }
+                if (payload.containsKey("importance")) {
+                    item.importance = (float) payload.get("importance").getDoubleValue();
                 }
 
                 items.add(item);
             }
 
-            return items;
+            // 按综合得分排序：向量相似度 + importance + confidence
+            items.sort((a, b) -> {
+                float scoreA = a.score * 0.5f + a.importance * 0.3f + a.confidence * 0.2f;
+                float scoreB = b.score * 0.5f + b.importance * 0.3f + b.confidence * 0.2f;
+                return Float.compare(scoreB, scoreA);
+            });
+
+            // 返回前 10 条
+            return items.stream().limit(10).toList();
         } catch (InterruptedException | ExecutionException e) {
             throw new RuntimeException(e);
         }
@@ -237,6 +252,12 @@ public class Memory {
                                 .setDoubleValue(item.confidence)
                                 .build()
                 );
+                payload.put(
+                        "importance",
+                        Value.newBuilder()
+                                .setDoubleValue(item.importance)
+                                .build()
+                );
                 // point
                 Points.PointStruct point = Points.PointStruct.newBuilder()
                         .setId(
@@ -258,7 +279,7 @@ public class Memory {
         }
     }
 
-    public void update(UUID uuid, float confidence, String content) {
+    public void update(UUID uuid, float confidence, float importance, String content) {
         try {
             double[] embedding = embedding(content);
             List<Float> vector = new ArrayList<>();
@@ -269,6 +290,7 @@ public class Memory {
             Map<String, Value> payload = new HashMap<>();
             payload.put("update_at", ValueFactory.value(System.currentTimeMillis()));
             payload.put("confidence", ValueFactory.value(confidence));
+            payload.put("importance", ValueFactory.value(importance));
             payload.put("content", ValueFactory.value(content));
 
             Points.PointStruct point = Points.PointStruct.newBuilder()
@@ -395,11 +417,127 @@ public class Memory {
                         ? (float) payload.get("confidence").getDoubleValue()
                         : 0F;
 
+                item.importance = payload.containsKey("importance")
+                        ? (float) payload.get("importance").getDoubleValue()
+                        : 0.5f;
+
                 items.add(item);
             }
 
             // 按 createAt 倒序
             items.sort((a, b) -> Long.compare(b.createAt, a.createAt));
+
+            return items;
+        } catch (InterruptedException | ExecutionException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    public List<Item> getHighImportanceItems(List<String> locationIds, int limit, float minImportance) {
+        if (locationIds == null || locationIds.isEmpty()) {
+            return List.of();
+        }
+
+        List<Common.Condition> locationConditions = new ArrayList<>();
+        for (String locationId : locationIds) {
+            if (locationId != null) locationConditions.add(
+                    Common.Condition.newBuilder()
+                            .setField(
+                                    Common.FieldCondition.newBuilder()
+                                            .setKey("location_id")
+                                            .setMatch(
+                                                    Common.Match.newBuilder()
+                                                            .setKeyword(locationId)
+                                                            .build()
+                                            )
+                                            .build()
+                            ).build()
+            );
+        }
+
+        Common.Condition notDeletedCondition = Common.Condition.newBuilder()
+                .setField(
+                        Common.FieldCondition.newBuilder()
+                                .setKey("confidence")
+                                .setRange(
+                                        Common.Range.newBuilder()
+                                                .setGte(0)
+                                                .build()
+                                )
+                                .build()
+                )
+                .build();
+
+        Common.Condition importanceCondition = Common.Condition.newBuilder()
+                .setField(
+                        Common.FieldCondition.newBuilder()
+                                .setKey("importance")
+                                .setRange(
+                                        Common.Range.newBuilder()
+                                                .setGte(minImportance)
+                                                .build()
+                                )
+                                .build()
+                )
+                .build();
+
+        Common.Filter filter = Common.Filter.newBuilder()
+                .addAllShould(locationConditions)
+                .addMust(notDeletedCondition)
+                .addMust(importanceCondition)
+                .build();
+
+        try {
+            Points.ScrollResponse result = client.scrollAsync(
+                    Points.ScrollPoints.newBuilder()
+                            .setCollectionName(collection)
+                            .setFilter(filter)
+                            .setLimit(limit)
+                            .setWithPayload(Points.WithPayloadSelector.newBuilder()
+                                    .setEnable(true)
+                                    .build())
+                            .build()
+            ).get();
+
+            List<Item> items = new ArrayList<>();
+            for (Points.RetrievedPoint point : result.getResultList()) {
+                Map<String, Value> payload = point.getPayloadMap();
+                Item item = new Item();
+
+                if (point.getId().hasUuid()) {
+                    item.id = UUID.fromString(point.getId().getUuid());
+                } else if (point.getId().hasNum()) {
+                    item.id = UUID.fromString(String.valueOf(point.getId().getNum()));
+                }
+
+                item.content = payload.containsKey("content")
+                        ? payload.get("content").getStringValue()
+                        : null;
+                item.locationId = payload.containsKey("location_id")
+                        ? payload.get("location_id").getStringValue()
+                        : null;
+                item.createAt = payload.containsKey("create_at")
+                        ? payload.get("create_at").getIntegerValue()
+                        : 0L;
+                item.updateAt = payload.containsKey("update_at")
+                        ? payload.get("update_at").getIntegerValue()
+                        : 0L;
+                item.confidence = payload.containsKey("confidence")
+                        ? (float) payload.get("confidence").getDoubleValue()
+                        : 0F;
+                item.importance = payload.containsKey("importance")
+                        ? (float) payload.get("importance").getDoubleValue()
+                        : 0.5f;
+
+                items.add(item);
+            }
+
+            // 按 importance 和 confidence 综合排序
+            items.sort((a, b) -> {
+                float scoreA = a.importance * 0.6f + a.confidence * 0.4f;
+                float scoreB = b.importance * 0.6f + b.confidence * 0.4f;
+                return Float.compare(scoreB, scoreA);
+            });
 
             return items;
         } catch (InterruptedException | ExecutionException e) {
@@ -425,11 +563,13 @@ public class Memory {
         public String locationId;
         public float score;
         public float confidence;
+        public float importance = 0.5f;
 
         @Override
         public String toString() {
             return "|time=" + formatTimestamp(updateAt)
                     + "|confidence=" + confidence
+                    + "|importance=" + importance
                     + "|loc=" + locationId + "]: "
                     + content;
         }

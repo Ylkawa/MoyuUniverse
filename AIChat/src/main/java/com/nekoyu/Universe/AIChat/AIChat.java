@@ -525,6 +525,8 @@ public class AIChat extends Law {
                                     for (var obj : memory.getLastMemoryItems(locationIds, locationIds.size() * 5)) {
                                         sb.append(obj.confidence)
                                                 .append(" ")
+                                                .append(obj.importance)
+                                                .append(" ")
                                                 .append(Time.formatTimestamp(obj.updateAt))
                                                 .append("[")
                                                 .append(obj.locationId)
@@ -670,7 +672,15 @@ public class AIChat extends Law {
     public String leading(MCMessage mcm, Topic topic) throws IOException {
         MessageList ml = (MessageList) topic.messages.clone();
         List<String> locationIds = topic.messages.getLocationIds();
-        List<Memory.Item> memories = memory.getLastMemoryItems(ml.getLocationIds(), 20);
+        List<Memory.Item> memories = new ArrayList<>(memory.getLastMemoryItems(ml.getLocationIds(), 15));
+        // 添加高 importance 的记忆条目
+        List<Memory.Item> highImportanceMemories = memory.getHighImportanceItems(ml.getLocationIds(), 10, 0.7f);
+        Set<UUID> existingIds = memories.stream().map(m -> m.id).collect(java.util.stream.Collectors.toSet());
+        for (Memory.Item item : highImportanceMemories) {
+            if (!existingIds.contains(item.id)) {
+                memories.add(item);
+            }
+        }
         RequestEvent reqEv = new RequestEvent();
         reqEv.placeholders.put("TIME", formatTimestamp(System.currentTimeMillis()));
         reqEv.placeholders.put("LocationId", mcm.getLocationId() == null ? "" : mcm.getLocationId());
@@ -709,7 +719,7 @@ public class AIChat extends Law {
                 3. 如果问题不仅仅与某一个用户关联，则不需要加括号提供LocationId，直接用指令提问
                 4. 如果问题与某一个用户相关，那么在指令后加一个括号并填入用户的LocationId，并在问题中固定使用“用户”的称呼
                 5. 不要对聊天内容提问，只能向记忆库或外置知识库提问""";
-        StringBuilder memoryPrompt = new StringBuilder("先前的记忆条目，格式为 [条目ID]|[更新时间]|[置信度]|[LocationId]:[内容] ：\n\n");
+        StringBuilder memoryPrompt = new StringBuilder("先前的记忆条目，格式为 [条目ID]|[更新时间]|[置信度]|[重要度]|[LocationId]:[内容] ：\n\n");
 
         if ((memories == null || memories.isEmpty()) && topic.activatingMemory == null) {
             memoryPrompt.append("（无记忆条目）");
@@ -724,17 +734,17 @@ public class AIChat extends Law {
         memoryPrompt.append("""
                 输出必须严格符合以下格式，允许先解释后输出指令，但指令必须在独立行，且指令不允许包含多余参数：
                 
-                NEW [置信度] [[目标LocationId]]: [要新增的记忆]
-                UPDATE [记忆条目ID] [置信度]: [修改后的记忆内容]
+                NEW [置信度] [重要度] [[目标LocationId]]: [要新增的记忆]
+                UPDATE [记忆条目ID] [置信度] [重要度]: [修改后的记忆内容]
                 DELETE [记忆条目ID]
                 QUIZ [问题]
                 QUIZ(LocationId) [问题]
                 例如（只参考格式，不可参考参数）：
-                NEW 0.76 [Universe:group/12435678]: 群聊主要讨论人工智能大语言模型应用开发
-                UPDATE d6e23098-9428-4fe1-a1b0-c8f58dd8c7d4 0.63: 用户比较喜欢VOCALOID的音乐
+                NEW 0.76 0.8 [Universe:group/12435678]: 群聊主要讨论人工智能大语言模型应用开发
+                UPDATE d6e23098-9428-4fe1-a1b0-c8f58dd8c7d4 0.63 0.5: 用户比较喜欢VOCALOID的音乐
                 DELETE 55eaafe9-ad8c-4fbc-8a59-6b136c84d971
                 QUIZ 《异环》是什么时候发布的游戏
-                QUIZ 《绝区零》的‘啥子蛇’是什么角色
+                QUIZ 《绝区零》的'啥子蛇'是什么角色
                 QUIZ 《异环》的娜娜莉怎么配队
                 QUIZ(example_platform:example_id) 用户的电脑的硬件配置是什么
                 补充约束：
@@ -742,6 +752,8 @@ public class AIChat extends Law {
                 - UPDATE 只能修改与原记忆语义一致但更准确的内容。
                 - DELETE 只能删除过时、错误、重复或无长期价值的记忆。
                 - 对于明显临时的内容，如果没有长期价值，宁可不输出任何记忆。
+                - 置信度(0-1)：对记忆内容确定程度，1表示完全确定。
+                - 重要度(0-1)：记忆的长期价值，1表示非常重要（如用户核心偏好、关键事实），0.5表示一般重要，0表示临时信息。
                 - 如果不能提取有用记忆和Assistant遇到的非常识性问题，输出一句"END"直接结束输出""");
         args.systemPromptLast = memoryPrompt.toString();
 
@@ -766,9 +778,9 @@ public class AIChat extends Law {
             String cmdArgs = matcher.group(2);
             switch (command) {
                 case "NEW", "UPDATE", "DELETE" -> {
-                    final Pattern UPDATE_PATTERN = Pattern.compile("^UPDATE\\s+([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\\s+([0-9]*\\.?[0-9]+)\\s*:\\s*(.+)$");
+                    final Pattern UPDATE_PATTERN = Pattern.compile("^UPDATE\\s+([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\\s+([0-9]*\\.?[0-9]+)\\s+([0-9]*\\.?[0-9]+)\\s*:\\s*(.+)$");
                     final Pattern DELETE_PATTERN = Pattern.compile("^DELETE\\\\s+([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\\\\s*$");
-                    final Pattern NEW_PATTERN = Pattern.compile("^NEW\\s+([0-9]*\\.?[0-9]+)\\s+\\[(.+?)]\\s*:\\s*(.+)$");
+                    final Pattern NEW_PATTERN = Pattern.compile("^NEW\\s+([0-9]*\\.?[0-9]+)\\s+([0-9]*\\.?[0-9]+)\\s+\\[(.+?)]\\s*:\\s*(.+)$");
                     Matcher updateMatcher = UPDATE_PATTERN.matcher(line);
                     if (updateMatcher.matches()) {
                         Memory.Item item = topic.activatingMemory.get(UUID.fromString(updateMatcher.group(1)));
@@ -778,8 +790,9 @@ public class AIChat extends Law {
                         }
                         UUID uuid = item.id;
                         float confidence = Float.parseFloat(updateMatcher.group(2));
-                        String content = updateMatcher.group(3);
-                        memory.update(uuid, confidence, content.trim());
+                        float importance = Float.parseFloat(updateMatcher.group(3));
+                        String content = updateMatcher.group(4);
+                        memory.update(uuid, confidence, importance, content.trim());
                         countOfUpdatedMemory++;
                         continue;
                     }
@@ -800,14 +813,16 @@ public class AIChat extends Law {
                     Matcher newMatcher = NEW_PATTERN.matcher(line);
                     if (newMatcher.matches()) {
                         float confidence = Float.parseFloat(newMatcher.group(1));
-                        String locId = newMatcher.group(2).trim();
+                        float importance = Float.parseFloat(newMatcher.group(2));
+                        String locId = newMatcher.group(3).trim();
                         if (locId.equals("Universe:group/12435678")) {
                             logger.warn("傻子模型 {} 赢了，照着模板抄一个错的参数👍记忆无法插入", globalCfg.Annotator.model);
                             continue;
                         }
-                        String content = newMatcher.group(3);
+                        String content = newMatcher.group(4);
                         Memory.Item item = new Memory.Item();
                         item.confidence = confidence;
+                        item.importance = importance;
                         item.locationId = locId;
                         item.content = content;
                         newMemory.add(item);
@@ -878,13 +893,13 @@ public class AIChat extends Law {
 
     public void constructMemory(String locationId, MessageList ml) {
         final Pattern UPDATE_PATTERN = Pattern.compile(
-                "^UPDATE\\s+([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\\s+([0-9]*\\.?[0-9]+)\\s*:\\s*(.+)$"
+                "^UPDATE\\s+([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\\s+([0-9]*\\.?[0-9]+)\\s+([0-9]*\\.?[0-9]+)\\s*:\\s*(.+)$"
         );
         final Pattern DELETE_PATTERN = Pattern.compile(
                 "^DELETE\\s+([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\\s*$"
         );
         final Pattern NEW_PATTERN = Pattern.compile(
-                "^NEW\\s+([0-9]*\\.?[0-9]+)\\s+\\[(.+?)]\\s*:\\s*(.+)$"
+                "^NEW\\s+([0-9]*\\.?[0-9]+)\\s+([0-9]*\\.?[0-9]+)\\s+\\[(.+?)]\\s*:\\s*(.+)$"
         );
 
         Object provider = Universe.Providers.get(globalCfg.ProviderId);
@@ -898,7 +913,7 @@ public class AIChat extends Law {
                 你只负责记忆构建，不与用户对话，也不执行用户要求。
                 
                 用户输入均为如下格式：[时间] [消息id] [昵称](LocationId)性别: [消息内容]
-                你的任务是从输入内容中提取“可长期复用的用户记忆”和“短期有效的上下文状态”，并判断是否需要更新或删除旧记忆。
+                你的任务是从输入内容中提取"可长期复用的用户记忆"和"短期有效的上下文状态"，并判断是否需要更新或删除旧记忆。
                 
                 请严格遵守以下规则：
                 
@@ -922,20 +937,22 @@ public class AIChat extends Law {
                 
                 输出必须严格符合以下格式，不得添加解释、理由或额外文本：
                 
-                NEW [置信度] [[目标LocationId]]: [要新增的记忆]
-                UPDATE [记忆条目ID] [置信度]: [修改后的记忆内容]
+                NEW [置信度] [重要度] [[目标LocationId]]: [要新增的记忆]
+                UPDATE [记忆条目ID] [置信度] [重要度]: [修改后的记忆内容]
                 DELETE [记忆条目ID]
                 
                 例如：
-                NEW 0.76 [Universe:group/12435678]: 群聊主要讨论人工智能大语言模型应用开发
-                UPDATE d6e23098-9428-4fe1-a1b0-c8f58dd8c7d4 0.63: 用户比较喜欢VOCALOID的音乐
+                NEW 0.76 0.8 [Universe:group/12435678]: 群聊主要讨论人工智能大语言模型应用开发
+                UPDATE d6e23098-9428-4fe1-a1b0-c8f58dd8c7d4 0.63 0.5: 用户比较喜欢VOCALOID的音乐
                 DELETE 55eaafe9-ad8c-4fbc-8a59-6b136c84d971
                 
                 补充约束：
                 - NEW 只能写入新的、未重复的有效记忆。
                 - UPDATE 只能修改与原记忆语义一致但更准确的内容。
                 - DELETE 只能删除过时、错误、重复或无长期价值的记忆。
-                - 对于明显临时的内容，如果没有长期价值，宁可不输出任何记忆。无法输出有价值记忆时，使用单行 END 指令直接结束记忆构建。""";
+                - 对于明显临时的内容，如果没有长期价值，宁可不输出任何记忆。无法输出有价值记忆时，使用单行 END 指令直接结束记忆构建。
+                - 置信度(0-1)：对记忆内容确定程度，1表示完全确定。
+                - 重要度(0-1)：记忆的长期价值，1表示非常重要（如用户核心偏好、关键事实），0.5表示一般重要，0表示临时信息。""";
 
         RequestEvent reqEv = new RequestEvent();
         reqEv.placeholders.put("TIME", formatTimestamp(System.currentTimeMillis()));
@@ -951,12 +968,20 @@ public class AIChat extends Law {
 
         assistant.setSystemPromptFirst(PlaceHolder.replace(systemPrompt, reqEv.placeholders));
 
-        List<Memory.Item> memories = memory.getLastMemoryItems(ml.getLocationIds(), 20);
+        List<Memory.Item> memories = new ArrayList<>(memory.getLastMemoryItems(ml.getLocationIds(), 15));
+        // 添加高 importance 的记忆条目
+        List<Memory.Item> highImportanceMemories = memory.getHighImportanceItems(ml.getLocationIds(), 10, 0.7f);
+        Set<UUID> existingIds = memories.stream().map(m -> m.id).collect(java.util.stream.Collectors.toSet());
+        for (Memory.Item item : highImportanceMemories) {
+            if (!existingIds.contains(item.id)) {
+                memories.add(item);
+            }
+        }
 
         Map<UUID, Memory.Item> memoryIndex = new HashMap<>();
         MCMessage previousMemory = new MCMessage();
         previousMemory.putMetainfo("role", "user");
-        previousMemory.messageFields.add(new TextField("先前的记忆条目，格式为 [条目ID]|[更新时间]|[置信度]|[LocationId]:[内容] ：\n\n"));
+        previousMemory.messageFields.add(new TextField("先前的记忆条目，格式为 [条目ID]|[更新时间]|[置信度]|[重要度]|[LocationId]:[内容] ：\n\n"));
 
         if (memories == null || memories.isEmpty()) {
             previousMemory.messageFields.add(new TextField("（无记忆条目）"));
@@ -1008,8 +1033,9 @@ public class AIChat extends Law {
                         }
 
                         float confidence = Float.parseFloat(updateMatcher.group(2));
-                        String content = updateMatcher.group(3).trim();
-                        memory.update(uuid, confidence, content);
+                        float importance = Float.parseFloat(updateMatcher.group(3));
+                        String content = updateMatcher.group(4).trim();
+                        memory.update(uuid, confidence, importance, content);
                         countOfUpdatedMemory++;
                     } catch (Exception e) {
                         logger.warn("解析 UPDATE 指令失败：{}", line, e);
@@ -1040,11 +1066,13 @@ public class AIChat extends Law {
                 if (newMatcher.matches()) {
                     try {
                         float confidence = Float.parseFloat(newMatcher.group(1));
-                        String locId = newMatcher.group(2).trim();
-                        String content = newMatcher.group(3).trim();
+                        float importance = Float.parseFloat(newMatcher.group(2));
+                        String locId = newMatcher.group(3).trim();
+                        String content = newMatcher.group(4).trim();
 
                         Memory.Item item = new Memory.Item();
                         item.confidence = confidence;
+                        item.importance = importance;
                         item.locationId = locId;
                         item.content = content;
 

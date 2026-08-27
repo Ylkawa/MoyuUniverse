@@ -50,6 +50,8 @@ public class OpenAIChannel extends LLMProvider implements Embedding {
     String defaultModel;
     String defaultEmbeddingModel;
     String speciallyAdaptation = null; // 特调选项
+    /** 本通道的可调参数，整体通过 {@link #setCompletionsOptions(CompletionsOptions)} 注入 */
+    CompletionsOptions options = new CompletionsOptions();
 
     public OpenAIChannel() {
         client = new OkHttpClient.Builder()
@@ -58,6 +60,10 @@ public class OpenAIChannel extends LLMProvider implements Embedding {
                 .writeTimeout(30, TimeUnit.SECONDS)
                 .build();
         gson = new Gson();
+    }
+
+    public void setCompletionsOptions(CompletionsOptions options) {
+        if (options != null) this.options = options;
     }
 
     @Override
@@ -93,7 +99,7 @@ public class OpenAIChannel extends LLMProvider implements Embedding {
         // Transfer Universe message list to OpenAI message list
         cr.stream = true;
 //        logger.debug(gson.toJson(cr));
-        CompletionsResponse completions = completions(messageList, cr, llmFunctions, bufferCallback, extensionalArgs, 5, responding);
+        CompletionsResponse completions = completions(messageList, cr, llmFunctions, bufferCallback, extensionalArgs, options.maxToolRounds, new ToolLoopControl(options), responding);
         if (completions.usage.total_tokens > 0)
             logger.info("Completions-Usage: ({}) 输入 {} Tokens  输出 {} Tokens", cr.model, completions.usage.prompt_tokens, completions.usage.completion_tokens); // 无言了，百炼的 API 默认不返回 usage
         return completions;
@@ -115,7 +121,7 @@ public class OpenAIChannel extends LLMProvider implements Embedding {
         return body.toString();
     }
 
-    public CompletionsResponse completions(MessageList ml, CompletionsRequest completionsRequest, Map<String, LLMFunction> llmFunctions, BufferCallback bufferCallback, ExtensionalArgs extensionalArgs, int timeout, CompletionsResponse responding) throws IOException {
+    public CompletionsResponse completions(MessageList ml, CompletionsRequest completionsRequest, Map<String, LLMFunction> llmFunctions, BufferCallback bufferCallback, ExtensionalArgs extensionalArgs, int timeout, ToolLoopControl state, CompletionsResponse responding) throws IOException {
         completionsRequest.messages.clear(); // 每一轮都重新构建了消息列表
         for (MCMessage m : ml) {
             ArrayMessage message = new ArrayMessage();
@@ -150,10 +156,16 @@ public class OpenAIChannel extends LLMProvider implements Embedding {
         }
         logger.debug(gson.toJson(completionsRequest));
         boolean outputted = false;
-        if (timeout <= 1) { // 超时时，禁用所有tool，进行最后一次请求，避免死循环
+        if (timeout <= 0) { // 兜底：无论如何都要终结循环
+            logger.error("{} 工具调用循环未能正常中止，强制返回当前输出", completionsRequest.model);
+            return responding;
+        }
+        if (timeout <= 1 || state.calls >= state.maxCalls) { // 回合超时或本轮工具调用已达上限时，禁用所有tool，进行最后一次请求，避免死循环
+            if (state.calls >= state.maxCalls)
+                logger.warn("{} 单次回复内工具调用次数已达上限({})，工具被禁用，强制模型文字回复", completionsRequest.model, state.maxCalls);
             completionsRequest.tools = null;
             ArrayMessage am = new ArrayMessage();
-            am.content.add(new TextPiece("[WARNING] 工具调用回合超时，工具被禁用"));
+            am.content.add(new TextPiece("[WARNING] 工具调用回合超时或工具调用已达次数上限，工具已被禁用，请立即停止调用工具，直接基于已有的信息作答"));
             am.role = "system";
             completionsRequest.messages.add(am);
         }
@@ -247,14 +259,51 @@ public class OpenAIChannel extends LLMProvider implements Embedding {
                             if (llmFunctions == null) {
                                 logger.error("LLMFunctions is null and LLM is trying to call a undefined function {}", tool_call.function.name);
                                 toolMcm.messageFields.add(new TextField("None function exist, stop calling functions."));
-                                return completions(ml, completionsRequest, llmFunctions, bufferCallback, extensionalArgs, timeout - 1, responding);
+                                return completions(ml, completionsRequest, llmFunctions, bufferCallback, extensionalArgs, timeout - 1, state, responding);
                             }
-                            LLMFunction llmFunction = llmFunctions.get(tool_call.function.name);
+                            String toolName = tool_call.function.name;
+                            LLMFunction llmFunction = llmFunctions.get(toolName);
                             if (llmFunction == null) {
-                                logger.error("LLM is trying to call a undefined function {}", tool_call.function.name);
-                                toolMcm.messageFields.add(new TextField("You're trying to call a undefined function " + tool_call.function.name + "."));
-                                return completions(ml, completionsRequest, llmFunctions, bufferCallback, extensionalArgs, timeout - 1, responding);
+                                logger.error("LLM is trying to call a undefined function {}", toolName);
+                                toolMcm.messageFields.add(new TextField("You're trying to call a undefined function " + toolName + "."));
+                                return completions(ml, completionsRequest, llmFunctions, bufferCallback, extensionalArgs, timeout - 1, state, responding);
                             }
+
+                            // 防死循环：单次回复内工具调用次数已达上限则不再执行，仅告知模型停止调用
+                            if (state.calls >= state.maxCalls) {
+                                logger.warn("{} 单次回复内工具调用次数已达到上限({})，跳过执行工具 {}", completionsRequest.model, state.maxCalls, toolName);
+                                toolMcm.messageFields.add(new TextField(
+                                        "你本次回复已经达到工具调用次数上限(" + state.maxCalls + ")，该调用已被忽略。" +
+                                                "请立即停止调用任何工具，直接基于你已有的信息回答用户。如果信息不足，请如实说明。"));
+                                ml.add(toolMcm);
+                                next = true;
+                                continue;
+                            }
+
+                            // 防死循环：完全相同的参数不再重复执行，直接返回上次的结果
+                            String callKey = toolName + "|" + normalizeArgs(tool_call.function.arguments);
+                            if (state.exactResults.containsKey(callKey)) {
+                                logger.warn("{} 重复调用 {}，参数 {}", completionsRequest.model, toolName, tool_call.function.arguments);
+                                toolMcm.messageFields.add(new TextField(
+                                        "你已经用完全相同的参数调用过工具 " + toolName + "，请不要重复调用！直接基于已有信息回答。\n上次结果：\n" +
+                                                state.exactResults.get(callKey)));
+                                ml.add(toolMcm);
+                                next = true;
+                                continue;
+                            }
+
+                            // 防死循环：参数高度相似的调用视为复读，不再重复执行
+                            Set<String> argTokens = tokenize(tool_call.function.arguments);
+                            if (isNearDuplicate(state.argHistory.get(toolName), argTokens, state.duplicateThreshold)) {
+                                logger.warn("{} 疑似重复调用 {}，参数 {}", completionsRequest.model, toolName, tool_call.function.arguments);
+                                toolMcm.messageFields.add(new TextField(
+                                        "你已经用几乎相同的参数调用过工具 " + toolName + "，查询结果不会有实质变化，" +
+                                                "请不要再重复调用，请直接基于已有信息回答。"));
+                                ml.add(toolMcm);
+                                next = true;
+                                continue;
+                            }
+
                             JsonElement args = null;
                             try {
                                 args = JsonParser.parseString(tool_call.function.arguments);
@@ -280,14 +329,17 @@ public class OpenAIChannel extends LLMProvider implements Embedding {
                                 ctt.add(new TextField("调用工具失败: " + e.getMessage()));
                             }
                             if (ctt != null) {
+                                state.calls++;
+                                state.exactResults.put(callKey, ctt.toString());
+                                state.argHistory.computeIfAbsent(toolName, k -> new ArrayList<>()).add(argTokens);
                                 next = true;
                                 toolMcm.messageFields = ctt;
                             }
                             ml.add(toolMcm);
-                            logger.info("{} 调用了 {}，参数 {}", completionsRequest.model, tool_call.function.name, tool_call.function.arguments);
+                            logger.info("{} 调用了 {}，参数 {}", completionsRequest.model, toolName, tool_call.function.arguments);
                         }
                         if (next)
-                            return completions(ml, completionsRequest, llmFunctions, bufferCallback, extensionalArgs, timeout - 1, responding);
+                            return completions(ml, completionsRequest, llmFunctions, bufferCallback, extensionalArgs, timeout - 1, state, responding);
                     }
                     case "unfinished" ->
                             logger.error("出现意外导致请求未完成\nRaw req: {}", gson.toJson(completionsRequest));
@@ -316,6 +368,50 @@ public class OpenAIChannel extends LLMProvider implements Embedding {
             return;
         }
         speciallyAdaptation = "none";
+    }
+
+    /** 单次回复内工具调用的状态锁存，用于防止模型陷入工具调用死循环 */
+    private static class ToolLoopControl {
+        final int maxCalls;
+        final double duplicateThreshold;
+        int calls;
+        final Map<String, String> exactResults = new HashMap<>();
+        final Map<String, List<Set<String>>> argHistory = new HashMap<>();
+
+        ToolLoopControl(CompletionsOptions options) {
+            this.maxCalls = Math.max(1, options.maxToolCallsPerTurn);
+            this.duplicateThreshold = Math.max(0, Math.min(1, options.duplicateThreshold));
+        }
+    }
+
+    private static String normalizeArgs(String args) {
+        if (args == null) return "";
+        return args.replaceAll("\\s+", "").toLowerCase(Locale.ROOT);
+    }
+
+    private static Set<String> tokenize(String args) {
+        Set<String> tokens = new HashSet<>();
+        if (args == null) return tokens;
+        Matcher matcher = Pattern.compile("[\\p{L}\\p{N}]+").matcher(args.toLowerCase(Locale.ROOT));
+        while (matcher.find()) tokens.add(matcher.group());
+        return tokens;
+    }
+
+    private static boolean isNearDuplicate(List<Set<String>> history, Set<String> current, double threshold) {
+        if (history == null || history.isEmpty() || current.isEmpty()) return false;
+        for (Set<String> prev : history) {
+            if (jaccard(prev, current) >= threshold) return true;
+        }
+        return false;
+    }
+
+    private static double jaccard(Set<String> a, Set<String> b) {
+        Set<String> union = new HashSet<>(a);
+        union.addAll(b);
+        if (union.isEmpty()) return 1.0;
+        Set<String> inter = new HashSet<>(a);
+        inter.retainAll(b);
+        return (double) inter.size() / union.size();
     }
 
     @Override

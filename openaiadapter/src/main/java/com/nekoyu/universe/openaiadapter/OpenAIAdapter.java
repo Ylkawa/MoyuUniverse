@@ -25,6 +25,11 @@ public class OpenAIAdapter extends Law {
                 channel.defaultModel = cfg.DefaultModel;
                 channel.defaultEmbeddingModel = cfg.DefaultEmbeddingModel;
                 channel.setBaseurl(cfg.BaseUrl);
+                CompletionsOptions completionsOptions = new CompletionsOptions();
+                if (cfg.MaxToolCallsPerTurn != null) completionsOptions.maxToolCallsPerTurn = cfg.MaxToolCallsPerTurn;
+                if (cfg.MaxToolRounds != null) completionsOptions.maxToolRounds = cfg.MaxToolRounds;
+                if (cfg.DuplicateThreshold != null) completionsOptions.duplicateThreshold = cfg.DuplicateThreshold;
+                channel.setCompletionsOptions(completionsOptions);
                 Universe.Providers.put(cfg.ProviderId, channel);
             } catch (FileNotFoundException e) {
                 logger.error("能触发这个报错这辈子有了👍", e);
