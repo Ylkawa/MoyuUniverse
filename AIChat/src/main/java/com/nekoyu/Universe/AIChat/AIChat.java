@@ -57,7 +57,8 @@ public class AIChat extends Law {
     Map<String, Topic> activatingTopics = new HashMap<>();
     @Nullable
     Memory memory = null;
-    ExternalKnowledgeBase externalKnowledgeBase = null;
+    KnowledgeStore knowledgeStore = null;
+    Librarian librarian = null;
     Map<String, Assistant> subAgents = new HashMap<>();
     Multimap<String, File> emojisCollect = ArrayListMultimap.create();
     public HikariDataSource dataSource;
@@ -147,22 +148,22 @@ public class AIChat extends Law {
                                 })
                                 .build();
                         llmFunctions.put("QueryMemory", query_memory);
-                        llmFunctions.put("ExternalKnowledgeBase",
+                        llmFunctions.put("Librarian",
                                 LLMFunction.builder()
-                                        .name("QueryExternalKnowledgeBase")
-                                        .description("查询知识库中内容，需要调用外部知识时应当优先从知识库查询而非直接联网，参数为需要知道的问题，必须是完整的句子")
+                                        .name("Librarian")
+                                        .description("图书管理员，同时检索本地知识库和互联网，整合结果后返回准确答案。需要调用外部知识时应优先使用此工具。")
                                         .parameters(JsonSchema.object()
                                                 .property("question", JsonSchema.string().description("需要了解的问题"))
                                                 .required("question"))
                                         .callback(args -> {
                                             try {
                                                 MFChain result = new MFChain();
-                                                result.add(new TextField(externalKnowledgeBase.search(args.getAsJsonObject().get("question").getAsString())));
+                                                result.add(new TextField(librarian.search(args.getAsJsonObject().get("question").getAsString())));
                                                 return result;
-                                            } catch (IOException e) {
+                                            } catch (Exception e) {
                                                 MFChain result = new MFChain();
-                                                result.add(new TextField("调用失败" + e.getMessage()));
-                                                logger.error("模型主动调用外部知识库时出错", e);
+                                                result.add(new TextField("调用失败: " + e.getMessage()));
+                                                logger.error("Librarian调用出错", e);
                                                 return result;
                                             }
                                         })
@@ -170,8 +171,11 @@ public class AIChat extends Law {
                         );
                     }
                 }
-                if (globalCfg.ExternalKnowledgeBase != null) {
-                    externalKnowledgeBase = new ExternalKnowledgeBase(globalCfg.Qdrant, globalCfg.ExternalKnowledgeBase);
+                if (globalCfg.KnowledgeStore != null && dataSource != null) {
+                    knowledgeStore = new KnowledgeStore(globalCfg.Qdrant, globalCfg.KnowledgeStore, dataSource);
+                    if (globalCfg.Librarian != null) {
+                        librarian = new Librarian(knowledgeStore, globalCfg.Librarian);
+                    }
                 }
             }
         } catch (IOException e) {
@@ -384,39 +388,6 @@ public class AIChat extends Law {
                             }
                         }
                     }
-//                    case "ekb" -> {
-//                        String question = URLDecoder.decode(way[4], StandardCharsets.UTF_8);
-//                        exchange.getResponseHeaders().set(
-//                                "Content-Type",
-//                                "application/json; charset=UTF-8"
-//                        );
-//                        switch (way[3]) {
-//                            case "query" -> {
-//                                List<ExternalKnowledgeBase.Item> items = externalKnowledgeBase.query(question, null);
-//                                String resp = gson.toJson(items);
-//                                byte[] bytes = resp.getBytes(StandardCharsets.UTF_8);
-//                                exchange.sendResponseHeaders(200, bytes.length);
-//                                OutputStream os = exchange.getResponseBody();
-//                                os.write(bytes);
-//                                os.flush();
-//                                os.close();
-//                            }
-//                            case "quiz" -> {
-//                                List<ExternalKnowledgeBase.Item> items = externalKnowledgeBase.quiz(question);
-//                                String resp = gson.toJson(items);
-//                                byte[] bytes = resp.getBytes(StandardCharsets.UTF_8);
-//                                exchange.sendResponseHeaders(200, bytes.length);
-//                                OutputStream os = exchange.getResponseBody();
-//                                os.write(bytes);
-//                                os.flush();
-//                                os.close();
-//                            }
-//                            case "update" -> {
-//                                exchange.sendResponseHeaders(200, 0);
-//                                externalKnowledgeBase.constructItems(externalKnowledgeBase.fetch(question));
-//                            }
-//                        }
-//                    }
                     default -> exchange.sendResponseHeaders(400, 0);
                 }
             } catch (IndexOutOfBoundsException e) {
@@ -851,7 +822,7 @@ public class AIChat extends Law {
             req.message.add(new MFChain(new TextField(quiz.question)));
         }
         List<Memory.Item> memoryResults = new ArrayList<>();
-        List<ExternalKnowledgeBase.Item> ekbResults = new ArrayList<>();
+        List<KnowledgeStore.KnowledgeResult> ksResults = new ArrayList<>();
         StringBuilder ret = new StringBuilder();
         if (!questions.isEmpty()) {
             List<String> strings = new ArrayList<>();
@@ -870,8 +841,15 @@ public class AIChat extends Law {
                 List<Memory.Item> memoryResult =
                         memory.query(vector, questions.get(idx).locationIds);
                 memoryResults.addAll(memoryResult);
-                List<ExternalKnowledgeBase.Item> ekbResult = externalKnowledgeBase.query(vector, null);
-                ekbResults.addAll(ekbResult);
+            }
+            if (knowledgeStore != null) {
+                for (Quiz quiz : questions) {
+                    try {
+                        ksResults.addAll(knowledgeStore.search(quiz.question));
+                    } catch (IOException e) {
+                        logger.error("KnowledgeStore search failed for: {}", quiz.question, e);
+                    }
+                }
             }
             memoryResults.forEach(result -> topic.activatingMemory.put(result.id, result));
             ret.append("本地记忆内容：\n");
@@ -879,7 +857,7 @@ public class AIChat extends Law {
                 ret.append(item.toString()).append("\n");
             }
             ret.append("\n知识库内容：\n");
-            for (ExternalKnowledgeBase.Item item : ekbResults) {
+            for (KnowledgeStore.KnowledgeResult item : ksResults) {
                 ret.append(item.toString()).append("\n");
             }
         }
