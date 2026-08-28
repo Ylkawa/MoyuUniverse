@@ -6,6 +6,9 @@ import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonObject;
 import com.nekoyu.Universe.AIChat.Event.RequestEvent;
+import com.nekoyu.Universe.AIChat.Skill.Skill;
+import com.nekoyu.Universe.AIChat.Skill.SkillManager;
+import com.nekoyu.Universe.AIChat.Skill.SkillRegistry;
 import com.nekoyu.Universe.API.MessageChannel.*;
 import com.nekoyu.Universe.API.MessageChannel.MessageField.StickerField;
 import com.nekoyu.Universe.API.MessageChannel.MessageField.TextField;
@@ -148,6 +151,12 @@ public class AIChat extends Law {
                                 })
                                 .build();
                         llmFunctions.put("QueryMemory", query_memory);
+                    }
+                }
+                if (globalCfg.KnowledgeStore != null && dataSource != null) {
+                    knowledgeStore = new KnowledgeStore(globalCfg.Qdrant, globalCfg.KnowledgeStore, dataSource);
+                    if (globalCfg.Librarian != null) {
+                        librarian = new Librarian(knowledgeStore, globalCfg.Librarian);
                         llmFunctions.put("Librarian",
                                 LLMFunction.builder()
                                         .name("Librarian")
@@ -171,19 +180,26 @@ public class AIChat extends Law {
                         );
                     }
                 }
-                if (globalCfg.KnowledgeStore != null && dataSource != null) {
-                    knowledgeStore = new KnowledgeStore(globalCfg.Qdrant, globalCfg.KnowledgeStore, dataSource);
-                    if (globalCfg.Librarian != null) {
-                        librarian = new Librarian(knowledgeStore, globalCfg.Librarian);
-                    }
-                }
             }
         } catch (IOException e) {
+            // 读取/解析配置文件失败。若配置文件已存在则不得覆盖，防止误毁用户配置。
+            File cfgFile = new File("./config/AIChat/config.json");
+            if (cfgFile.exists() && cfgFile.length() > 0) {
+                File backup = new File("./config/AIChat/config.json.broken." + System.currentTimeMillis());
+                try {
+                    java.nio.file.Files.copy(cfgFile.toPath(), backup.toPath(),
+                            java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+                    logger.error("配置文件 config.json 读取失败，已备份到 {}，请检查其内容", backup.getName(), e);
+                } catch (IOException ex) {
+                    logger.error("配置文件 config.json 读取失败，且无法备份", e);
+                }
+                throw new RuntimeException("config.json 不可用，已保留现场，拒绝覆盖", e);
+            }
+            // 仅当配置文件完全不存在时，才新建一个默认配置
             Gson gson = new GsonBuilder()
                     .serializeNulls()
                     .setPrettyPrinting()
                     .create();
-            // 没找到配置文件，所以新建一个配置文件
             globalCfg = new Config();
             globalCfg.PromptFirst = ""; // 默认的System_prompt，这里留白了没写
             globalCfg.PromptLast = "";
@@ -276,6 +292,9 @@ public class AIChat extends Law {
                 }
             }
         } else logger.warn("没有配置 SubAgent，此特性将禁用");
+
+        File skillsDic = new File("./config/AIChat/Skills/");
+        SkillRegistry.loadFromDir(skillsDic.getAbsolutePath());
 
         Path emojisDic = Paths.get("./data/AIChat/emojis/");
         loadEmojis(emojisDic);
@@ -414,6 +433,32 @@ public class AIChat extends Law {
                     if (topic == null) {
                         topic = new Topic(sessionCfg);
                         activatingTopics.put(mcm.sessionId, topic);
+
+                        List<String> availableSkillIds = new ArrayList<>();
+                        List<String> alwaysSkillIds = new ArrayList<>();
+
+                        if (sessionCfg.availableSkills != null) {
+                            availableSkillIds.addAll(Arrays.asList(sessionCfg.availableSkills));
+                        } else if (globalCfg.Skills != null && globalCfg.Skills.availableSkills != null) {
+                            availableSkillIds.addAll(Arrays.asList(globalCfg.Skills.availableSkills));
+                        } else {
+                            availableSkillIds.addAll(SkillRegistry.getAll().keySet());
+                        }
+
+                        if (sessionCfg.skills != null) {
+                            alwaysSkillIds.addAll(Arrays.asList(sessionCfg.skills));
+                        } else if (globalCfg.Skills != null && globalCfg.Skills.defaultSkills != null) {
+                            alwaysSkillIds.addAll(Arrays.asList(globalCfg.Skills.defaultSkills));
+                        }
+
+                        topic.skillManager = new SkillManager(topic, availableSkillIds, alwaysSkillIds);
+                        topic.initSystemPrompts(globalCfg.PromptFirst, sessionCfg.PromptFirst,
+                                sessionCfg.PromptLast, globalCfg.PromptLast);
+                        topic.skillManager.initAlwaysSkills();
+
+                        logger.info("会话 {} 初始化 Skills - 可用: {}, 始终加载: {}, 已激活: {}",
+                                mcm.sessionId, availableSkillIds, alwaysSkillIds, topic.skillManager.getActiveSkills());
+
                         MessageList ml = (MessageList) MessageChannelManager.getMessageHistory(sessionCfg.SessionId).clone();
                         for (MCMessage m : ml) {
                             topic.addMsg(m);
@@ -429,6 +474,13 @@ public class AIChat extends Law {
                                         assistant.addTool(func);
                                     }
                                 } // 为 assistant 添加指定的 tools // 如果不存在这个 tool 就不添加
+                            }
+                            if (topic.skillManager != null) {
+                                for (String toolName : topic.skillManager.getActiveToolNames()) {
+                                    for (LLMFunction func : llmFunctions.get(toolName)) {
+                                        assistant.addTool(func);
+                                    }
+                                }
                             }
                             if (sessionCfg.subAgents != null) for (String subAgentName : sessionCfg.subAgents) {
                                 Assistant subAgent = subAgents.get(subAgentName);
@@ -457,9 +509,52 @@ public class AIChat extends Law {
                                         .build();
                                 assistant.addTool(llmFunction);
                             } // 为 assistant 添加 subAgent
+                            if (topic.skillManager != null && topic.skillManager.hasOnDemandSkills()) {
+                                SkillManager sm = topic.skillManager;
+                                StringBuilder skillListDesc = new StringBuilder();
+                                skillListDesc.append("根据用户需求激活技能。可用技能：\n");
+                                for (Skill skill : sm.getAvailableOnDemandSkills()) {
+                                    if (!sm.isActive(skill.id)) {
+                                        skillListDesc.append("- ").append(skill.id).append(": ").append(skill.description).append("\n");
+                                    }
+                                }
+                                if (!sm.getActiveSkills().isEmpty()) {
+                                    skillListDesc.append("已激活的技能：").append(String.join(", ", sm.getActiveSkills())).append("\n");
+                                }
+                                skillListDesc.append("注意：技能一旦激活将在此会话中持续生效，请根据用户需求选择合适的技能。");
+
+                                LLMFunction manageSkillsFunc = LLMFunction.builder()
+                                        .name("ManageSkills")
+                                        .description(skillListDesc.toString())
+                                        .parameters(JsonSchema.object()
+                                                .property("skillId", JsonSchema.string().description("技能ID，必须是可用技能列表中的id"))
+                                                .required("skillId"))
+                                        .callback(args -> {
+                                            JsonObject o = args.getAsJsonObject();
+                                            String skillId = o.get("skillId").getAsString();
+                                            MFChain result = new MFChain();
+                                            if (sm.activate(skillId)) {
+                                                Skill activated = SkillRegistry.get(skillId);
+                                                if (activated != null && activated.toolNames != null) {
+                                                    for (String toolName : activated.toolNames) {
+                                                        for (LLMFunction func : llmFunctions.get(toolName)) {
+                                                            assistant.addTool(func);
+                                                        }
+                                                    }
+                                                }
+                                                result.add(new TextField("技能 " + skillId + " 已激活，其工具现在可以使用了"));
+                                            } else {
+                                                result.add(new TextField("技能 " + skillId + " 激活失败，可能已激活或不存在"));
+                                            }
+                                            return result;
+                                        })
+                                        .build();
+                                assistant.addTool(manageSkillsFunc);
+                            }
                             // 先让插件处理事件 插件提供局部的PlaceHolder
                             var reqEv = new RequestEvent();
                             reqEv.locationId = mcm.getLocationId();
+                            reqEv.skillManager = topic.skillManager;
                             for (var plug : aiChatPlugins) {
                                 try {
                                     plug.onRequest(reqEv);
@@ -513,9 +608,17 @@ public class AIChat extends Law {
 
                             try {
                                 MessageList openaiMl = topic.getOpenAIML();
-                                // 设置 System Prompt
-                                assistant.setSystemPromptFirst(PlaceHolder.replace(globalCfg.PromptFirst + sessionCfg.PromptFirst, reqEv.placeholders));
-                                assistant.setSystemPromptLast(PlaceHolder.replace(globalCfg.PromptLast + sessionCfg.PromptLast, reqEv.placeholders));
+                                for (MCMessage sysMsg : openaiMl) {
+                                    if ("system".equals(sysMsg.getMetainfo("role"))) {
+                                        for (int i = 0; i < sysMsg.messageFields.size(); i++) {
+                                            var field = sysMsg.messageFields.get(i);
+                                            if (field instanceof TextField tf) {
+                                                String replaced = PlaceHolder.replace(tf.toString(), reqEv.placeholders);
+                                                sysMsg.messageFields.set(i, new TextField(replaced));
+                                            }
+                                        }
+                                    }
+                                }
                                 // Extensional Args
                                 ExtensionalArgs extensionalArgs = new ExtensionalArgs();
                                 extensionalArgs.placeholders.put("_LocationID", mcm.getLocationId());
@@ -750,7 +853,7 @@ public class AIChat extends Law {
             switch (command) {
                 case "NEW", "UPDATE", "DELETE" -> {
                     final Pattern UPDATE_PATTERN = Pattern.compile("^UPDATE\\s+([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\\s+([0-9]*\\.?[0-9]+)\\s+([0-9]*\\.?[0-9]+)\\s*:\\s*(.+)$");
-                    final Pattern DELETE_PATTERN = Pattern.compile("^DELETE\\\\s+([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\\\\s*$");
+                    final Pattern DELETE_PATTERN = Pattern.compile("^DELETE\\s+([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\\s*$");
                     final Pattern NEW_PATTERN = Pattern.compile("^NEW\\s+([0-9]*\\.?[0-9]+)\\s+([0-9]*\\.?[0-9]+)\\s+\\[(.+?)]\\s*:\\s*(.+)$");
                     Matcher updateMatcher = UPDATE_PATTERN.matcher(line);
                     if (updateMatcher.matches()) {

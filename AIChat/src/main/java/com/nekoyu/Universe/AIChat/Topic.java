@@ -1,36 +1,73 @@
 package com.nekoyu.Universe.AIChat;
 
+import com.nekoyu.Universe.AIChat.Skill.SkillManager;
 import com.nekoyu.Universe.API.MessageChannel.MCMessage;
 import com.nekoyu.Universe.API.MessageChannel.MessageField.ImageField;
 import com.nekoyu.Universe.API.MessageChannel.MessageField.MsgField;
 import com.nekoyu.Universe.API.MessageChannel.MessageField.TextField;
 import com.nekoyu.Universe.API.MessageChannel.MessageList;
 
-import java.util.HashMap;
-import java.util.Map;
-import java.util.Objects;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
 
 import static com.nekoyu.Universe.AIChat.AIChat.formatTimestamp;
 
 public class Topic {
     AtomicBoolean responding = new AtomicBoolean(false);
     MessageList messages = new MessageList();
+    List<MCMessage> systemPrompts = new ArrayList<>();
     SessionConfig sessionCfg;
     Map<UUID, Memory.Item> activatingMemory = new HashMap<>();
-//    AtomicInteger refererCount = new AtomicInteger(1);
-//    Map<Integer, MsgField> refObj = new HashMap<>();
+    SkillManager skillManager;
+
+    private int promptLastCount = 0;
 
     public Topic(SessionConfig sessionCfg) {
         this.sessionCfg = sessionCfg;
     }
 
+    public void initSystemPrompts(String promptFirstGlobal, String promptFirstSession,
+                                   String promptLastSession, String promptLastGlobal) {
+        systemPrompts.clear();
+        promptLastCount = 0;
+
+        if (promptFirstGlobal != null && !promptFirstGlobal.isEmpty()) {
+            systemPrompts.add(createSystemMessage(promptFirstGlobal));
+        }
+        if (promptFirstSession != null && !promptFirstSession.isEmpty()) {
+            systemPrompts.add(createSystemMessage(promptFirstSession));
+        }
+
+        if (promptLastSession != null && !promptLastSession.isEmpty()) {
+            systemPrompts.add(createSystemMessage(promptLastSession));
+            promptLastCount++;
+        }
+        if (promptLastGlobal != null && !promptLastGlobal.isEmpty()) {
+            systemPrompts.add(createSystemMessage(promptLastGlobal));
+            promptLastCount++;
+        }
+    }
+
+    public void insertSystemPromptBeforeLast(MCMessage msg) {
+        int insertPos = systemPrompts.size() - promptLastCount;
+        if (insertPos < 0) insertPos = 0;
+        systemPrompts.add(insertPos, msg);
+    }
+
+    public void removeSystemPromptBySkillId(String skillId) {
+        systemPrompts.removeIf(m -> skillId.equals(m.getMetainfo("skillId")));
+    }
+
+    private MCMessage createSystemMessage(String content) {
+        MCMessage msg = new MCMessage();
+        msg.putMetainfo("role", "system");
+        msg.messageFields.add(new TextField(content));
+        return msg;
+    }
+
     public void addMsg(MCMessage mcm) {
         MCMessage oaiM = new MCMessage();
 
-        // 1) 先转换 role
         if (!Objects.equals(mcm.sender.getLocationId(), mcm.receiver.getLocationId())) {
             oaiM.messageFields.add(new TextField(
                     formatTimestamp((mcm.time * 1000)) +
@@ -40,15 +77,11 @@ public class Topic {
             ));
         }
 
-        // 2) 追加消息内容
         if (sessionCfg.nativeImage) {
             for (MsgField mf : mcm.messageFields) {
                 if (mf instanceof ImageField i) {
                     oaiM.messageFields.add(mf);
                     oaiM.messageFields.add(new TextField(i.solveMetadata()));
-//                    int refId = refererCount.getAndIncrement();
-//                    refObj.put(refId, mf);
-//                    oaiM.messageFields.add(new TextField("Ref_ID: " + refId + "\n"));
                 } else if (mf instanceof TextField) {
                     oaiM.messageFields.add(mf);
                 } else {
@@ -63,16 +96,15 @@ public class Topic {
         oaiM.sessionId = mcm.sessionId;
         messages.add(oaiM);
 
-        // 3) 按“块”裁剪，避免截断 function calling 链
         trimMessagesSafely();
     }
 
     private void trimMessagesSafely() {
         int budget = sessionCfg.maxTokens / 2;
 
-        int total = 0;          // 已保留 token
-        int keep = 0;           // 最终保留消息数
-        int firstBlockSize = 0;  // 保底：至少保留最后一个完整块
+        int total = 0;
+        int keep = 0;
+        int firstBlockSize = 0;
         boolean firstBlockSeen = false;
 
         for (int i = messages.size() - 1; i >= 0; ) {
@@ -81,7 +113,6 @@ public class Topic {
 
             MCMessage cur = messages.get(i);
 
-            // tool block：tool + tool + tool ... + assistant(tool_calls)
             if (isToolMessage(cur)) {
                 while (i >= 0 && isToolMessage(messages.get(i))) {
                     blockTokens += countTokens(messages.get(i));
@@ -113,12 +144,10 @@ public class Topic {
             keep += blockSize;
         }
 
-        // 保底：如果预算太小导致一个块都放不下，至少保留最后一个完整块
         if (keep == 0 && !messages.isEmpty()) {
             keep = firstBlockSize;
         }
 
-        // 只在需要时清理
         if (messages.size() > 50 || total > budget || keep < messages.size()) {
             messages.clean(keep);
         }
@@ -133,7 +162,6 @@ public class Topic {
                 && m.getMetainfo("Tool_calls") != null;
     }
 
-    // 估算某消息的tokens量
     private static int countTokens(MCMessage oai) {
         int tokens = 0;
         for (MsgField mf : oai.messageFields) {
@@ -149,6 +177,20 @@ public class Topic {
     }
 
     public MessageList getOpenAIML() {
-        return messages;
+        MessageList full = new MessageList();
+        for (MCMessage sysMsg : systemPrompts) {
+            MCMessage copy = new MCMessage();
+            copy.putMetainfo("role", sysMsg.getMetainfo("role"));
+            Object skillId = sysMsg.getMetainfo("skillId");
+            if (skillId != null) {
+                copy.putMetainfo("skillId", skillId);
+            }
+            for (var field : sysMsg.messageFields) {
+                copy.messageFields.add(field);
+            }
+            full.add(copy);
+        }
+        full.addAll(messages);
+        return full;
     }
 }

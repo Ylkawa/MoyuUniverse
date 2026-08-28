@@ -98,7 +98,7 @@ public class OpenAIChannel extends LLMProvider implements Embedding {
         if (cr.tools.isEmpty()) cr.tools = null;
         // Transfer Universe message list to OpenAI message list
         cr.stream = true;
-//        logger.debug(gson.toJson(cr));
+        logger.debug(gson.toJson(cr));
         CompletionsResponse completions = completions(messageList, cr, llmFunctions, bufferCallback, extensionalArgs, options.maxToolRounds, new ToolLoopControl(options), responding);
         if (completions.usage.total_tokens > 0)
             logger.info("Completions-Usage: ({}) 输入 {} Tokens  输出 {} Tokens", cr.model, completions.usage.prompt_tokens, completions.usage.completion_tokens); // 无言了，百炼的 API 默认不返回 usage
@@ -292,18 +292,6 @@ public class OpenAIChannel extends LLMProvider implements Embedding {
                                 continue;
                             }
 
-                            // 防死循环：参数高度相似的调用视为复读，不再重复执行
-                            Set<String> argTokens = tokenize(tool_call.function.arguments);
-                            if (isNearDuplicate(state.argHistory.get(toolName), argTokens, state.duplicateThreshold)) {
-                                logger.warn("{} 疑似重复调用 {}，参数 {}", completionsRequest.model, toolName, tool_call.function.arguments);
-                                toolMcm.messageFields.add(new TextField(
-                                        "你已经用几乎相同的参数调用过工具 " + toolName + "，查询结果不会有实质变化，" +
-                                                "请不要再重复调用，请直接基于已有信息回答。"));
-                                ml.add(toolMcm);
-                                next = true;
-                                continue;
-                            }
-
                             JsonElement args = null;
                             try {
                                 args = JsonParser.parseString(tool_call.function.arguments);
@@ -331,7 +319,6 @@ public class OpenAIChannel extends LLMProvider implements Embedding {
                             if (ctt != null) {
                                 state.calls++;
                                 state.exactResults.put(callKey, ctt.toString());
-                                state.argHistory.computeIfAbsent(toolName, k -> new ArrayList<>()).add(argTokens);
                                 next = true;
                                 toolMcm.messageFields = ctt;
                             }
@@ -373,45 +360,17 @@ public class OpenAIChannel extends LLMProvider implements Embedding {
     /** 单次回复内工具调用的状态锁存，用于防止模型陷入工具调用死循环 */
     private static class ToolLoopControl {
         final int maxCalls;
-        final double duplicateThreshold;
         int calls;
         final Map<String, String> exactResults = new HashMap<>();
-        final Map<String, List<Set<String>>> argHistory = new HashMap<>();
 
         ToolLoopControl(CompletionsOptions options) {
             this.maxCalls = Math.max(1, options.maxToolCallsPerTurn);
-            this.duplicateThreshold = Math.max(0, Math.min(1, options.duplicateThreshold));
         }
     }
 
     private static String normalizeArgs(String args) {
         if (args == null) return "";
         return args.replaceAll("\\s+", "").toLowerCase(Locale.ROOT);
-    }
-
-    private static Set<String> tokenize(String args) {
-        Set<String> tokens = new HashSet<>();
-        if (args == null) return tokens;
-        Matcher matcher = Pattern.compile("[\\p{L}\\p{N}]+").matcher(args.toLowerCase(Locale.ROOT));
-        while (matcher.find()) tokens.add(matcher.group());
-        return tokens;
-    }
-
-    private static boolean isNearDuplicate(List<Set<String>> history, Set<String> current, double threshold) {
-        if (history == null || history.isEmpty() || current.isEmpty()) return false;
-        for (Set<String> prev : history) {
-            if (jaccard(prev, current) >= threshold) return true;
-        }
-        return false;
-    }
-
-    private static double jaccard(Set<String> a, Set<String> b) {
-        Set<String> union = new HashSet<>(a);
-        union.addAll(b);
-        if (union.isEmpty()) return 1.0;
-        Set<String> inter = new HashSet<>(a);
-        inter.retainAll(b);
-        return (double) inter.size() / union.size();
     }
 
     @Override

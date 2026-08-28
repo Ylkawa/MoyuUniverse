@@ -13,6 +13,12 @@ public class Config {
     Memory Memory = null;
     KnowledgeStore KnowledgeStore = null;
     Librarian Librarian = null;
+    SkillConfig Skills = null;
+
+    public static class SkillConfig {
+        String[] defaultSkills;
+        String[] availableSkills;
+    }
 
     public static class SQLConfig {
         String url;

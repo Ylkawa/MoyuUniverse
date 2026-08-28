@@ -145,7 +145,8 @@ public class Web extends AIChatPlugin {
                 sb.append("}\n\n");
             }
             return sb.toString();
-        } catch (IOException e) {
+        } catch (IOException | RuntimeException e) {
+            logger.error("搜索引擎搜索失败, 搜索词: " + content, e);
             return "搜索出错: " + e.getMessage();
         }
     }

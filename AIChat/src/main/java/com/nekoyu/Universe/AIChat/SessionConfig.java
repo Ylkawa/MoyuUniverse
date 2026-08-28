@@ -15,4 +15,6 @@ public class SessionConfig {
     List<String> subAgents;
     boolean nativeImage;
     int maxTokens = 20000;
+    String[] skills;
+    String[] availableSkills;
 }

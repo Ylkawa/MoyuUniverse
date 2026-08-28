@@ -1,5 +1,6 @@
 package com.nekoyu.Universe.AIChat.Event;
 
+import com.nekoyu.Universe.AIChat.Skill.SkillManager;
 import com.nekoyu.Universe.API.MessageChannel.MessageList;
 
 import java.util.HashMap;
@@ -10,4 +11,5 @@ public class RequestEvent {
     public MessageList messageList;
     public String sessionId;
     public String locationId;
+    public SkillManager skillManager;
 }
