@@ -671,7 +671,7 @@ public class AIChat extends Law {
                         msg.putMetainfo("role", "user");
                         msg.messageFields.add(new TextField(mcp.poster.getName() + " (" + mcp.poster.getLocationId() + ") [" + formatTimestamp(System.currentTimeMillis()) + "]:\n\n"));
                         // name(locationId)[2026-04-11 12:19:44]:\n\n
-                        msg.messageFields = mcp.messageFields;
+                        msg.messageFields.addAll(mcp.messageFields);
                         ml.add(msg);
                         try {
                             constructMemory(mcp.getLocationId(), ml);
@@ -793,16 +793,24 @@ public class AIChat extends Law {
                 3. 如果问题不仅仅与某一个用户关联，则不需要加括号提供LocationId，直接用指令提问
                 4. 如果问题与某一个用户相关，那么在指令后加一个括号并填入用户的LocationId，并在问题中固定使用“用户”的称呼
                 5. 不要对聊天内容提问，只能向记忆库或外置知识库提问""";
-        StringBuilder memoryPrompt = new StringBuilder("先前的记忆条目，格式为 [条目ID]|[更新时间]|[置信度]|[重要度]|[LocationId]:[内容] ：\n\n");
-
-        if ((memories == null || memories.isEmpty()) && topic.activatingMemory == null) {
+        Map<UUID, Integer> memoryIdMap = new HashMap<>();
+        int memoryCounter = 1;
+        StringBuilder memoryPrompt = new StringBuilder("先前的记忆条目，格式为 [编号]|[更新时间]|[置信度]|[重要度]|[LocationId]:[内容] ：\n\n");
+        boolean hasAnyMemory = (memories != null && !memories.isEmpty()) || !topic.activatingMemory.isEmpty();
+        if (!hasAnyMemory) {
             memoryPrompt.append("（无记忆条目）");
         } else {
             if (memories != null) for (Memory.Item memObj : memories) {
-                memoryPrompt.append(memObj.toString());
+                memoryIdMap.put(memObj.id, memoryCounter);
+                memoryPrompt.append(memoryCounter++).append("|").append(memObj.toString()).append("\n");
             }
             if (!topic.activatingMemory.isEmpty()) {
-                topic.activatingMemory.values().forEach(memObj -> memoryPrompt.append(memObj.id).append("|").append(memObj).append("\n"));
+                for (Memory.Item memObj : topic.activatingMemory.values()) {
+                    if (!memoryIdMap.containsKey(memObj.id)) {
+                        memoryIdMap.put(memObj.id, memoryCounter);
+                        memoryPrompt.append(memoryCounter++).append("|").append(memObj.toString()).append("\n");
+                    }
+                }
             }
         }
         memoryPrompt.append("""
@@ -815,8 +823,8 @@ public class AIChat extends Law {
                 QUIZ(LocationId) [问题]
                 例如（只参考格式，不可参考参数）：
                 NEW 0.76 0.8 [Universe:group/12435678]: 群聊主要讨论人工智能大语言模型应用开发
-                UPDATE d6e23098-9428-4fe1-a1b0-c8f58dd8c7d4 0.63 0.5: 用户比较喜欢VOCALOID的音乐
-                DELETE 55eaafe9-ad8c-4fbc-8a59-6b136c84d971
+                UPDATE 1 0.63 0.5: 用户比较喜欢VOCALOID的音乐
+                DELETE 2
                 QUIZ 《异环》是什么时候发布的游戏
                 QUIZ 《绝区零》的'啥子蛇'是什么角色
                 QUIZ 《异环》的娜娜莉怎么配队
@@ -852,17 +860,20 @@ public class AIChat extends Law {
             String cmdArgs = matcher.group(2);
             switch (command) {
                 case "NEW", "UPDATE", "DELETE" -> {
-                    final Pattern UPDATE_PATTERN = Pattern.compile("^UPDATE\\s+([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\\s+([0-9]*\\.?[0-9]+)\\s+([0-9]*\\.?[0-9]+)\\s*:\\s*(.+)$");
-                    final Pattern DELETE_PATTERN = Pattern.compile("^DELETE\\s+([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\\s*$");
+                    final Pattern UPDATE_PATTERN = Pattern.compile("^UPDATE\\s+(\\d+)\\s+([0-9]*\\.?[0-9]+)\\s+([0-9]*\\.?[0-9]+)\\s*:\\s*(.+)$");
+                    final Pattern DELETE_PATTERN = Pattern.compile("^DELETE\\s+(\\d+)\\s*$");
                     final Pattern NEW_PATTERN = Pattern.compile("^NEW\\s+([0-9]*\\.?[0-9]+)\\s+([0-9]*\\.?[0-9]+)\\s+\\[(.+?)]\\s*:\\s*(.+)$");
                     Matcher updateMatcher = UPDATE_PATTERN.matcher(line);
                     if (updateMatcher.matches()) {
-                        Memory.Item item = topic.activatingMemory.get(UUID.fromString(updateMatcher.group(1)));
-                        if (item == null) {
-                            logger.warn("傻子模型 {} 想修改一个不存在的记忆条目ID👍", globalCfg.Annotator.model);
+                        int number = Integer.parseInt(updateMatcher.group(1));
+                        UUID uuid = null;
+                        for (var entry : memoryIdMap.entrySet()) {
+                            if (entry.getValue() == number) { uuid = entry.getKey(); break; }
+                        }
+                        if (uuid == null) {
+                            logger.warn("傻子模型 {} 想修改一个不存在的记忆条目编号👍", globalCfg.Annotator.model);
                             continue;
                         }
-                        UUID uuid = item.id;
                         float confidence = Float.parseFloat(updateMatcher.group(2));
                         float importance = Float.parseFloat(updateMatcher.group(3));
                         String content = updateMatcher.group(4);
@@ -873,13 +884,17 @@ public class AIChat extends Law {
 
                     Matcher deleteMatcher = DELETE_PATTERN.matcher(line);
                     if (deleteMatcher.matches()) {
-                        UUID key = UUID.fromString(deleteMatcher.group(1));
-                        Memory.Item item = topic.activatingMemory.get(key);
-                        if (item == null) {
-                            logger.warn("傻子模型 {} 想删一个不存在的记忆条目ID👍", globalCfg.Annotator.model);
+                        int number = Integer.parseInt(deleteMatcher.group(1));
+                        UUID uuid = null;
+                        for (var entry : memoryIdMap.entrySet()) {
+                            if (entry.getValue() == number) { uuid = entry.getKey(); break; }
+                        }
+                        if (uuid == null) {
+                            logger.warn("傻子模型 {} 想删一个不存在的记忆条目编号👍", globalCfg.Annotator.model);
                             continue;
                         }
-                        memory.delete(topic.activatingMemory.remove(key).id);
+                        memory.delete(uuid);
+                        topic.activatingMemory.remove(uuid);
                         countOfDeletedMemory++;
                         continue;
                     }
@@ -1076,11 +1091,7 @@ public class AIChat extends Law {
                 }
                 memoryIndex.put(itemNumber, memObj);
                 previousMemory.messageFields.add(new TextField(
-                        itemNumber + "|" + formatTimestamp(memObj.updateAt)
-                                + "|" + memObj.confidence
-                                + "|" + memObj.importance
-                                + "|" + memObj.locationId
-                                + "]：" + memObj.content
+                        itemNumber + "|" + memObj.toString()
                 ));
                 itemNumber++;
             }
