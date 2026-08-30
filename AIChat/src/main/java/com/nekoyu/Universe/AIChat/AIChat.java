@@ -54,6 +54,7 @@ public class AIChat extends Law {
     public static final int TOPIC_TIMEOUT = 20;
     static Logger logger = LoggerFactory.getLogger(AIChat.class);
     static Multimap<String, LLMFunction> llmFunctions = ArrayListMultimap.create();
+    static Map<String, MarkDecoupler> markDecouplers = new HashMap<>();
     List<SessionConfig> configs = new ArrayList<>();
     List<AIChatPlugin> aiChatPlugins = new ArrayList<>();
     Config globalCfg;
@@ -68,6 +69,10 @@ public class AIChat extends Law {
 
     public static void registerFunction(String toolName, LLMFunction tool) {
         llmFunctions.put(toolName, tool);
+    }
+
+    public static void registerMarkDecoupler(String toolName, MarkDecoupler markDecoupler) {
+        markDecouplers.put(toolName, markDecoupler);
     }
 
     public static String formatTimestamp(long ts) {
@@ -337,6 +342,7 @@ public class AIChat extends Law {
                 logger.warn("无法监听文件变化，将不能热重载表情包");
             }
         }).start();
+        loadInternalMarkDecoupler();
         return true;
     }
 
@@ -361,6 +367,23 @@ public class AIChat extends Law {
             }
         }
         logger.info("已刷新表情包库，载入 {} 个表情包", emojisCollect.size());
+    }
+
+    private void loadInternalMarkDecoupler() {
+        markDecouplers.put("emoji", args -> {
+            MFChain result = new MFChain();
+            if (emojisCollect.get(args).isEmpty()) {
+                result.add(new TextField("[" + args + "]"));
+            } else {
+                try {
+                    StickerField e = new StickerField(new URL(UniverseChannel.getOutboundHttpAddress() + "/AIChat/emoji/" + args));
+                    e.description = "<emoji:" + args + ">";
+                    result.add(e);
+                } catch (MalformedURLException ignored) {
+                }
+            }
+            return result;
+        });
     }
 
     private void loadSessionCfg(File configDic) {
@@ -554,6 +577,7 @@ public class AIChat extends Law {
                             // 先让插件处理事件 插件提供局部的PlaceHolder
                             var reqEv = new RequestEvent();
                             reqEv.locationId = mcm.getLocationId();
+                            reqEv.sessionId = mcm.sessionId;
                             reqEv.skillManager = topic.skillManager;
                             for (var plug : aiChatPlugins) {
                                 try {
@@ -707,22 +731,13 @@ public class AIChat extends Law {
             }
 
             // 处理 command
-            String command = matcher.group("command");
-            switch (command.toLowerCase()) {
-                case "emoji" -> {
-                    String emojiName = matcher.group("args");
-                    if (emojisCollect.get(emojiName).isEmpty()) {
-                        result.add(new TextField("[" + emojiName + "]"));
-                    } else {
-                        try {
-                            StickerField e = new StickerField(new URL(UniverseChannel.getOutboundHttpAddress() + "/AIChat/emoji/" + emojiName));
-                            e.description = "<emoji:" + emojiName + ">";
-                            result.add(e);
-                        } catch (MalformedURLException ignored) {
-                        }
-                    }
-                }
-                default -> logger.warn("无法识别 {} 的命令", command);
+            MarkDecoupler markDecoupler = markDecouplers.get(matcher.group("command"));
+            try {
+                result.addAll(
+                        markDecoupler.process(matcher.group("args"))
+                );
+            } catch (Exception e) {
+                logger.error("Decoupler process error", e);
             }
 
             // 更新游标
@@ -868,7 +883,10 @@ public class AIChat extends Law {
                         int number = Integer.parseInt(updateMatcher.group(1));
                         UUID uuid = null;
                         for (var entry : memoryIdMap.entrySet()) {
-                            if (entry.getValue() == number) { uuid = entry.getKey(); break; }
+                            if (entry.getValue() == number) {
+                                uuid = entry.getKey();
+                                break;
+                            }
                         }
                         if (uuid == null) {
                             logger.warn("傻子模型 {} 想修改一个不存在的记忆条目编号👍", globalCfg.Annotator.model);
@@ -887,7 +905,10 @@ public class AIChat extends Law {
                         int number = Integer.parseInt(deleteMatcher.group(1));
                         UUID uuid = null;
                         for (var entry : memoryIdMap.entrySet()) {
-                            if (entry.getValue() == number) { uuid = entry.getKey(); break; }
+                            if (entry.getValue() == number) {
+                                uuid = entry.getKey();
+                                break;
+                            }
                         }
                         if (uuid == null) {
                             logger.warn("傻子模型 {} 想删一个不存在的记忆条目编号👍", globalCfg.Annotator.model);
