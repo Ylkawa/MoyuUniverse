@@ -1,9 +1,13 @@
 package com.nekoyu.Universe.AIChat.Web.SearchAPI.BrightData.GoogleSearch;
 
 import com.google.gson.Gson;
+import com.google.gson.GsonBuilder;
+import com.google.gson.JsonDeserializationContext;
+import com.google.gson.JsonDeserializer;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.google.gson.JsonParseException;
 import com.google.gson.JsonSyntaxException;
 import com.nekoyu.Universe.AIChat.Web.SearchAPI.SearchClient;
 import com.nekoyu.Universe.AIChat.Web.SearchAPI.SearchResult;
@@ -12,10 +16,29 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.lang.reflect.Type;
+import java.net.MalformedURLException;
+import java.net.URL;
 
 public class Client extends SearchClient {
     public static final MediaType JSON = MediaType.get("application/json; charset=utf-8");
-    Gson gson = new Gson();
+    Gson gson = new GsonBuilder()
+            .registerTypeAdapter(URL.class, new JsonDeserializer<URL>() {
+                @Override
+                public URL deserialize(JsonElement json, Type typeOfT, JsonDeserializationContext context) throws JsonParseException {
+                    String raw = json.getAsString();
+                    try {
+                        return new URL(raw);
+                    } catch (MalformedURLException e) {
+                        try {
+                            return new URL(new URL("https://www.google.com"), raw);
+                        } catch (MalformedURLException ex) {
+                            return null;
+                        }
+                    }
+                }
+            })
+            .create();
     OkHttpClient client = new OkHttpClient();
     String apikey;
     String zone;
