@@ -20,6 +20,7 @@ public class Topic {
     Map<UUID, Memory.Item> activatingMemory = new HashMap<>();
     SkillManager skillManager;
 
+    private int promptFirstCount = 0;
     private int promptLastCount = 0;
 
     public Topic(SessionConfig sessionCfg) {
@@ -29,13 +30,16 @@ public class Topic {
     public void initSystemPrompts(String promptFirstGlobal, String promptFirstSession,
                                    String promptLastSession, String promptLastGlobal) {
         systemPrompts.clear();
+        promptFirstCount = 0;
         promptLastCount = 0;
 
         if (promptFirstGlobal != null && !promptFirstGlobal.isEmpty()) {
             systemPrompts.add(createSystemMessage(promptFirstGlobal));
+            promptFirstCount++;
         }
         if (promptFirstSession != null && !promptFirstSession.isEmpty()) {
             systemPrompts.add(createSystemMessage(promptFirstSession));
+            promptFirstCount++;
         }
 
         if (promptLastSession != null && !promptLastSession.isEmpty()) {
@@ -48,14 +52,12 @@ public class Topic {
         }
     }
 
-    public void insertSystemPromptBeforeLast(MCMessage msg) {
-        int insertPos = systemPrompts.size() - promptLastCount;
-        if (insertPos < 0) insertPos = 0;
-        systemPrompts.add(insertPos, msg);
+    public void addSkillMessage(MCMessage msg) {
+        messages.add(msg);
     }
 
     public void removeSystemPromptBySkillId(String skillId) {
-        systemPrompts.removeIf(m -> skillId.equals(m.getMetainfo("skillId")));
+        messages.removeIf(m -> skillId.equals(m.getMetainfo("skillId")));
     }
 
     private MCMessage createSystemMessage(String content) {
@@ -149,8 +151,24 @@ public class Topic {
         }
 
         if (messages.size() > 50 || total > budget || keep < messages.size()) {
-            messages.clean(keep);
+            cleanPreservingSkills(keep);
         }
+    }
+
+    private void cleanPreservingSkills(int keep) {
+        int removeCount = messages.size() - keep;
+        if (removeCount <= 0) return;
+        Iterator<MCMessage> it = messages.iterator();
+        int removed = 0;
+        while (it.hasNext() && removed < removeCount) {
+            if (isSkillMessage(it.next())) continue;
+            it.remove();
+            removed++;
+        }
+    }
+
+    private static boolean isSkillMessage(MCMessage m) {
+        return m.getMetainfo("skillId") != null;
     }
 
     private static boolean isToolMessage(MCMessage m) {
@@ -178,19 +196,28 @@ public class Topic {
 
     public MessageList getOpenAIML() {
         MessageList full = new MessageList();
-        for (MCMessage sysMsg : systemPrompts) {
-            MCMessage copy = new MCMessage();
-            copy.putMetainfo("role", sysMsg.getMetainfo("role"));
-            Object skillId = sysMsg.getMetainfo("skillId");
-            if (skillId != null) {
-                copy.putMetainfo("skillId", skillId);
-            }
-            for (var field : sysMsg.messageFields) {
-                copy.messageFields.add(field);
-            }
-            full.add(copy);
+        for (int i = 0; i < promptFirstCount && i < systemPrompts.size(); i++) {
+            full.add(copySystemMessage(systemPrompts.get(i)));
         }
-        full.addAll(messages);
+        for (MCMessage m : messages) {
+            full.add(isSkillMessage(m) ? copySystemMessage(m) : m);
+        }
+        for (int i = systemPrompts.size() - promptLastCount; i < systemPrompts.size(); i++) {
+            full.add(copySystemMessage(systemPrompts.get(i)));
+        }
         return full;
+    }
+
+    private MCMessage copySystemMessage(MCMessage sysMsg) {
+        MCMessage copy = new MCMessage();
+        copy.putMetainfo("role", sysMsg.getMetainfo("role"));
+        Object skillId = sysMsg.getMetainfo("skillId");
+        if (skillId != null) {
+            copy.putMetainfo("skillId", skillId);
+        }
+        for (var field : sysMsg.messageFields) {
+            copy.messageFields.add(field);
+        }
+        return copy;
     }
 }

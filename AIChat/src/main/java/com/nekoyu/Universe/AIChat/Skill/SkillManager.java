@@ -56,7 +56,7 @@ public class SkillManager {
 
         if (skill.systemPrompt != null && !skill.systemPrompt.isEmpty()) {
             MCMessage systemMsg = createSystemMessage(skill.systemPrompt, skillId);
-            topic.insertSystemPromptBeforeLast(systemMsg);
+            topic.addSkillMessage(systemMsg);
         }
 
         logger.info("激活 Skill: {}", skillId);
