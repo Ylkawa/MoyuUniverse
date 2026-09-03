@@ -1,7 +1,6 @@
 package com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies;
 
 import com.google.gson.JsonElement;
-import com.nekoyu.Universe.API.MessageChannel.MFChain;
 
 public class LLMFunction {
     public String name;

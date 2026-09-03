@@ -6,22 +6,16 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.google.gson.JsonSyntaxException;
-import com.nekoyu.Universe.API.MessageChannel.MCMessage;
 import com.nekoyu.Universe.API.MessageChannel.MFChain;
-import com.nekoyu.Universe.API.MessageChannel.MessageField.ImageField;
-import com.nekoyu.Universe.API.MessageChannel.MessageField.MsgField;
-import com.nekoyu.Universe.API.MessageChannel.MessageField.TextField;
-import com.nekoyu.Universe.API.MessageChannel.MessageList;
 import com.nekoyu.Universe.API.Providers.LLMProvider.Embedding;
 import com.nekoyu.Universe.API.Providers.LLMProvider.LLMProvider;
 import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.*;
-import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.ContentPiece.ImageUrlPiece;
 import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.ContentPiece.TextPiece;
 import com.nekoyu.Universe.API.Providers.LLMProvider.RespBodies.CompletionsResponse;
 import com.nekoyu.Universe.API.Providers.LLMProvider.RespBodies.EmbeddingResponse;
 import com.nekoyu.universe.openaiadapter.RequestBodies.AliyunBailianReq;
+import com.nekoyu.universe.openaiadapter.RequestBodies.OpenAICompletionsRequest;
 import com.nekoyu.universe.openaiadapter.RequestBodies.OpenAIReq;
-import com.nekoyu.universe.openaiadapter.RequestBodies.CompletionsRequest;
 import okhttp3.*;
 import okio.BufferedSource;
 import org.slf4j.Logger;
@@ -66,7 +60,7 @@ public class OpenAIChannel extends LLMProvider implements Embedding {
     }
 
     @Override
-    public CompletionsResponse completions(String model, Context context, List<LLMFunction> llmFunctions, LLMOptions LLMOptions, BufferCallback bufferCallback) throws IOException {
+    public CompletionsResponse completions(String model, Context context, List<LLMFunction> llmFunctions, CompletionsRequest completionsRequest, BufferCallback bufferCallback) throws IOException {
         CompletionsResponse responding = new CompletionsResponse(); // fake unstreamed response
         responding.usage.completion_tokens = 0;
         responding.usage.prompt_tokens = 0;
@@ -75,20 +69,20 @@ public class OpenAIChannel extends LLMProvider implements Embedding {
             message.content = "";
             message.reasoning_content = "";
         }}};
-        CompletionsRequest cr;
+        OpenAICompletionsRequest cr;
         switch (speciallyAdaptation) {
             case "dashscope" -> {
                 AliyunBailianReq bailian = new AliyunBailianReq();
                 bailian.stream_options.put("include_usage", true);
-                if (LLMOptions.enable_thinking) bailian.enable_thinking = true;
+                if (completionsRequest.enable_thinking) bailian.enable_thinking = true;
                 cr = bailian;
             }
             case "gpt" -> {
                 OpenAIReq openai = new OpenAIReq();
-                if (LLMOptions.enable_thinking) openai.reasoning.effort = OpenAIReq.Reasoning.Effort.low;
+                if (completionsRequest.enable_thinking) openai.reasoning.effort = OpenAIReq.Reasoning.Effort.low;
                 cr = openai;
             }
-            default -> cr = new CompletionsRequest();
+            default -> cr = new OpenAICompletionsRequest();
         }
         if (model != null) cr.model = model;
         else cr.model = defaultModel;
@@ -101,14 +95,14 @@ public class OpenAIChannel extends LLMProvider implements Embedding {
         if (llmFunctions != null) for (LLMFunction llmFunction : llmFunctions) {
             functionsMap.put(llmFunction.name, llmFunction);
         }
-        CompletionsResponse completions = completions(context, cr, functionsMap, bufferCallback, LLMOptions, options.maxToolRounds, new ToolLoopControl(options), responding);
+        CompletionsResponse completions = completions(context, cr, functionsMap, bufferCallback, completionsRequest, options.maxToolRounds, new ToolLoopControl(options), responding);
         if (completions.usage.total_tokens > 0)
             logger.info("Completions-Usage: ({}) 输入 {} Tokens  输出 {} Tokens", cr.model, completions.usage.prompt_tokens, completions.usage.completion_tokens); // 无言了，百炼的 API 默认不返回 usage
         return completions;
     }
 
     /** 序列化请求体，并把中性层的 LLMFunction 列表装进 OpenAI 的 {"type":"function","function":{...}} 外壳 */
-    private String toBody(CompletionsRequest request) {
+    private String toBody(OpenAICompletionsRequest request) {
         JsonObject body = gson.toJsonTree(request).getAsJsonObject();
         if (body.has("tools") && !body.get("tools").isJsonNull() && !body.getAsJsonArray("tools").isEmpty()) {
             JsonArray wrapped = new JsonArray();
@@ -123,7 +117,7 @@ public class OpenAIChannel extends LLMProvider implements Embedding {
         return body.toString();
     }
 
-    public CompletionsResponse completions(Context context, CompletionsRequest completionsRequest, Map<String, LLMFunction> llmFunctions, BufferCallback bufferCallback, LLMOptions LLMOptions, int timeout, ToolLoopControl state, CompletionsResponse responding) throws IOException {
+    public CompletionsResponse completions(Context context, OpenAICompletionsRequest completionsRequest, Map<String, LLMFunction> llmFunctions, BufferCallback bufferCallback, CompletionsRequest completionsOptions, int timeout, ToolLoopControl state, CompletionsResponse responding) throws IOException {
         completionsRequest.messages = context.getMessageList();
         logger.debug(gson.toJson(completionsRequest));
         boolean outputted = false;
@@ -203,9 +197,9 @@ public class OpenAIChannel extends LLMProvider implements Embedding {
                 }
                 // 响应体接收完毕
                 Message assistantMsg = new Message(content.toString());
-                context.assistantMsg(assistantMsg);
                 switch (finish_reason) {
                     case "stop" -> {
+                        context.assistantMsg(assistantMsg);
                         return responding;
                     }
                     case "tool_calls" -> {
@@ -217,6 +211,7 @@ public class OpenAIChannel extends LLMProvider implements Embedding {
                             assistantMsg.reasoning_content = responding.choices[0].message.reasoning_content;
                         Tool_call[] toolCalls = tool_calls.values().toArray(new Tool_call[0]);
                         assistantMsg.tool_calls = toolCalls;
+                        context.assistantMsg(assistantMsg);
                         boolean next = false;
                         for (Tool_call tool_call : toolCalls) {
                             if (tool_call.function.arguments.startsWith("\""))
@@ -227,14 +222,14 @@ public class OpenAIChannel extends LLMProvider implements Embedding {
                             if (llmFunctions == null) {
                                 logger.error("LLMFunctions is null and LLM is trying to call a undefined function {}", tool_call.function.name);
                                 toolMsg.content.add(new TextPiece("None function exist, stop calling functions."));
-                                return completions(context, completionsRequest, llmFunctions, bufferCallback, LLMOptions, timeout - 1, state, responding);
+                                return completions(context, completionsRequest, llmFunctions, bufferCallback, completionsOptions, timeout - 1, state, responding);
                             }
                             String toolName = tool_call.function.name;
                             LLMFunction llmFunction = llmFunctions.get(toolName);
                             if (llmFunction == null) {
                                 logger.error("LLM is trying to call a undefined function {}", toolName);
                                 toolMsg.content.add(new TextPiece("You're trying to call a undefined function " + toolName + "."));
-                                return completions(context, completionsRequest, llmFunctions, bufferCallback, LLMOptions, timeout - 1, state, responding);
+                                return completions(context, completionsRequest, llmFunctions, bufferCallback, completionsOptions, timeout - 1, state, responding);
                             }
 
                             // 防死循环：单次回复内工具调用次数已达上限则不再执行，仅告知模型停止调用
@@ -273,7 +268,7 @@ public class OpenAIChannel extends LLMProvider implements Embedding {
                                 }
                             }
                             if (args != null && args.isJsonObject())
-                                LLMOptions.placeholders.forEach(args.getAsJsonObject()::addProperty);
+                                completionsOptions.placeholders.forEach(args.getAsJsonObject()::addProperty);
                             Message toolResponse;
                             if (args == null) {
                                 toolResponse = new Message();
@@ -294,7 +289,7 @@ public class OpenAIChannel extends LLMProvider implements Embedding {
                             logger.info("{} 调用了 {}，参数 {}", completionsRequest.model, toolName, tool_call.function.arguments);
                         }
                         if (next)
-                            return completions(context, completionsRequest, llmFunctions, bufferCallback, LLMOptions, timeout - 1, state, responding);
+                            return completions(context, completionsRequest, llmFunctions, bufferCallback, completionsOptions, timeout - 1, state, responding);
                     }
                     case "unfinished" ->
                             logger.error("出现意外导致请求未完成\nRaw req: {}", gson.toJson(completionsRequest));

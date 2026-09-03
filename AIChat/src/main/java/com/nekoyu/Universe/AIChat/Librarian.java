@@ -149,7 +149,8 @@ public class Librarian {
                 .add(new TextField(question))
                 .build());
 
-        CompletionsResponse resp = assistant.completions(ml, null);
+        assistant.setChatContext(ChatContext.from(ml));
+        CompletionsResponse resp = assistant.completions(null);
         return resp.choices[0].message.content;
     }
 
@@ -195,7 +196,8 @@ public class Librarian {
                 .add(new TextField("联网搜索结果：\n" + webResult))
                 .build());
 
-        CompletionsResponse resp = assistant.completions(ml, null);
+        assistant.setChatContext(ChatContext.from(ml));
+        CompletionsResponse resp = assistant.completions(null);
         return resp.choices[0].message.content;
     }
 
@@ -242,7 +244,8 @@ public class Librarian {
                     .add(new TextField("新内容：\n" + truncate(newContent, 2000)))
                     .build());
 
-            CompletionsResponse resp = assistant.completions(ml, null);
+assistant.setChatContext(ChatContext.from(ml));
+            CompletionsResponse resp = assistant.completions(null);
             String answer = resp.choices[0].message.content.trim().toUpperCase();
             boolean conflict = answer.contains("YES");
             logger.debug("Conflict check: {}", conflict);

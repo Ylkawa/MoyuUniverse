@@ -2,19 +2,21 @@ package com.nekoyu.Universe.AIChat;
 
 import com.nekoyu.Universe.API.Providers.LLMProvider.LLMProvider;
 import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.Assistant;
+import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.CompletionsRequest;
 import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.LLMFunction;
-import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.LLMOptions;
 import com.nekoyu.Universe.API.Providers.LLMProvider.RespBodies.CompletionsResponse;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 
 public class ChatAssistant extends Assistant {
-    private LLMProvider provider;
-    private ChatContext chatContext;
-    private LLMOptions llmOptions;
-    private String model;
-    private List<LLMFunction> functions;
+    private final LLMProvider provider;
+    private final String model;
+    private ChatContext chatContext = new ChatContext();
+    private CompletionsRequest completionsRequest = new CompletionsRequest();
+    private final List<LLMFunction> functions = new ArrayList<>();
+    private String description;
 
     public ChatAssistant(LLMProvider provider, String model) {
         this.provider = provider;
@@ -23,22 +25,42 @@ public class ChatAssistant extends Assistant {
 
     @Override
     public CompletionsResponse completions(LLMProvider.BufferCallback bufferCallback) throws IOException {
-        provider.completions(model, chatContext, functions, llmOptions, bufferCallback);
+        return provider.completions(model, chatContext, functions, completionsRequest, bufferCallback);
     }
 
-    public void setSystemPromptFirst(String promptFirst) {
-        chatContext.systemPromptFirst = promptFirst;
-    }
-
-    public void setSystemPromptLast(String promptLast) {
-        chatContext.systemPromptLast = promptLast;
+    public void addTool(LLMFunction tool) {
+        functions.add(tool);
     }
 
     public void setThinking(boolean thinking) {
-        llmOptions.enable_thinking = thinking;
+        completionsRequest.enable_thinking = thinking;
     }
 
-    public void addTool(LLMFunction function) {
-        functions.add(function);
+    public void setSystemPromptFirst(String promptFirst) {
+        chatContext.setSystemPromptFirst(promptFirst);
+    }
+
+    public void setSystemPromptLast(String promptLast) {
+        chatContext.setSystemPromptLast(promptLast);
+    }
+
+    public void setChatContext(ChatContext chatContext) {
+        this.chatContext = chatContext;
+    }
+
+    public ChatContext getChatContext() {
+        return chatContext;
+    }
+
+    public void setCompletionsRequest(CompletionsRequest completionsRequest) {
+        this.completionsRequest = completionsRequest;
+    }
+
+    public String getDescription() {
+        return description;
+    }
+
+    public void setDescription(String description) {
+        this.description = description;
     }
 }

@@ -6,6 +6,7 @@ import com.nekoyu.Universe.API.MessageChannel.MFChain;
 import com.nekoyu.Universe.API.MessageChannel.MessageField.TextField;
 import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.JsonSchema;
 import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.LLMFunction;
+import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.Message;
 import com.google.gson.JsonObject;
 import okhttp3.HttpUrl;
 import okhttp3.OkHttpClient;
@@ -38,13 +39,9 @@ public class NetTools extends AIChatPlugin {
                                     .build())
                             .build();
                     try (Response response = client.newCall(req).execute()) {
-                        MFChain mfc = new MFChain();
-                        mfc.add(new TextField(response.body().string()));
-                        return mfc;
+                        return new Message(response.body().string());
                     } catch (IOException e) {
-                        MFChain mfc = new MFChain();
-                        mfc.add(new TextField("查询失败: " + e.getMessage()));
-                        return mfc;
+                        return new Message("查询失败: " + e.getMessage());
                     }
                 })
                 .build());
@@ -67,13 +64,9 @@ public class NetTools extends AIChatPlugin {
                                     .build())
                             .build();
                     try (Response response = client.newCall(req).execute()) {
-                        MFChain mfc = new MFChain();
-                        mfc.add(new TextField(response.body().string()));
-                        return mfc;
+                        return new Message(response.body().string());
                     } catch (IOException e) {
-                        MFChain mfc = new MFChain();
-                        mfc.add(new TextField("查询失败: " + e.getMessage()));
-                        return mfc;
+                        return new Message("查询失败: " + e.getMessage());
                     }
                 })
                 .build()

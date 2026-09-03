@@ -11,4 +11,8 @@ public class ImageUrlPiece extends ContentPiece {
         image_url = new HashMap<>();
         image_url.put("url", url);
     }
+
+    public String getUrl() {
+        return image_url.get("url");
+    }
 }

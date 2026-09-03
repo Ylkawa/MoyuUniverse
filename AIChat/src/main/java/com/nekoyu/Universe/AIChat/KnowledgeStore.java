@@ -430,7 +430,7 @@ public class KnowledgeStore {
     }
 
     private List<QueryConclusion> generateQueriesWithConclusions(String content) throws IOException {
-        Assistant assistant = new Assistant(llmProvider, llmModel);
+        ChatAssistant assistant = new ChatAssistant(llmProvider, llmModel);
         MessageList ml = new MessageList();
         ml.add(MCMessage.Builder()
                 .add(new TextField(Prompt.queryGenerator))
@@ -439,7 +439,8 @@ public class KnowledgeStore {
                 .add(new TextField(content))
                 .build());
 
-        CompletionsResponse resp = assistant.completions(ml, null);
+        assistant.setChatContext(ChatContext.from(ml));
+        CompletionsResponse resp = assistant.completions(null);
         String output = resp.choices[0].message.content;
         List<QueryConclusion> results = new ArrayList<>();
         for (String line : output.split("\n")) {

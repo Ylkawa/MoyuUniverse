@@ -1,6 +1,6 @@
 package com.nekoyu.universe.openaiadapter.RequestBodies;
 
-public class OpenAIReq extends CompletionsRequest {
+public class OpenAIReq extends OpenAICompletionsRequest {
     public Reasoning reasoning;
 
     public static class Reasoning {

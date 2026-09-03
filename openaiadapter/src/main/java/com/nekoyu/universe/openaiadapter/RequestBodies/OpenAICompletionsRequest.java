@@ -6,13 +6,13 @@ import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.Message;
 import java.util.LinkedList;
 import java.util.List;
 
-public class CompletionsRequest {
+public class OpenAICompletionsRequest {
     public String model;
     public boolean stream;
     public List<Message> messages;
     public List<LLMFunction> tools;
 
-    public CompletionsRequest() {
+    public OpenAICompletionsRequest() {
         messages = new LinkedList<>();
         tools = new LinkedList<>();
     }

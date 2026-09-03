@@ -7,4 +7,8 @@ public class TextPiece extends ContentPiece {
         super.type = "text";
         this.text = text;
     }
+
+    public String getText() {
+        return text;
+    }
 }

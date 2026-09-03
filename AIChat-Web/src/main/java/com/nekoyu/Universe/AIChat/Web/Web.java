@@ -11,6 +11,7 @@ import com.nekoyu.Universe.API.MessageChannel.MFChain;
 import com.nekoyu.Universe.API.MessageChannel.MessageField.TextField;
 import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.JsonSchema;
 import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.LLMFunction;
+import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.Message;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
@@ -99,9 +100,7 @@ public class Web extends AIChatPlugin {
                         .property("搜索词", JsonSchema.string().description("要搜索的关键词"))
                         .required("搜索词"))
                 .callback(args -> {
-                    MFChain mfc = new MFChain();
-                    mfc.add(new TextField(search(args.getAsJsonObject().get("搜索词").getAsString())));
-                    return mfc;
+                    return new Message(search(args.getAsJsonObject().get("搜索词").getAsString()));
                 })
                 .build();
         registerFunction("WebSearch", dst);
@@ -114,7 +113,7 @@ public class Web extends AIChatPlugin {
                         .property("URL", JsonSchema.string().description("要访问的网页链接"))
                         .required("URL"))
                 .callback(args -> {
-                    return visitUrl(args.getAsJsonObject().get("URL").getAsString());
+                    return Message.from(visitUrl(args.getAsJsonObject().get("URL").getAsString()));
                 })
                 .build();
         registerFunction("VisitURL", visitUrl);

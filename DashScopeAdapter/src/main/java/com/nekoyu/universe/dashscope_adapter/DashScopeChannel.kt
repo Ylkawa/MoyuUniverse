@@ -2,9 +2,9 @@ package com.nekoyu.universe.dashscope_adapter
 
 import com.google.gson.Gson
 import com.nekoyu.Universe.API.MessageChannel.MessageField.ImageField
-import com.nekoyu.Universe.API.MessageChannel.MessageList
 import com.nekoyu.Universe.API.Providers.LLMProvider.LLMProvider
-import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.LLMOptions
+import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.CompletionsRequest
+import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.Context
 import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.LLMFunction
 import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.T2IRequest
 import com.nekoyu.Universe.API.Providers.LLMProvider.RespBodies.CompletionsResponse
@@ -32,9 +32,9 @@ class DashScopeChannel : LLMProvider(), TextToImage {
     @Throws(IOException::class)
     override fun completions(
         model: String?,
-        messageList: MessageList?,
-        llmTools: MutableMap<String?, LLMFunction?>?,
-        LLMOptions: LLMOptions?,
+        context: Context?,
+        llmTools: List<LLMFunction?>?,
+        completionsRequest: CompletionsRequest?,
         bufferCallback: BufferCallback?
     ): CompletionsResponse? {
         return null

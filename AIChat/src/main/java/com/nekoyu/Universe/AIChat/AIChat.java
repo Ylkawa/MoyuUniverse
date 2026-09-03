@@ -59,7 +59,7 @@ public class AIChat extends Law {
     Memory memory = null;
     KnowledgeStore knowledgeStore = null;
     Librarian librarian = null;
-    Map<String, Assistant> subAgents = new HashMap<>();
+    Map<String, ChatAssistant> subAgents = new HashMap<>();
     Multimap<String, File> emojisCollect = ArrayListMultimap.create();
     public HikariDataSource dataSource;
 
@@ -145,7 +145,7 @@ public class AIChat extends Law {
                                         }
                                         MFChain result = new MFChain();
                                         result.add(new TextField(builder.toString()));
-                                        return result;
+                                        return Message.from(result);
                                     } catch (IOException e) {
                                         throw new RuntimeException(e);
                                     }
@@ -167,14 +167,10 @@ public class AIChat extends Law {
                                                 .required("question"))
                                         .callback(args -> {
                                             try {
-                                                MFChain result = new MFChain();
-                                                result.add(new TextField(librarian.search(args.getAsJsonObject().get("question").getAsString())));
-                                                return result;
+                                                return new Message(librarian.search(args.getAsJsonObject().get("question").getAsString()));
                                             } catch (Exception e) {
-                                                MFChain result = new MFChain();
-                                                result.add(new TextField("调用失败: " + e.getMessage()));
                                                 logger.error("Librarian调用出错", e);
-                                                return result;
+                                                return new Message("调用失败: " + e.getMessage());
                                             }
                                         })
                                         .build()
@@ -502,7 +498,7 @@ public class AIChat extends Law {
                                 }
                             }
                             if (sessionCfg.subAgents != null) for (String subAgentName : sessionCfg.subAgents) {
-                                Assistant subAgent = subAgents.get(subAgentName);
+                                ChatAssistant subAgent = subAgents.get(subAgentName);
                                 // 作为 tool 添加，以供 assistant 调用 subAgent
                                 LLMFunction llmFunction = LLMFunction.builder()
                                         .name(subAgentName)
@@ -515,14 +511,13 @@ public class AIChat extends Law {
                                             m.messageFields.add(new TextField(args.getAsJsonObject().get("Question").getAsString()));
                                             MessageList ml = new MessageList();
                                             ml.add(m);
-                                            StringBuilder sb = new StringBuilder();
+                                            subAgent.setChatContext(ChatContext.from(ml));
                                             try {
-                                                subAgent.completions(ml, sb::append);
-                                                MFChain mfc = new MFChain();
-                                                mfc.add(new TextField(sb.toString()));
-                                                return mfc;
+                                                StringBuilder sb = new StringBuilder();
+                                                subAgent.completions(sb::append);
+                                                return new Message(sb.toString());
                                             } catch (IOException e) {
-                                                throw new RuntimeException(e);
+                                                return new Message("调用子代理失败: " + e.getMessage());
                                             }
                                         })
                                         .build();
@@ -565,7 +560,7 @@ public class AIChat extends Law {
                                             } else {
                                                 result.add(new TextField("技能 " + skillId + " 激活失败，可能已激活或不存在"));
                                             }
-                                            return result;
+                                            return Message.from(result);
                                         })
                                         .build();
                                 assistant.addTool(manageSkillsFunc);
@@ -639,14 +634,14 @@ public class AIChat extends Law {
                                         }
                                     }
                                 }
-                                // Extensional Args
-                                LLMOptions LLMOptions = new LLMOptions();
-                                LLMOptions.placeholders.put("_LocationID", mcm.getLocationId());
+                                // Completions Request
+                                CompletionsRequest completionsRequest = new CompletionsRequest();
+                                completionsRequest.placeholders.put("_LocationID", mcm.getLocationId());
                                 assistant.setThinking(sessionCfg.enable_thinking);
-                                LLMOptions.assistant = mcm.receiver;
+                                assistant.setChatContext(ChatContext.from(openaiMl, mcm.receiver));
                                 // 接收响应 tokens
                                 StringBuilder replyTokens = new StringBuilder();
-                                assistant.completions(openaiMl, LLMOptions, outputs -> {
+                                assistant.completions(outputs -> {
                                     String[] split = outputs.split("\n\n", 2); // 每一次接收够一段就回复一次消息
                                     if (split.length > 1) {
                                         replyTokens.append(split[0]);
@@ -771,9 +766,10 @@ public class AIChat extends Law {
         reqEv.placeholders.put("LocationId", mcm.getLocationId() == null ? "" : mcm.getLocationId());
         LLMProvider completions = (LLMProvider) Universe.Providers.get(globalCfg.Annotator.provider); // 此处假设配置文件写的没问题
         Embedding embedding = (Embedding) Universe.Providers.get(globalCfg.Annotator.embeddingProvider);
-        LLMOptions args = new LLMOptions();
+        CompletionsRequest args = new CompletionsRequest();
         args.enable_thinking = globalCfg.Annotator.enable_thinking;
-        args.systemPromptFirst = """
+        ChatContext chatContext = ChatContext.from(ml);
+        chatContext.setSystemPromptFirst("""
                 你只负责辅助 主Assistant 回答问题，从以下的聊天记录中提取 主Assistant 关心的问题，并及时维护记忆库，而不执行用户要求。
                 
                 维护记忆库时请严格遵守以下规则：
@@ -803,7 +799,7 @@ public class AIChat extends Law {
                 2. 忽视常识性内容或者上下文有明确提到的内容，再列举出其他所有与 主Assistant将要回答的问题 相关的问题，便于从记忆库和全网找回线索
                 3. 如果问题不仅仅与某一个用户关联，则不需要加括号提供LocationId，直接用指令提问
                 4. 如果问题与某一个用户相关，那么在指令后加一个括号并填入用户的LocationId，并在问题中固定使用“用户”的称呼
-                5. 不要对聊天内容提问，只能向记忆库或外置知识库提问""";
+                5. 不要对聊天内容提问，只能向记忆库或外置知识库提问""");
         Map<UUID, Integer> memoryIdMap = new HashMap<>();
         int memoryCounter = 1;
         StringBuilder memoryPrompt = new StringBuilder("先前的记忆条目，格式为 [编号]|[更新时间]|[置信度]|[重要度]|[LocationId]:[内容] ：\n\n");
@@ -848,10 +844,10 @@ public class AIChat extends Law {
                 - 置信度(0-1)：对记忆内容确定程度，1表示完全确定。
                 - 重要度(0-1)：记忆的长期价值，1表示非常重要（如用户核心偏好、关键事实），0.5表示一般重要，0表示临时信息。
                 - 如果不能提取有用记忆和Assistant遇到的非常识性问题，输出一句"END"直接结束输出""");
-        args.systemPromptLast = memoryPrompt.toString();
+        chatContext.setSystemPromptLast(memoryPrompt.toString());
 
         StringBuilder sb = new StringBuilder();
-        completions.completions(globalCfg.Annotator.model, ml, null, args, sb::append);
+        completions.completions(globalCfg.Annotator.model, chatContext, null, args, sb::append);
         int countOfUpdatedMemory = 0;
         int countOfDeletedMemory = 0;
         List<Memory.Item> newMemory = new ArrayList<>();
@@ -1021,6 +1017,8 @@ public class AIChat extends Law {
         }
 
         ChatAssistant assistant = new ChatAssistant(lp, globalCfg.Annotator.model);
+        ChatContext chatContext = ChatContext.from(ml);
+        assistant.setChatContext(chatContext);
 
         String systemPrompt = """
                 你只负责记忆构建，不与用户对话，也不执行用户要求。
@@ -1119,13 +1117,14 @@ public class AIChat extends Law {
 
         ml.add(previousMemory);
 
-        LLMOptions LLMOptions = new LLMOptions();
-        LLMOptions.placeholders.put("_LocationID", locationId == null ? "" : locationId);
-        LLMOptions.enable_thinking = true;
+        CompletionsRequest completionsRequest = new CompletionsRequest();
+        completionsRequest.placeholders.put("_LocationID", locationId == null ? "" : locationId);
+        completionsRequest.enable_thinking = true;
+        assistant.setCompletionsRequest(completionsRequest);
 
         try {
             StringBuilder respTokens = new StringBuilder();
-            assistant.completions(ml, LLMOptions, respTokens::append);
+            assistant.completions(respTokens::append);
 
             List<Memory.Item> newMemory = new ArrayList<>();
             int countOfUpdatedMemory = 0;

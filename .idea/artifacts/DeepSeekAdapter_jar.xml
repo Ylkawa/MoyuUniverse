@@ -1,9 +1,0 @@
-<component name="ArtifactManager">
-  <artifact type="jar" name="DeepSeekAdapter:jar">
-    <output-path>$PROJECT_DIR$/out/artifacts/DeepSeekAdapter_jar</output-path>
-    <root id="archive" name="DeepSeekAdapter.jar">
-      <element id="module-output" name="DeepSeekAdapter" />
-      <element id="file-copy" path="$PROJECT_DIR$/DeepSeekAdapter/src/main/resources/law.yml" />
-    </root>
-  </artifact>
-</component>
