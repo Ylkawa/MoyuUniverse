@@ -453,6 +453,11 @@ public class AIChat extends Law {
             }
             boolean leading = (sessionCfg.PromptFirst + sessionCfg.PromptLast + globalCfg.PromptFirst + globalCfg.PromptLast).contains("%LEADING%");
             MessageChannelManager.listenToSession(sessionCfg.SessionId, mcm -> {
+                // 机器人自身消息不重复写入：replyTurn 已将其持久化为 assistant 消息，避免上下文重复与去抖自触发
+                if (mcm.sender != null && mcm.receiver != null
+                        && Objects.equals(mcm.sender.getLocationId(), mcm.receiver.getLocationId())) {
+                    return;
+                }
                 Topic topic = activatingTopics.get(mcm.sessionId);
                 if (topic != null) topic.addMsg(mcm);
                 // 检测消息是否应当回复
@@ -761,61 +766,36 @@ topic.lastTrigger = mcm;
             if (!replyTokens.isEmpty()) mcm.reply(decoupleMark(replyTokens.toString()));
 
             if (asyncEnabled) {
-                // 本轮新登记的未决调用持久化到会话上下文，供后续补投结果使用
-                Set<String> newPending = new HashSet<>(topic.pendingCalls.keySet());
-                newPending.removeAll(consumedRound);
-                if (!newPending.isEmpty()) persistPendingRound(topic, openaiCtx, newPending);
                 topic.removeConsumedPendingCalls(consumedRound);
+            }
+            // 把本轮写入请求上下文的新消息（assistant 回复 / tool 消息）持久化回会话上下文，
+            // 确保 assistant 消息始终进入 context，不依赖平台回显
+            persistTurnIntoContext(topic, openaiCtx, mcm.receiver);
+            if (asyncEnabled && !topic.allPendingsResponded()) {
                 // 若仍有未回应的未决，排期到最早的截止时间进行兜底
-                if (!topic.allPendingsResponded()) {
-                    long earliest = topic.pendingEarliestDeadline();
-                    if (earliest > System.currentTimeMillis())
-                        topic.getChatContext().rearmDebounce(earliest - System.currentTimeMillis());
-                }
+                long earliest = topic.pendingEarliestDeadline();
+                if (earliest > System.currentTimeMillis())
+                    topic.getChatContext().rearmDebounce(earliest - System.currentTimeMillis());
             }
         } catch (IOException e) {
             logger.error("生成回复时出错", e);
         }
     }
 
-    /** 把本轮新登记的异步未决轮次消息（assistant tool_calls + 相关 tool 消息）复制进会话上下文 */
-    private void persistPendingRound(Topic topic, ChatContext turnCtx, Set<String> newPendingIds) {
-        List<MCMessage> src = turnCtx.getBase();
-        int start = -1;
-        for (int i = src.size() - 1; i >= 0; i--) {
-            MCMessage m = src.get(i);
-            Object role = m.getMetainfo("role");
-            if (role instanceof String r && r.equals("assistant")) {
-                Object tc = m.getMetainfo("Tool_calls");
-                if (tc instanceof Tool_call[] calls) {
-                    for (Tool_call c : calls) {
-                        if (c.id != null && newPendingIds.contains(c.id)) {
-                            start = i;
-                            break;
-                        }
-                    }
-                }
-                if (start >= 0) break;
-            }
-        }
-        if (start < 0) return;
-        int end = -1;
-        for (int i = src.size() - 1; i >= start; i--) {
-            if (isToolMessage(src.get(i))) {
-                end = i;
-                break;
-            }
-        }
-        if (end < 0) return;
+    /** 把本轮写入请求上下文的新消息（assistant 回复 / tool 消息）持久化回会话上下文，保证 assistant 消息始终进入 context */
+    private void persistTurnIntoContext(Topic topic, ChatContext turnCtx, Account botAccount) {
         MessageList base = topic.getChatContext().getBase();
-        for (int i = start; i <= end; i++) {
-            base.add(copyTurnMessage(src.get(i)));
+        for (MCMessage m : turnCtx.getBase()) {
+            Object role = m.getMetainfo("role");
+            if (!("assistant".equals(role) || "tool".equals(role))) continue;
+            if (base.contains(m)) continue; // 历史引用已存在，避免重复持久化
+            MCMessage copy = copyTurnMessage(m);
+            if ("assistant".equals(role) && botAccount != null) {
+                copy.sender = botAccount;
+                copy.receiver = botAccount;
+            }
+            base.add(copy);
         }
-        logger.info("会话 {} 持久化异步未决轮次 {} 条消息", topic.sessionCfg.SessionId, end - start + 1);
-    }
-
-    private static boolean isToolMessage(MCMessage m) {
-        return "tool".equals(m.getMetainfo("role"));
     }
 
     private static MCMessage copyTurnMessage(MCMessage src) {
