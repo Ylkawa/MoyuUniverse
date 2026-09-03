@@ -56,7 +56,7 @@ public class AIChat extends Law {
     List<SessionConfig> configs = new ArrayList<>();
     List<AIChatPlugin> aiChatPlugins = new ArrayList<>();
     Config globalCfg;
-    Map<String, Topic> activatingTopics = new HashMap<>();
+    Map<String, Topic> activatingTopics = new ConcurrentHashMap<>();
     @Nullable
     Memory memory = null;
     KnowledgeStore knowledgeStore = null;
@@ -68,6 +68,10 @@ public class AIChat extends Law {
     static volatile AIChat instance;
     /** 会话消息静默去抖（异步工具结果）排期线程池 */
     private final ScheduledExecutorService asyncScheduler = Executors.newSingleThreadScheduledExecutor();
+    /** 异步演示工具的补投调度线程池（后台投递结果，不阻塞去抖主循环） */
+    private static final ScheduledExecutorService asyncDeliveryScheduler = Executors.newSingleThreadScheduledExecutor();
+    /** 异步演示工具名：会话 Tools 列表填入该名称即可测试跨请求后台异步工具结果 */
+    public static final String ASYNC_DEMO_TOOL = "AsyncResultDemo";
 
     public static void registerFunction(String toolName, LLMFunction tool) {
         llmFunctions.put(toolName, tool);
@@ -342,6 +346,7 @@ public class AIChat extends Law {
             }
         }).start();
         loadInternalMarkDecoupler();
+        registerAsyncDemoTool();
         return true;
     }
 
@@ -509,7 +514,7 @@ topic.lastTrigger = mcm;
                             } catch (RuntimeException e) {
                                 logger.error("Failed to construct memory", e);
                             }
-                            activatingTopics.remove(mcm.sessionId);
+                            closeTopic(mcm.sessionId);
                         }
                     }
                 }
@@ -858,11 +863,63 @@ topic.lastTrigger = mcm;
         return ai.deliverAsyncToolResult(sessionId, toolCallId, text);
     }
 
+    /** 关闭一个会话：取消去抖任务、清空未决调用并移除活跃会话 */
+    private void closeTopic(String sessionId) {
+        Topic topic = activatingTopics.remove(sessionId);
+        if (topic == null) return;
+        topic.getChatContext().cancelDebounce();
+        topic.clearPendingCalls();
+    }
+
+    /** 注册异步工具演示：占位返回后按 delay 毫秒补投真实结果，用于测试跨请求后台异步工具结果 */
+    private void registerAsyncDemoTool() {
+        try {
+            LLMFunction demo = LLMFunction.builder()
+                    .name(ASYNC_DEMO_TOOL)
+                    .description("""
+                            异步工具演示。调用后立即返回"任务已启动"占位结果（asyncPending），
+                            并在 delay 毫秒后把 result 内容作为工具结果补投回会话，使模型基于结果继续作答。
+                            适用于测试跨请求后台异步工具结果特性。""")
+                    .parameters(JsonSchema.object()
+                            .property("delay", JsonSchema.integer().description("补投延迟（毫秒），默认 3000"))
+                            .property("result", JsonSchema.string().description("延迟后返回给模型的结果内容"))
+                            .required("result"))
+                    .syncCallback(args -> {
+                        JsonObject o = args.getAsJsonObject();
+                        String sessionId = o.has("_SessionId") ? o.get("_SessionId").getAsString() : null;
+                        String toolCallId = o.has("_ToolCallId") ? o.get("_ToolCallId").getAsString() : null;
+                        String result = o.get("result").getAsString();
+                        long delay = o.has("delay") ? o.get("delay").getAsLong() : 3000L;
+                        if (sessionId == null || toolCallId == null) {
+                            logger.warn("异步演示工具参数缺少 _SessionId/_ToolCallId，无法补投结果");
+                            return new Message("异步演示工具缺少会话坐标参数（_SessionId/_ToolCallId），无法投递结果");
+                        }
+                        asyncDeliveryScheduler.schedule(() -> {
+                            try {
+                                submitAsyncToolResult(sessionId, toolCallId, result);
+                            } catch (Exception e) {
+                                logger.error("异步演示工具补投结果失败", e);
+                            }
+                        }, delay, TimeUnit.MILLISECONDS);
+                        Message pending = new Message("任务已启动，将在 " + delay + " 毫秒后返回结果，请先基于已有信息继续，不必等待。");
+                        pending.asyncPending = true;
+                        return pending;
+                    })
+                    .build();
+            registerFunction(ASYNC_DEMO_TOOL, demo);
+            logger.info("已注册异步工具演示 {}", ASYNC_DEMO_TOOL);
+        } catch (Exception e) {
+            logger.error("注册异步演示工具失败", e);
+        }
+    }
+
     @Override
     public void stop() {
         for (var plug : aiChatPlugins) {
             plug.onDisable();
         }
+        asyncScheduler.shutdownNow();
+        asyncDeliveryScheduler.shutdownNow();
     }
 
     public MFChain decoupleMark(String stringWithMark) {

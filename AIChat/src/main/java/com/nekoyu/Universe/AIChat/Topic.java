@@ -272,6 +272,11 @@ public class Topic {
         consumed.forEach(pendingCalls::remove);
     }
 
+    /** 会话关闭时清空全部未决记录 */
+    public void clearPendingCalls() {
+        pendingCalls.clear();
+    }
+
     private void trimMessagesSafely() {
         int budget = sessionCfg.maxTokens / 2;
 
