@@ -3,8 +3,6 @@ package com.nekoyu.universe.openaiadapter;
 import com.nekoyu.Universe.API.Providers.LLMProvider.RespBodies.CompletionsResponse;
 import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.Tool_call;
 
-import java.util.List;
-
 public class DataLine {
     Choice[] choices;
     String object;

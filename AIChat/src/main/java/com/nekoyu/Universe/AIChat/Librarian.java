@@ -1,10 +1,8 @@
 package com.nekoyu.Universe.AIChat;
 
 import com.nekoyu.Universe.API.MessageChannel.MCMessage;
-import com.nekoyu.Universe.API.MessageChannel.MFChain;
 import com.nekoyu.Universe.API.MessageChannel.MessageField.TextField;
 import com.nekoyu.Universe.API.MessageChannel.MessageList;
-import com.nekoyu.Universe.API.Providers.LLMProvider.Assistant;
 import com.nekoyu.Universe.API.Providers.LLMProvider.LLMProvider;
 import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.LLMFunction;
 import com.nekoyu.Universe.API.Providers.LLMProvider.RespBodies.CompletionsResponse;
@@ -117,7 +115,7 @@ public class Librarian {
     }
 
     private String webSearch(String question) throws IOException {
-        Assistant assistant = new Assistant(llmProvider, model);
+        ChatAssistant assistant = new ChatAssistant(llmProvider, model);
         assistant.setThinking(thinking);
         for (String toolName : toolNames) {
             for (LLMFunction func : AIChat.llmFunctions.get(toolName)) {
@@ -156,7 +154,7 @@ public class Librarian {
     }
 
     private String mergeResults(String question, String localResult, String webResult) throws IOException {
-        Assistant assistant = new Assistant(llmProvider, model);
+        ChatAssistant assistant = new ChatAssistant(llmProvider, model);
         assistant.setThinking(thinking);
 
         MessageList ml = new MessageList();
@@ -228,7 +226,7 @@ public class Librarian {
 
     private boolean isConflicting(String existing, String newContent) {
         try {
-            Assistant assistant = new Assistant(llmProvider, model);
+            ChatAssistant assistant = new ChatAssistant(llmProvider, model);
             MessageList ml = new MessageList();
             ml.add(MCMessage.Builder()
                     .add(new TextField("""

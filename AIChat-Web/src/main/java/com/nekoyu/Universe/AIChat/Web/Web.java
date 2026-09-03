@@ -11,7 +11,6 @@ import com.nekoyu.Universe.API.MessageChannel.MFChain;
 import com.nekoyu.Universe.API.MessageChannel.MessageField.TextField;
 import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.JsonSchema;
 import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.LLMFunction;
-import com.google.gson.JsonObject;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;

@@ -14,19 +14,18 @@ import com.nekoyu.Universe.API.MessageChannel.MessageField.TextField;
 import com.nekoyu.Universe.API.MessageChannel.MessageList;
 import com.nekoyu.Universe.API.Providers.LLMProvider.Embedding;
 import com.nekoyu.Universe.API.Providers.LLMProvider.LLMProvider;
-import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.ContentPiece.ImageUrlPiece;
-import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.LLMFunction;
 import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.*;
+import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.ContentPiece.ImageUrlPiece;
 import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.ContentPiece.TextPiece;
 import com.nekoyu.Universe.API.Providers.LLMProvider.RespBodies.CompletionsResponse;
 import com.nekoyu.Universe.API.Providers.LLMProvider.RespBodies.EmbeddingResponse;
 import com.nekoyu.universe.openaiadapter.RequestBodies.AliyunBailianReq;
 import com.nekoyu.universe.openaiadapter.RequestBodies.OpenAIReq;
+import com.nekoyu.universe.openaiadapter.RequestBodies.CompletionsRequest;
 import okhttp3.*;
 import okio.BufferedSource;
 import org.slf4j.Logger;
 
-import javax.annotation.Nullable;
 import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -67,7 +66,7 @@ public class OpenAIChannel extends LLMProvider implements Embedding {
     }
 
     @Override
-    public CompletionsResponse completions(String model, MessageList messageList, Map<String, LLMFunction> llmFunctions, ExtensionalArgs extensionalArgs, BufferCallback bufferCallback) throws IOException {
+    public CompletionsResponse completions(String model, Context context, List<LLMFunction> llmFunctions, LLMOptions LLMOptions, BufferCallback bufferCallback) throws IOException {
         CompletionsResponse responding = new CompletionsResponse(); // fake unstreamed response
         responding.usage.completion_tokens = 0;
         responding.usage.prompt_tokens = 0;
@@ -81,12 +80,12 @@ public class OpenAIChannel extends LLMProvider implements Embedding {
             case "dashscope" -> {
                 AliyunBailianReq bailian = new AliyunBailianReq();
                 bailian.stream_options.put("include_usage", true);
-                if (extensionalArgs.enable_thinking) bailian.enable_thinking = true;
+                if (LLMOptions.enable_thinking) bailian.enable_thinking = true;
                 cr = bailian;
             }
             case "gpt" -> {
                 OpenAIReq openai = new OpenAIReq();
-                if (extensionalArgs.enable_thinking) openai.reasoning.effort = OpenAIReq.Reasoning.Effort.low;
+                if (LLMOptions.enable_thinking) openai.reasoning.effort = OpenAIReq.Reasoning.Effort.low;
                 cr = openai;
             }
             default -> cr = new CompletionsRequest();
@@ -94,12 +93,15 @@ public class OpenAIChannel extends LLMProvider implements Embedding {
         if (model != null) cr.model = model;
         else cr.model = defaultModel;
         // Add functions if exists
-        if (llmFunctions != null) cr.tools.addAll(llmFunctions.values());
+        if (llmFunctions != null) cr.tools.addAll(llmFunctions);
         if (cr.tools.isEmpty()) cr.tools = null;
         // Transfer Universe message list to OpenAI message list
         cr.stream = true;
-        logger.debug(gson.toJson(cr));
-        CompletionsResponse completions = completions(messageList, cr, llmFunctions, bufferCallback, extensionalArgs, options.maxToolRounds, new ToolLoopControl(options), responding);
+        Map<String, LLMFunction> functionsMap = new HashMap<>();
+        if (llmFunctions != null) for (LLMFunction llmFunction : llmFunctions) {
+            functionsMap.put(llmFunction.name, llmFunction);
+        }
+        CompletionsResponse completions = completions(context, cr, functionsMap, bufferCallback, LLMOptions, options.maxToolRounds, new ToolLoopControl(options), responding);
         if (completions.usage.total_tokens > 0)
             logger.info("Completions-Usage: ({}) 输入 {} Tokens  输出 {} Tokens", cr.model, completions.usage.prompt_tokens, completions.usage.completion_tokens); // 无言了，百炼的 API 默认不返回 usage
         return completions;
@@ -108,7 +110,7 @@ public class OpenAIChannel extends LLMProvider implements Embedding {
     /** 序列化请求体，并把中性层的 LLMFunction 列表装进 OpenAI 的 {"type":"function","function":{...}} 外壳 */
     private String toBody(CompletionsRequest request) {
         JsonObject body = gson.toJsonTree(request).getAsJsonObject();
-        if (body.has("tools") && !body.get("tools").isJsonNull() && body.getAsJsonArray("tools").size() > 0) {
+        if (body.has("tools") && !body.get("tools").isJsonNull() && !body.getAsJsonArray("tools").isEmpty()) {
             JsonArray wrapped = new JsonArray();
             for (JsonElement tool : body.getAsJsonArray("tools")) {
                 JsonObject envelope = new JsonObject();
@@ -121,39 +123,8 @@ public class OpenAIChannel extends LLMProvider implements Embedding {
         return body.toString();
     }
 
-    public CompletionsResponse completions(MessageList ml, CompletionsRequest completionsRequest, Map<String, LLMFunction> llmFunctions, BufferCallback bufferCallback, ExtensionalArgs extensionalArgs, int timeout, ToolLoopControl state, CompletionsResponse responding) throws IOException {
-        completionsRequest.messages.clear(); // 每一轮都重新构建了消息列表
-        for (MCMessage m : ml) {
-            ArrayMessage message = new ArrayMessage();
-            if (m.sender.equals(extensionalArgs.assistant)) message.role = "assistant";
-            else if (m.getMetainfo("role") instanceof String role) {
-                message.role = role;
-                if (role.equals("assistant") && m.getMetainfo("Tool_calls") instanceof Tool_call[] toolCalls) {
-                    if (m.getMetainfo("reasoning") instanceof String s) message.reasoning_content = s; // 回传思考链
-                    message.tool_calls = toolCalls;
-                }
-                if (role.equals("tool") && m.getMetainfo("tool_call_id") instanceof String tool_call_id)
-                    message.tool_call_id = tool_call_id;
-            } else message.role = "user";
-            for (MsgField mf : m.messageFields) {
-                if (!(Objects.equals(message.role, "assistant") && Objects.equals(speciallyAdaptation, "dashscope")) && mf instanceof ImageField imageField) {
-                    message.content.add(new ImageUrlPiece(imageField.getUrl().toString()));
-                } else message.content.add(new TextPiece(mf.toString()));
-            }
-            completionsRequest.messages.add(message);
-        }
-        if (extensionalArgs.systemPromptFirst != null) {
-            ArrayMessage systemPromptFirst = new ArrayMessage();
-            systemPromptFirst.role = "system";
-            systemPromptFirst.content.add(new TextPiece(extensionalArgs.systemPromptFirst));
-            completionsRequest.messages.add(0, systemPromptFirst);
-        }
-        if (extensionalArgs.systemPromptLast != null) {
-            ArrayMessage systemPromptLast = new ArrayMessage();
-            systemPromptLast.role = "system";
-            systemPromptLast.content.add(new TextPiece(extensionalArgs.systemPromptLast));
-            completionsRequest.messages.add(systemPromptLast);
-        }
+    public CompletionsResponse completions(Context context, CompletionsRequest completionsRequest, Map<String, LLMFunction> llmFunctions, BufferCallback bufferCallback, LLMOptions LLMOptions, int timeout, ToolLoopControl state, CompletionsResponse responding) throws IOException {
+        completionsRequest.messages = context.getMessageList();
         logger.debug(gson.toJson(completionsRequest));
         boolean outputted = false;
         if (timeout <= 0) { // 兜底：无论如何都要终结循环
@@ -164,7 +135,7 @@ public class OpenAIChannel extends LLMProvider implements Embedding {
             if (state.calls >= state.maxCalls)
                 logger.warn("{} 单次回复内工具调用次数已达上限({})，工具被禁用，强制模型文字回复", completionsRequest.model, state.maxCalls);
             completionsRequest.tools = null;
-            ArrayMessage am = new ArrayMessage();
+            Message am = new Message();
             am.content.add(new TextPiece("[WARNING] 工具调用回合超时或工具调用已达次数上限，工具已被禁用，请立即停止调用工具，直接基于已有的信息作答"));
             am.role = "system";
             completionsRequest.messages.add(am);
@@ -231,10 +202,8 @@ public class OpenAIChannel extends LLMProvider implements Embedding {
                     }
                 }
                 // 响应体接收完毕
-                MCMessage assistantMcm = new MCMessage();
-                ml.add(assistantMcm);
-                assistantMcm.putMetainfo("role", "assistant");
-                assistantMcm.messageFields.add(new TextField(content.toString()));
+                Message assistantMsg = new Message(content.toString());
+                context.assistantMsg(assistantMsg);
                 switch (finish_reason) {
                     case "stop" -> {
                         return responding;
@@ -245,37 +214,36 @@ public class OpenAIChannel extends LLMProvider implements Embedding {
                             if (bufferCallback != null) bufferCallback.onCompletion("\n\n");
                         }
                         if (responding.choices[0].message.reasoning_content != null)
-                            assistantMcm.putMetainfo("reasoning", responding.choices[0].message.reasoning_content); // 存放思考链
+                            assistantMsg.reasoning_content = responding.choices[0].message.reasoning_content;
                         Tool_call[] toolCalls = tool_calls.values().toArray(new Tool_call[0]);
-                        assistantMcm.putMetainfo("Tool_calls", toolCalls);
+                        assistantMsg.tool_calls = toolCalls;
                         boolean next = false;
                         for (Tool_call tool_call : toolCalls) {
                             if (tool_call.function.arguments.startsWith("\""))
                                 tool_call.function.arguments = tool_call.function.arguments.substring(1, tool_call.function.arguments.length() - 1); // 不知道为什么DeepSeek喜欢在arg前后各加一个"，删了
                             logger.debug(gson.toJson(tool_call));
-                            MCMessage toolMcm = new MCMessage();
-                            toolMcm.putMetainfo("role", "tool");
-                            toolMcm.putMetainfo("tool_call_id", tool_call.id);
+                            Message toolMsg = new Message();
+                            toolMsg.tool_call_id = tool_call.id;
                             if (llmFunctions == null) {
                                 logger.error("LLMFunctions is null and LLM is trying to call a undefined function {}", tool_call.function.name);
-                                toolMcm.messageFields.add(new TextField("None function exist, stop calling functions."));
-                                return completions(ml, completionsRequest, llmFunctions, bufferCallback, extensionalArgs, timeout - 1, state, responding);
+                                toolMsg.content.add(new TextPiece("None function exist, stop calling functions."));
+                                return completions(context, completionsRequest, llmFunctions, bufferCallback, LLMOptions, timeout - 1, state, responding);
                             }
                             String toolName = tool_call.function.name;
                             LLMFunction llmFunction = llmFunctions.get(toolName);
                             if (llmFunction == null) {
                                 logger.error("LLM is trying to call a undefined function {}", toolName);
-                                toolMcm.messageFields.add(new TextField("You're trying to call a undefined function " + toolName + "."));
-                                return completions(ml, completionsRequest, llmFunctions, bufferCallback, extensionalArgs, timeout - 1, state, responding);
+                                toolMsg.content.add(new TextPiece("You're trying to call a undefined function " + toolName + "."));
+                                return completions(context, completionsRequest, llmFunctions, bufferCallback, LLMOptions, timeout - 1, state, responding);
                             }
 
                             // 防死循环：单次回复内工具调用次数已达上限则不再执行，仅告知模型停止调用
                             if (state.calls >= state.maxCalls) {
                                 logger.warn("{} 单次回复内工具调用次数已达到上限({})，跳过执行工具 {}", completionsRequest.model, state.maxCalls, toolName);
-                                toolMcm.messageFields.add(new TextField(
+                                toolMsg.content.add(new TextPiece(
                                         "你本次回复已经达到工具调用次数上限(" + state.maxCalls + ")，该调用已被忽略。" +
                                                 "请立即停止调用任何工具，直接基于你已有的信息回答用户。如果信息不足，请如实说明。"));
-                                ml.add(toolMcm);
+                                context.toolMsg(toolMsg);
                                 next = true;
                                 continue;
                             }
@@ -284,10 +252,10 @@ public class OpenAIChannel extends LLMProvider implements Embedding {
                             String callKey = toolName + "|" + normalizeArgs(tool_call.function.arguments);
                             if (state.exactResults.containsKey(callKey)) {
                                 logger.warn("{} 重复调用 {}，参数 {}", completionsRequest.model, toolName, tool_call.function.arguments);
-                                toolMcm.messageFields.add(new TextField(
+                                toolMsg.content.add(new TextPiece(
                                         "你已经用完全相同的参数调用过工具 " + toolName + "，请不要重复调用！直接基于已有信息回答。\n上次结果：\n" +
                                                 state.exactResults.get(callKey)));
-                                ml.add(toolMcm);
+                                context.toolMsg(toolMsg);
                                 next = true;
                                 continue;
                             }
@@ -301,32 +269,32 @@ public class OpenAIChannel extends LLMProvider implements Embedding {
                                     args = JsonParser.parseString(tool_call.function.arguments);
                                 } catch (JsonSyntaxException ex) {
                                     logger.warn("Assistant 唐完了，输出的参数 Gson 无法解析 {}", tool_call.function.arguments);
-                                    toolMcm.messageFields.add(new TextField(ex.getMessage()));
+                                    toolMsg.content.add(new TextPiece(ex.getMessage()));
                                 }
                             }
                             if (args != null && args.isJsonObject())
-                                extensionalArgs.placeholders.forEach(args.getAsJsonObject()::addProperty);
-                            MFChain ctt;
+                                LLMOptions.placeholders.forEach(args.getAsJsonObject()::addProperty);
+                            Message toolResponse;
                             if (args == null) {
-                                ctt = new MFChain();
-                                ctt.add(new TextField("未知原因的工具调用错误"));
+                                toolResponse = new Message();
+                                toolResponse.content.add(new TextPiece("未知原因的工具调用错误"));
                             } else try {
-                                ctt = llmFunction.callback.call(args);
+                                toolResponse = llmFunction.callback.call(args);
                             } catch (Exception e) {
-                                ctt = new MFChain();
-                                ctt.add(new TextField("调用工具失败: " + e.getMessage()));
+                                toolResponse = new Message();
+                                toolResponse.content.add(new TextPiece("调用工具失败: " + e.getMessage()));
                             }
-                            if (ctt != null) {
+                            if (toolResponse != null) {
                                 state.calls++;
-                                state.exactResults.put(callKey, ctt.toString());
+                                state.exactResults.put(callKey, toolResponse.toString());
                                 next = true;
-                                toolMcm.messageFields = ctt;
+                                toolMsg = toolResponse;
                             }
-                            ml.add(toolMcm);
+                            context.toolMsg(toolMsg);
                             logger.info("{} 调用了 {}，参数 {}", completionsRequest.model, toolName, tool_call.function.arguments);
                         }
                         if (next)
-                            return completions(ml, completionsRequest, llmFunctions, bufferCallback, extensionalArgs, timeout - 1, state, responding);
+                            return completions(context, completionsRequest, llmFunctions, bufferCallback, LLMOptions, timeout - 1, state, responding);
                     }
                     case "unfinished" ->
                             logger.error("出现意外导致请求未完成\nRaw req: {}", gson.toJson(completionsRequest));

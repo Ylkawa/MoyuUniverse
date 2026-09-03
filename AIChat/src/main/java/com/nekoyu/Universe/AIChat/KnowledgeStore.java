@@ -4,7 +4,6 @@ import com.nekoyu.Universe.API.MessageChannel.MCMessage;
 import com.nekoyu.Universe.API.MessageChannel.MFChain;
 import com.nekoyu.Universe.API.MessageChannel.MessageField.TextField;
 import com.nekoyu.Universe.API.MessageChannel.MessageList;
-import com.nekoyu.Universe.API.Providers.LLMProvider.Assistant;
 import com.nekoyu.Universe.API.Providers.LLMProvider.Embedding;
 import com.nekoyu.Universe.API.Providers.LLMProvider.LLMProvider;
 import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.EmbeddingRequest;

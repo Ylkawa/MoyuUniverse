@@ -19,6 +19,7 @@
       <set>
         <option value="$PROJECT_DIR$/AI-Tool-Search/pom.xml" />
         <option value="$PROJECT_DIR$/AIChat-Memory/pom.xml" />
+        <option value="$PROJECT_DIR$/DeepSeekAdapter/pom.xml" />
         <option value="$PROJECT_DIR$/Minecraft-Connect-Universe/pom.xml" />
       </set>
     </option>

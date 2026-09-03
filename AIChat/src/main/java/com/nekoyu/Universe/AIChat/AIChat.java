@@ -13,12 +13,8 @@ import com.nekoyu.Universe.API.MessageChannel.*;
 import com.nekoyu.Universe.API.MessageChannel.MessageField.StickerField;
 import com.nekoyu.Universe.API.MessageChannel.MessageField.TextField;
 import com.nekoyu.Universe.API.PlaceHolder;
-import com.nekoyu.Universe.API.Providers.LLMProvider.Assistant;
 import com.nekoyu.Universe.API.Providers.LLMProvider.Embedding;
-import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.EmbeddingRequest;
-import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.ExtensionalArgs;
-import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.JsonSchema;
-import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.LLMFunction;
+import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.*;
 import com.nekoyu.Universe.API.Providers.LLMProvider.LLMProvider;
 import com.nekoyu.Universe.API.Providers.LLMProvider.RespBodies.EmbeddingResponse;
 import com.nekoyu.Universe.API.UniverseChannel;
@@ -280,7 +276,7 @@ public class AIChat extends Law {
                     SubAgentConfig subAgentConfig = gson.fromJson(inputStreamReader, SubAgentConfig.class);
                     Object o = Universe.Providers.get(subAgentConfig.ProviderId);
                     if (o instanceof LLMProvider llmProvider) {
-                        Assistant assistant = new Assistant(llmProvider, subAgentConfig.model);
+                        ChatAssistant assistant = new ChatAssistant(llmProvider, subAgentConfig.model);
                         assistant.setSystemPromptFirst(subAgentConfig.SystemPrompt);
                         if (subAgentConfig.tools != null) for (String toolName : subAgentConfig.tools) {
                             llmFunctions.get(toolName).forEach(assistant::addTool);
@@ -489,7 +485,7 @@ public class AIChat extends Law {
                     }
                     if (topic.responding.compareAndSet(false, true)) { // 阻止同时回复多个消息
                         try {
-                            Assistant assistant = llmProvider.newAssistant(sessionCfg.Model);
+                            ChatAssistant assistant = new ChatAssistant(llmProvider, sessionCfg.Model);
                             if (sessionCfg.Tools != null) {
                                 for (String tool : sessionCfg.Tools) {
                                     llmFunctions.get(tool);
@@ -644,13 +640,13 @@ public class AIChat extends Law {
                                     }
                                 }
                                 // Extensional Args
-                                ExtensionalArgs extensionalArgs = new ExtensionalArgs();
-                                extensionalArgs.placeholders.put("_LocationID", mcm.getLocationId());
+                                LLMOptions LLMOptions = new LLMOptions();
+                                LLMOptions.placeholders.put("_LocationID", mcm.getLocationId());
                                 assistant.setThinking(sessionCfg.enable_thinking);
-                                extensionalArgs.assistant = mcm.receiver;
+                                LLMOptions.assistant = mcm.receiver;
                                 // 接收响应 tokens
                                 StringBuilder replyTokens = new StringBuilder();
-                                assistant.completions(openaiMl, extensionalArgs, outputs -> {
+                                assistant.completions(openaiMl, LLMOptions, outputs -> {
                                     String[] split = outputs.split("\n\n", 2); // 每一次接收够一段就回复一次消息
                                     if (split.length > 1) {
                                         replyTokens.append(split[0]);
@@ -775,7 +771,7 @@ public class AIChat extends Law {
         reqEv.placeholders.put("LocationId", mcm.getLocationId() == null ? "" : mcm.getLocationId());
         LLMProvider completions = (LLMProvider) Universe.Providers.get(globalCfg.Annotator.provider); // 此处假设配置文件写的没问题
         Embedding embedding = (Embedding) Universe.Providers.get(globalCfg.Annotator.embeddingProvider);
-        ExtensionalArgs args = new ExtensionalArgs();
+        LLMOptions args = new LLMOptions();
         args.enable_thinking = globalCfg.Annotator.enable_thinking;
         args.systemPromptFirst = """
                 你只负责辅助 主Assistant 回答问题，从以下的聊天记录中提取 主Assistant 关心的问题，并及时维护记忆库，而不执行用户要求。
@@ -1024,7 +1020,7 @@ public class AIChat extends Law {
             throw new RuntimeException("No such LLM Provider");
         }
 
-        Assistant assistant = lp.newAssistant(globalCfg.Annotator.model);
+        ChatAssistant assistant = new ChatAssistant(lp, globalCfg.Annotator.model);
 
         String systemPrompt = """
                 你只负责记忆构建，不与用户对话，也不执行用户要求。
@@ -1123,13 +1119,13 @@ public class AIChat extends Law {
 
         ml.add(previousMemory);
 
-        ExtensionalArgs extensionalArgs = new ExtensionalArgs();
-        extensionalArgs.placeholders.put("_LocationID", locationId == null ? "" : locationId);
-        extensionalArgs.enable_thinking = true;
+        LLMOptions LLMOptions = new LLMOptions();
+        LLMOptions.placeholders.put("_LocationID", locationId == null ? "" : locationId);
+        LLMOptions.enable_thinking = true;
 
         try {
             StringBuilder respTokens = new StringBuilder();
-            assistant.completions(ml, extensionalArgs, respTokens::append);
+            assistant.completions(ml, LLMOptions, respTokens::append);
 
             List<Memory.Item> newMemory = new ArrayList<>();
             int countOfUpdatedMemory = 0;

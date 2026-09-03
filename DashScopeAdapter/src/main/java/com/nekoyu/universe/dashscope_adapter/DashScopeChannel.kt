@@ -2,21 +2,18 @@ package com.nekoyu.universe.dashscope_adapter
 
 import com.google.gson.Gson
 import com.nekoyu.Universe.API.MessageChannel.MessageField.ImageField
-import com.nekoyu.Universe.API.MessageChannel.MessageField.MsgField
 import com.nekoyu.Universe.API.MessageChannel.MessageList
 import com.nekoyu.Universe.API.Providers.LLMProvider.LLMProvider
-import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.ExtensionalArgs
+import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.LLMOptions
 import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.LLMFunction
 import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.T2IRequest
 import com.nekoyu.Universe.API.Providers.LLMProvider.RespBodies.CompletionsResponse
 import com.nekoyu.Universe.API.Providers.LLMProvider.RespBodies.T2IResponse
 import com.nekoyu.Universe.API.Providers.LLMProvider.TextToImage
 import com.nekoyu.universe.dashscope_adapter.T2IReq.Input.Message
-import okhttp3.MediaType
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import okhttp3.RequestBody
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.slf4j.Logger
 import java.io.IOException
@@ -37,7 +34,7 @@ class DashScopeChannel : LLMProvider(), TextToImage {
         model: String?,
         messageList: MessageList?,
         llmTools: MutableMap<String?, LLMFunction?>?,
-        extensionalArgs: ExtensionalArgs?,
+        LLMOptions: LLMOptions?,
         bufferCallback: BufferCallback?
     ): CompletionsResponse? {
         return null

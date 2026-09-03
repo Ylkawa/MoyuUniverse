@@ -5,7 +5,7 @@ import com.nekoyu.Universe.API.MessageChannel.Account;
 import java.util.HashMap;
 import java.util.Map;
 
-public class ExtensionalArgs {
+public class LLMOptions {
     public Map<String, String> placeholders = new HashMap<>();
     public boolean enable_thinking = false;
     public String systemPromptFirst = null;

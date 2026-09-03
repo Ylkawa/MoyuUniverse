@@ -9,19 +9,9 @@ public class LLMFunction {
     public JsonSchema parameters;
     public transient Callback callback;
 
-    public LLMFunction() {
-    }
-
-    public LLMFunction(String name, String description, JsonSchema parameters, Callback callback) {
-        this.name = name;
-        this.description = description;
-        this.parameters = parameters;
-        this.callback = callback;
-    }
-
     @FunctionalInterface
     public interface Callback {
-        MFChain call(JsonElement args);
+        Message call(JsonElement args);
     }
 
     public static Builder builder() {

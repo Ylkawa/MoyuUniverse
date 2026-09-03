@@ -1,7 +1,5 @@
 package com.nekoyu.universe.openaiadapter.RequestBodies;
 
-import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.CompletionsRequest;
-
 public class OpenAIReq extends CompletionsRequest {
     public Reasoning reasoning;
 
