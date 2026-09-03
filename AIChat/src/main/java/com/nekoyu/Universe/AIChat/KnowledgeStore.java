@@ -1,12 +1,11 @@
 package com.nekoyu.Universe.AIChat;
 
-import com.nekoyu.Universe.API.MessageChannel.MCMessage;
 import com.nekoyu.Universe.API.MessageChannel.MFChain;
 import com.nekoyu.Universe.API.MessageChannel.MessageField.TextField;
-import com.nekoyu.Universe.API.MessageChannel.MessageList;
 import com.nekoyu.Universe.API.Providers.LLMProvider.Embedding;
 import com.nekoyu.Universe.API.Providers.LLMProvider.LLMProvider;
 import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.EmbeddingRequest;
+import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.Message;
 import com.nekoyu.Universe.API.Providers.LLMProvider.RespBodies.CompletionsResponse;
 import com.nekoyu.Universe.API.Providers.LLMProvider.RespBodies.EmbeddingResponse;
 import com.nekoyu.Universe.Universe;
@@ -431,15 +430,11 @@ public class KnowledgeStore {
 
     private List<QueryConclusion> generateQueriesWithConclusions(String content) throws IOException {
         ChatAssistant assistant = new ChatAssistant(llmProvider, llmModel);
-        MessageList ml = new MessageList();
-        ml.add(MCMessage.Builder()
-                .add(new TextField(Prompt.queryGenerator))
-                .build());
-        ml.add(MCMessage.Builder()
-                .add(new TextField(content))
-                .build());
+        ChatContext chatContext = new ChatContext();
+        chatContext.userMsg(new Message(Prompt.queryGenerator));
+        chatContext.userMsg(new Message(content));
 
-        assistant.setChatContext(ChatContext.from(ml));
+        assistant.setChatContext(chatContext);
         CompletionsResponse resp = assistant.completions(null);
         String output = resp.choices[0].message.content;
         List<QueryConclusion> results = new ArrayList<>();

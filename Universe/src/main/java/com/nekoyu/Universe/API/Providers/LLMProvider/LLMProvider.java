@@ -1,6 +1,5 @@
 package com.nekoyu.Universe.API.Providers.LLMProvider;
 
-import com.nekoyu.Universe.API.MessageChannel.MessageList;
 import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.CompletionsRequest;
 import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.Context;
 import com.nekoyu.Universe.API.Providers.LLMProvider.RespBodies.CompletionsResponse;

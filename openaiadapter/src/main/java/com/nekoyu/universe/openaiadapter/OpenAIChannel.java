@@ -220,15 +220,15 @@ public class OpenAIChannel extends LLMProvider implements Embedding {
                             Message toolMsg = new Message();
                             toolMsg.tool_call_id = tool_call.id;
                             if (llmFunctions == null) {
-                                logger.error("LLMFunctions is null and LLM is trying to call a undefined function {}", tool_call.function.name);
+                                logger.error("LLMFunctions is null and LLM is trying to callSync a undefined function {}", tool_call.function.name);
                                 toolMsg.content.add(new TextPiece("None function exist, stop calling functions."));
                                 return completions(context, completionsRequest, llmFunctions, bufferCallback, completionsOptions, timeout - 1, state, responding);
                             }
                             String toolName = tool_call.function.name;
                             LLMFunction llmFunction = llmFunctions.get(toolName);
                             if (llmFunction == null) {
-                                logger.error("LLM is trying to call a undefined function {}", toolName);
-                                toolMsg.content.add(new TextPiece("You're trying to call a undefined function " + toolName + "."));
+                                logger.error("LLM is trying to callSync a undefined function {}", toolName);
+                                toolMsg.content.add(new TextPiece("You're trying to callSync a undefined function " + toolName + "."));
                                 return completions(context, completionsRequest, llmFunctions, bufferCallback, completionsOptions, timeout - 1, state, responding);
                             }
 
@@ -274,7 +274,7 @@ public class OpenAIChannel extends LLMProvider implements Embedding {
                                 toolResponse = new Message();
                                 toolResponse.content.add(new TextPiece("未知原因的工具调用错误"));
                             } else try {
-                                toolResponse = llmFunction.callback.call(args);
+                                toolResponse = llmFunction.callback.callSync(args);
                             } catch (Exception e) {
                                 toolResponse = new Message();
                                 toolResponse.content.add(new TextPiece("调用工具失败: " + e.getMessage()));

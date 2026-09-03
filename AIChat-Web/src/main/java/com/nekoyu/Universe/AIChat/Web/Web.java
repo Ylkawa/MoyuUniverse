@@ -99,7 +99,7 @@ public class Web extends AIChatPlugin {
                 .parameters(JsonSchema.object()
                         .property("搜索词", JsonSchema.string().description("要搜索的关键词"))
                         .required("搜索词"))
-                .callback(args -> {
+                .syncCallback(args -> {
                     return new Message(search(args.getAsJsonObject().get("搜索词").getAsString()));
                 })
                 .build();
@@ -112,7 +112,7 @@ public class Web extends AIChatPlugin {
                 .parameters(JsonSchema.object()
                         .property("URL", JsonSchema.string().description("要访问的网页链接"))
                         .required("URL"))
-                .callback(args -> {
+                .syncCallback(args -> {
                     return Message.from(visitUrl(args.getAsJsonObject().get("URL").getAsString()));
                 })
                 .build();

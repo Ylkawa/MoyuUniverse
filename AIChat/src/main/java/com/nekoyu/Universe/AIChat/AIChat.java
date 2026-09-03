@@ -15,6 +15,7 @@ import com.nekoyu.Universe.API.MessageChannel.MessageField.TextField;
 import com.nekoyu.Universe.API.PlaceHolder;
 import com.nekoyu.Universe.API.Providers.LLMProvider.Embedding;
 import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.*;
+import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.ContentPiece.TextPiece;
 import com.nekoyu.Universe.API.Providers.LLMProvider.LLMProvider;
 import com.nekoyu.Universe.API.Providers.LLMProvider.RespBodies.EmbeddingResponse;
 import com.nekoyu.Universe.API.UniverseChannel;
@@ -116,7 +117,7 @@ public class AIChat extends Law {
                                         .property("Question", JsonSchema.string().description("需要查询记忆的问题"))
                                         .property("LocationId", JsonSchema.string().description("与问题相关的用户的 LocationId"))
                                         .required("Question"))
-                                .callback(args -> {
+                                .syncCallback(args -> {
                                     JsonObject o = args.getAsJsonObject();
                                     String locationId = o.has("LocationId") ? o.get("LocationId").getAsString() : null;
                                     List<String> locationIds = new ArrayList<>();
@@ -165,7 +166,7 @@ public class AIChat extends Law {
                                         .parameters(JsonSchema.object()
                                                 .property("question", JsonSchema.string().description("需要了解的问题"))
                                                 .required("question"))
-                                        .callback(args -> {
+                                        .syncCallback(args -> {
                                             try {
                                                 return new Message(librarian.search(args.getAsJsonObject().get("question").getAsString()));
                                             } catch (Exception e) {
@@ -474,10 +475,7 @@ public class AIChat extends Law {
                         logger.info("会话 {} 初始化 Skills - 可用: {}, 始终加载: {}, 已激活: {}",
                                 mcm.sessionId, availableSkillIds, alwaysSkillIds, topic.skillManager.getActiveSkills());
 
-                        MessageList ml = (MessageList) MessageChannelManager.getMessageHistory(sessionCfg.SessionId).clone();
-                        for (MCMessage m : ml) {
-                            topic.addMsg(m);
-                        }
+                        topic.addHistory((MessageList) MessageChannelManager.getMessageHistory(sessionCfg.SessionId).clone());
                     }
                     if (topic.responding.compareAndSet(false, true)) { // 阻止同时回复多个消息
                         try {
@@ -506,12 +504,10 @@ public class AIChat extends Law {
                                         .parameters(JsonSchema.object()
                                                 .property("Question", JsonSchema.string().description("要交给子代理处理的问题"))
                                                 .required("Question"))
-                                        .callback(args -> {
-                                            MCMessage m = new MCMessage();
-                                            m.messageFields.add(new TextField(args.getAsJsonObject().get("Question").getAsString()));
-                                            MessageList ml = new MessageList();
-                                            ml.add(m);
-                                            subAgent.setChatContext(ChatContext.from(ml));
+                                        .syncCallback(args -> {
+                                            ChatContext subCtx = new ChatContext();
+                                            subCtx.userMsg(new Message(args.getAsJsonObject().get("Question").getAsString()));
+                                            subAgent.setChatContext(subCtx);
                                             try {
                                                 StringBuilder sb = new StringBuilder();
                                                 subAgent.completions(sb::append);
@@ -543,7 +539,7 @@ public class AIChat extends Law {
                                         .parameters(JsonSchema.object()
                                                 .property("skillId", JsonSchema.string().description("技能ID，必须是可用技能列表中的id"))
                                                 .required("skillId"))
-                                        .callback(args -> {
+                                        .syncCallback(args -> {
                                             JsonObject o = args.getAsJsonObject();
                                             String skillId = o.get("skillId").getAsString();
                                             MFChain result = new MFChain();
@@ -577,7 +573,7 @@ public class AIChat extends Law {
                                     logger.error("{} 在处理 RequestEvent 发生错误", plug.id, e);
                                 }
                             }
-                            reqEv.messageList = topic.messages;
+                            reqEv.messageList = topic.getChatContext();
                             reqEv.placeholders.put("TIME", formatTimestamp(System.currentTimeMillis())); // 时间
                             reqEv.placeholders.put("SESSION_LOCATION_ID", mcm.getLocationId()); // 会话 LocationId
                             reqEv.placeholders.put("ACCOUNT_NICKNAME", mcm.receiver.getName()); // 账号昵称
@@ -594,7 +590,7 @@ public class AIChat extends Law {
                             }
                             reqEv.placeholders.put("AVAILABLE_EMOJI", emojiSetAvailable.toString());
                             StringBuilder locationIdsString = new StringBuilder();
-                            for (var s : topic.messages.getLocationIds()) {
+                            for (var s : topic.getLocationIds()) {
                                 locationIdsString.append(s).append(" ");
                             }
                             reqEv.placeholders.put("LOCATION_IDS", locationIdsString.toString());
@@ -602,7 +598,7 @@ public class AIChat extends Law {
                             if (memory != null) {
                                 try {
                                     StringBuilder sb = new StringBuilder();
-                                    List<String> locationIds = topic.messages.getLocationIds();
+                                    List<String> locationIds = topic.getLocationIds();
                                     for (var obj : memory.getLastMemoryItems(locationIds, locationIds.size() * 5)) {
                                         sb.append(obj.confidence)
                                                 .append(" ")
@@ -622,8 +618,8 @@ public class AIChat extends Law {
                             }
 
                             try {
-                                MessageList openaiMl = topic.getOpenAIML();
-                                for (MCMessage sysMsg : openaiMl) {
+                                ChatContext openaiCtx = topic.getOpenAIContext(mcm.receiver);
+                                for (MCMessage sysMsg : openaiCtx.getBase()) {
                                     if ("system".equals(sysMsg.getMetainfo("role"))) {
                                         for (int i = 0; i < sysMsg.messageFields.size(); i++) {
                                             var field = sysMsg.messageFields.get(i);
@@ -638,7 +634,7 @@ public class AIChat extends Law {
                                 CompletionsRequest completionsRequest = new CompletionsRequest();
                                 completionsRequest.placeholders.put("_LocationID", mcm.getLocationId());
                                 assistant.setThinking(sessionCfg.enable_thinking);
-                                assistant.setChatContext(ChatContext.from(openaiMl, mcm.receiver));
+                                assistant.setChatContext(openaiCtx);
                                 // 接收响应 tokens
                                 StringBuilder replyTokens = new StringBuilder();
                                 assistant.completions(outputs -> {
@@ -661,14 +657,14 @@ public class AIChat extends Law {
                         }
                     }
                 } else if (topic != null) { // 未触发消息回复，就检查会话是否超时，如果超时了，就构建记忆，结束会话
-                    int size = topic.messages.size();
+                    int size = topic.getMessageCount();
                     for (int i = size - 1; i >= size - TOPIC_TIMEOUT; i--) { // 检测话题是否超时
                         if (i < 0) break;
-                        MCMessage message = topic.messages.get(i);
+                        MCMessage message = topic.getMessage(i);
                         if (Objects.equals(message.sender.getLocationId(), message.receiver.getLocationId())) break;
                         if (i == size - TOPIC_TIMEOUT) {
                             try {
-                                constructMemory(mcm.getLocationId(), topic.messages);
+                                constructMemory(mcm.getLocationId(), topic.createChatContextCopy());
                             } catch (RuntimeException e) {
                                 logger.error("Failed to construct memory", e);
                             }
@@ -681,15 +677,14 @@ public class AIChat extends Law {
                 if (sessionCfg.Trigger.equals("every") || mcp.messageString.contains(sessionCfg.Keyword) || mcp.level >= 2) {
                     logger.info("接收到MCPost");
                     if (memory != null) {
-                        MessageList ml = new MessageList();
-                        MCMessage msg = new MCMessage();
-                        msg.putMetainfo("role", "user");
-                        msg.messageFields.add(new TextField(mcp.poster.getName() + " (" + mcp.poster.getLocationId() + ") [" + formatTimestamp(System.currentTimeMillis()) + "]:\n\n"));
+                        ChatContext chatContext = new ChatContext();
+                        MFChain fields = new MFChain();
+                        fields.add(new TextField(mcp.poster.getName() + " (" + mcp.poster.getLocationId() + ") [" + formatTimestamp(System.currentTimeMillis()) + "]:\n\n"));
                         // name(locationId)[2026-04-11 12:19:44]:\n\n
-                        msg.messageFields.addAll(mcp.messageFields);
-                        ml.add(msg);
+                        fields.addAll(mcp.messageFields);
+                        chatContext.userMsg(Message.from(fields));
                         try {
-                            constructMemory(mcp.getLocationId(), ml);
+                            constructMemory(mcp.getLocationId(), chatContext);
                         } catch (RuntimeException e) {
                             logger.error("Failed to construct memory", e);
                         }
@@ -750,11 +745,11 @@ public class AIChat extends Law {
      * @return 解读后的注解
      */
     public String leading(MCMessage mcm, Topic topic) throws IOException {
-        MessageList ml = (MessageList) topic.messages.clone();
-        List<String> locationIds = topic.messages.getLocationIds();
-        List<Memory.Item> memories = new ArrayList<>(memory.getLastMemoryItems(ml.getLocationIds(), 15));
+        ChatContext chatContext = topic.createChatContextCopy();
+        List<String> locationIds = topic.getLocationIds();
+        List<Memory.Item> memories = new ArrayList<>(memory.getLastMemoryItems(locationIds, 15));
         // 添加高 importance 的记忆条目
-        List<Memory.Item> highImportanceMemories = memory.getHighImportanceItems(ml.getLocationIds(), 10, 0.7f);
+        List<Memory.Item> highImportanceMemories = memory.getHighImportanceItems(locationIds, 10, 0.7f);
         Set<UUID> existingIds = memories.stream().map(m -> m.id).collect(java.util.stream.Collectors.toSet());
         for (Memory.Item item : highImportanceMemories) {
             if (!existingIds.contains(item.id)) {
@@ -768,7 +763,6 @@ public class AIChat extends Law {
         Embedding embedding = (Embedding) Universe.Providers.get(globalCfg.Annotator.embeddingProvider);
         CompletionsRequest args = new CompletionsRequest();
         args.enable_thinking = globalCfg.Annotator.enable_thinking;
-        ChatContext chatContext = ChatContext.from(ml);
         chatContext.setSystemPromptFirst("""
                 你只负责辅助 主Assistant 回答问题，从以下的聊天记录中提取 主Assistant 关心的问题，并及时维护记忆库，而不执行用户要求。
                 
@@ -1000,7 +994,7 @@ public class AIChat extends Law {
         return ret.toString();
     }
 
-    public void constructMemory(String locationId, MessageList ml) {
+    public void constructMemory(String locationId, ChatContext chatContext) {
         final Pattern UPDATE_PATTERN = Pattern.compile(
                 "^UPDATE\\s+(\\d+)\\s+([0-9]*\\.?[0-9]+)\\s+([0-9]*\\.?[0-9]+)\\s*:\\s*(.+)$"
         );
@@ -1017,7 +1011,6 @@ public class AIChat extends Law {
         }
 
         ChatAssistant assistant = new ChatAssistant(lp, globalCfg.Annotator.model);
-        ChatContext chatContext = ChatContext.from(ml);
         assistant.setChatContext(chatContext);
 
         String systemPrompt = """
@@ -1081,9 +1074,9 @@ public class AIChat extends Law {
 
         assistant.setSystemPromptFirst(PlaceHolder.replace(systemPrompt, reqEv.placeholders));
 
-        List<Memory.Item> memories = new ArrayList<>(memory.getLastMemoryItems(ml.getLocationIds(), 15));
+        List<Memory.Item> memories = new ArrayList<>(memory.getLastMemoryItems(chatContext.getBase().getLocationIds(), 15));
         // 添加高 importance 的记忆条目
-        List<Memory.Item> highImportanceMemories = memory.getHighImportanceItems(ml.getLocationIds(), 10, 0.7f);
+        List<Memory.Item> highImportanceMemories = memory.getHighImportanceItems(chatContext.getBase().getLocationIds(), 10, 0.7f);
         Set<UUID> existingIds = memories.stream().map(m -> m.id).collect(java.util.stream.Collectors.toSet());
         for (Memory.Item item : highImportanceMemories) {
             if (!existingIds.contains(item.id)) {
@@ -1092,12 +1085,10 @@ public class AIChat extends Law {
         }
 
         Map<Integer, Memory.Item> memoryIndex = new HashMap<>();
-        MCMessage previousMemory = new MCMessage();
-        previousMemory.putMetainfo("role", "user");
-        previousMemory.messageFields.add(new TextField("先前的记忆条目，格式为 [数字编号]|[更新时间]|[置信度]|[重要度]|[LocationId]：[内容] ：\n\n"));
+        Message previousMemory = new Message("先前的记忆条目，格式为 [数字编号]|[更新时间]|[置信度]|[重要度]|[LocationId]：[内容] ：\n\n");
 
         if (memories == null || memories.isEmpty()) {
-            previousMemory.messageFields.add(new TextField("（无记忆条目）"));
+            previousMemory.content.add(new TextPiece("（无记忆条目）"));
         } else {
             int itemNumber = 1;
             for (Memory.Item memObj : memories) {
@@ -1105,17 +1096,17 @@ public class AIChat extends Law {
                     continue;
                 }
                 memoryIndex.put(itemNumber, memObj);
-                previousMemory.messageFields.add(new TextField(
+                previousMemory.content.add(new TextPiece(
                         itemNumber + "|" + memObj.toString()
                 ));
                 itemNumber++;
             }
-            if (previousMemory.messageFields.size() == 1) {
-                previousMemory.messageFields.add(new TextField("（无记忆条目）"));
+            if (previousMemory.content.size() == 1) {
+                previousMemory.content.add(new TextPiece("（无记忆条目）"));
             }
         }
 
-        ml.add(previousMemory);
+        chatContext.userMsg(previousMemory);
 
         CompletionsRequest completionsRequest = new CompletionsRequest();
         completionsRequest.placeholders.put("_LocationID", locationId == null ? "" : locationId);

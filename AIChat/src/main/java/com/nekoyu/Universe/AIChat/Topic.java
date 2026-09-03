@@ -1,6 +1,7 @@
 package com.nekoyu.Universe.AIChat;
 
 import com.nekoyu.Universe.AIChat.Skill.SkillManager;
+import com.nekoyu.Universe.API.MessageChannel.Account;
 import com.nekoyu.Universe.API.MessageChannel.MCMessage;
 import com.nekoyu.Universe.API.MessageChannel.MessageField.ImageField;
 import com.nekoyu.Universe.API.MessageChannel.MessageField.MsgField;
@@ -14,7 +15,8 @@ import static com.nekoyu.Universe.AIChat.AIChat.formatTimestamp;
 
 public class Topic {
     AtomicBoolean responding = new AtomicBoolean(false);
-    MessageList messages = new MessageList();
+    /** 底层会话消息统一由 ChatContext 管理 */
+    private final ChatContext chatContext = new ChatContext();
     List<MCMessage> systemPrompts = new ArrayList<>();
     SessionConfig sessionCfg;
     Map<UUID, Memory.Item> activatingMemory = new HashMap<>();
@@ -53,11 +55,19 @@ public class Topic {
     }
 
     public void addSkillMessage(MCMessage msg) {
-        messages.add(msg);
+        chatContext.getBase().add(msg);
     }
 
     public void removeSystemPromptBySkillId(String skillId) {
-        messages.removeIf(m -> skillId.equals(m.getMetainfo("skillId")));
+        chatContext.getBase().removeIf(m -> skillId.equals(m.getMetainfo("skillId")));
+    }
+
+    /** 从底层会话记录恢复历史消息 */
+    public void addHistory(MessageList history) {
+        if (history == null) return;
+        for (MCMessage m : history) {
+            addMsg(m);
+        }
     }
 
     private MCMessage createSystemMessage(String content) {
@@ -96,9 +106,48 @@ public class Topic {
 
         oaiM.sender = mcm.sender;
         oaiM.sessionId = mcm.sessionId;
-        messages.add(oaiM);
+        chatContext.getBase().add(oaiM);
 
         trimMessagesSafely();
+    }
+
+    public List<String> getLocationIds() {
+        return chatContext.getBase().getLocationIds();
+    }
+
+    public int getMessageCount() {
+        return chatContext.getBase().size();
+    }
+
+    public MCMessage getMessage(int index) {
+        return chatContext.getBase().get(index);
+    }
+
+    /** 当前会话的完整聊天上下文 */
+    public ChatContext getChatContext() {
+        return chatContext;
+    }
+
+    /** 基于当前会话消息构建一个独立的 ChatContext 副本，供记忆构建等场景使用，与实时会话互不影响 */
+    public ChatContext createChatContextCopy() {
+        MessageList copy = new MessageList();
+        copy.addAll(chatContext.getBase());
+        return new ChatContext(copy);
+    }
+
+    /** 构建本次请求的完整上下文：开头的 system prompts + 会话消息 + 末尾的 system prompts */
+    public ChatContext getOpenAIContext(Account assistantAccount) {
+        MessageList full = new MessageList();
+        for (int i = 0; i < promptFirstCount && i < systemPrompts.size(); i++) {
+            full.add(copySystemMessage(systemPrompts.get(i)));
+        }
+        for (MCMessage m : chatContext.getBase()) {
+            full.add(isSkillMessage(m) ? copySystemMessage(m) : m);
+        }
+        for (int i = systemPrompts.size() - promptLastCount; i < systemPrompts.size(); i++) {
+            full.add(copySystemMessage(systemPrompts.get(i)));
+        }
+        return new ChatContext(full, assistantAccount);
     }
 
     private void trimMessagesSafely() {
@@ -109,21 +158,21 @@ public class Topic {
         int firstBlockSize = 0;
         boolean firstBlockSeen = false;
 
-        for (int i = messages.size() - 1; i >= 0; ) {
+        for (int i = chatContext.getBase().size() - 1; i >= 0; ) {
             int blockTokens = 0;
             int blockSize = 0;
 
-            MCMessage cur = messages.get(i);
+            MCMessage cur = chatContext.getBase().get(i);
 
             if (isToolMessage(cur)) {
-                while (i >= 0 && isToolMessage(messages.get(i))) {
-                    blockTokens += countTokens(messages.get(i));
+                while (i >= 0 && isToolMessage(chatContext.getBase().get(i))) {
+                    blockTokens += countTokens(chatContext.getBase().get(i));
                     blockSize++;
                     i--;
                 }
 
-                if (i >= 0 && isAssistantWithToolCalls(messages.get(i))) {
-                    blockTokens += countTokens(messages.get(i));
+                if (i >= 0 && isAssistantWithToolCalls(chatContext.getBase().get(i))) {
+                    blockTokens += countTokens(chatContext.getBase().get(i));
                     blockSize++;
                     i--;
                 }
@@ -146,19 +195,19 @@ public class Topic {
             keep += blockSize;
         }
 
-        if (keep == 0 && !messages.isEmpty()) {
+        if (keep == 0 && !chatContext.getBase().isEmpty()) {
             keep = firstBlockSize;
         }
 
-        if (messages.size() > 50 || total > budget || keep < messages.size()) {
+        if (chatContext.getBase().size() > 50 || total > budget || keep < chatContext.getBase().size()) {
             cleanPreservingSkills(keep);
         }
     }
 
     private void cleanPreservingSkills(int keep) {
-        int removeCount = messages.size() - keep;
+        int removeCount = chatContext.getBase().size() - keep;
         if (removeCount <= 0) return;
-        Iterator<MCMessage> it = messages.iterator();
+        Iterator<MCMessage> it = chatContext.getBase().iterator();
         int removed = 0;
         while (it.hasNext() && removed < removeCount) {
             if (isSkillMessage(it.next())) continue;
@@ -192,20 +241,6 @@ public class Topic {
             }
         }
         return tokens;
-    }
-
-    public MessageList getOpenAIML() {
-        MessageList full = new MessageList();
-        for (int i = 0; i < promptFirstCount && i < systemPrompts.size(); i++) {
-            full.add(copySystemMessage(systemPrompts.get(i)));
-        }
-        for (MCMessage m : messages) {
-            full.add(isSkillMessage(m) ? copySystemMessage(m) : m);
-        }
-        for (int i = systemPrompts.size() - promptLastCount; i < systemPrompts.size(); i++) {
-            full.add(copySystemMessage(systemPrompts.get(i)));
-        }
-        return full;
     }
 
     private MCMessage copySystemMessage(MCMessage sysMsg) {

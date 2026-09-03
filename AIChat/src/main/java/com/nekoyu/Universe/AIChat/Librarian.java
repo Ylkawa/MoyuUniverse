@@ -1,10 +1,8 @@
 package com.nekoyu.Universe.AIChat;
 
-import com.nekoyu.Universe.API.MessageChannel.MCMessage;
-import com.nekoyu.Universe.API.MessageChannel.MessageField.TextField;
-import com.nekoyu.Universe.API.MessageChannel.MessageList;
 import com.nekoyu.Universe.API.Providers.LLMProvider.LLMProvider;
 import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.LLMFunction;
+import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.Message;
 import com.nekoyu.Universe.API.Providers.LLMProvider.RespBodies.CompletionsResponse;
 import com.nekoyu.Universe.Universe;
 import org.slf4j.Logger;
@@ -123,33 +121,29 @@ public class Librarian {
             }
         }
 
-        MessageList ml = new MessageList();
-        ml.add(MCMessage.Builder()
-                .add(new TextField("""
-                        你是一个研究助手。请尽力研究以下问题并给出详细准确的回答。
-                        回答必须在开头明确指出该信息所属的【主体】（如具体游戏、产品、系统的名称）与【适用范围】（如版本号、平台、模式、时间段）。
-                        如果问题本身未指明主体，先判断最可能的游戏/产品并在回答首行明确写明，禁止用"新版本""该游戏""这个系统"等含糊表述带过。
-                        
-                        在回答的最后，你必须输出你参考的所有信息来源，格式如下（每个来源之间空一行）：
-                        
-                        ===SOURCES===
-                        URL: 来源网址
-                        TITLE: 页面标题
-                        CONTENT: 该来源的核心内容摘要
-                        
-                        URL: 来源网址2
-                        TITLE: 页面标题2
-                        CONTENT: 该来源的核心内容摘要2
-                        ===END===
-                        
-                        如果没有可引用的来源（例如纯靠自身知识回答），仍然输出 ===SOURCES=== 和 ===END===，中间不写任何来源。
-                        """))
-                .build());
-        ml.add(MCMessage.Builder()
-                .add(new TextField(question))
-                .build());
+        ChatContext chatContext = new ChatContext();
+        chatContext.userMsg(new Message("""
+                你是一个研究助手。请尽力研究以下问题并给出详细准确的回答。
+                回答必须在开头明确指出该信息所属的【主体】（如具体游戏、产品、系统的名称）与【适用范围】（如版本号、平台、模式、时间段）。
+                如果问题本身未指明主体，先判断最可能的游戏/产品并在回答首行明确写明，禁止用"新版本""该游戏""这个系统"等含糊表述带过。
+                
+                在回答的最后，你必须输出你参考的所有信息来源，格式如下（每个来源之间空一行）：
+                
+                ===SOURCES===
+                URL: 来源网址
+                TITLE: 页面标题
+                CONTENT: 该来源的核心内容摘要
+                
+                URL: 来源网址2
+                TITLE: 页面标题2
+                CONTENT: 该来源的核心内容摘要2
+                ===END===
+                
+                如果没有可引用的来源（例如纯靠自身知识回答），仍然输出 ===SOURCES=== 和 ===END===，中间不写任何来源。
+                """));
+        chatContext.userMsg(new Message(question));
 
-        assistant.setChatContext(ChatContext.from(ml));
+        assistant.setChatContext(chatContext);
         CompletionsResponse resp = assistant.completions(null);
         return resp.choices[0].message.content;
     }
@@ -158,45 +152,37 @@ public class Librarian {
         ChatAssistant assistant = new ChatAssistant(llmProvider, model);
         assistant.setThinking(thinking);
 
-        MessageList ml = new MessageList();
-        ml.add(MCMessage.Builder()
-                .add(new TextField("""
-                        你是一个知识整合助手。你需要根据以下两方面的信息来回答问题：
-                        1. 本地知识库的检索结果（可能过时或不完整）
-                        2. 联网搜索的结果（通常更准确和最新）
-                        
-                        合并原则：
-                        - 联网结果优先，本地结果作为补充
-                        - 如果两者冲突，以联网结果为准
-                        - 如果联网结果没有覆盖但本地有相关信息，可以采纳本地结果
-                        - 如果两者都没有相关信息，如实说明
-                        - 综合所有信息给出准确、完整的回答
-                        - 回答开头必须明确指出信息所属的【主体】（具体游戏/产品/系统名）与【适用范围】（版本号/平台/模式）
-                        - 如果问题本身或检索结果无法确定主体与适用范围，如实说明，严禁编造主体或用"新版本/该游戏/这个系统"等含糊表述充数
-                        
-                        在回答的最后，你必须列出所有被采纳信息的来源URL，格式如下：
-                        
-                        ===SOURCES===
-                        URL: 来源网址
-                        TITLE: 页面标题
-                        CONTENT: 该来源的核心内容摘要
-                        
-                        ===END===
-                        
-                        如果没有可列出的来源，仍然输出 ===SOURCES=== 和 ===END===，中间不写任何来源。
-                        """))
-                .build());
-        ml.add(MCMessage.Builder()
-                .add(new TextField("问题：" + question))
-                .build());
-        ml.add(MCMessage.Builder()
-                .add(new TextField("本地知识库结果：\n" + localResult))
-                .build());
-        ml.add(MCMessage.Builder()
-                .add(new TextField("联网搜索结果：\n" + webResult))
-                .build());
+        ChatContext chatContext = new ChatContext();
+        chatContext.userMsg(new Message("""
+                你是一个知识整合助手。你需要根据以下两方面的信息来回答问题：
+                1. 本地知识库的检索结果（可能过时或不完整）
+                2. 联网搜索的结果（通常更准确和最新）
+                
+                合并原则：
+                - 联网结果优先，本地结果作为补充
+                - 如果两者冲突，以联网结果为准
+                - 如果联网结果没有覆盖但本地有相关信息，可以采纳本地结果
+                - 如果两者都没有相关信息，如实说明
+                - 综合所有信息给出准确、完整的回答
+                - 回答开头必须明确指出信息所属的【主体】（具体游戏/产品/系统名）与【适用范围】（版本号/平台/模式）
+                - 如果问题本身或检索结果无法确定主体与适用范围，如实说明，严禁编造主体或用"新版本/该游戏/这个系统"等含糊表述充数
+                
+                在回答的最后，你必须列出所有被采纳信息的来源URL，格式如下：
+                
+                ===SOURCES===
+                URL: 来源网址
+                TITLE: 页面标题
+                CONTENT: 该来源的核心内容摘要
+                
+                ===END===
+                
+                如果没有可列出的来源，仍然输出 ===SOURCES=== 和 ===END===，中间不写任何来源。
+                """));
+        chatContext.userMsg(new Message("问题：" + question));
+        chatContext.userMsg(new Message("本地知识库结果：\n" + localResult));
+        chatContext.userMsg(new Message("联网搜索结果：\n" + webResult));
 
-        assistant.setChatContext(ChatContext.from(ml));
+        assistant.setChatContext(chatContext);
         CompletionsResponse resp = assistant.completions(null);
         return resp.choices[0].message.content;
     }
@@ -228,23 +214,17 @@ public class Librarian {
 
     private boolean isConflicting(String existing, String newContent) {
         try {
-            ChatAssistant assistant = new ChatAssistant(llmProvider, model);
-            MessageList ml = new MessageList();
-            ml.add(MCMessage.Builder()
-                    .add(new TextField("""
-                            判断以下两段内容是否存在事实性冲突（关键数据、结论、时间、参数等发生了改变）。
-                            轻微措辞变化或补充信息不算冲突。
-                            只回答 YES 或 NO。
-                            """))
-                    .build());
-            ml.add(MCMessage.Builder()
-                    .add(new TextField("已有内容：\n" + truncate(existing, 2000)))
-                    .build());
-            ml.add(MCMessage.Builder()
-                    .add(new TextField("新内容：\n" + truncate(newContent, 2000)))
-                    .build());
+ChatAssistant assistant = new ChatAssistant(llmProvider, model);
+            ChatContext chatContext = new ChatContext();
+            chatContext.userMsg(new Message("""
+                    判断以下两段内容是否存在事实性冲突（关键数据、结论、时间、参数等发生了改变）。
+                    轻微措辞变化或补充信息不算冲突。
+                    只回答 YES 或 NO。
+                    """));
+            chatContext.userMsg(new Message("已有内容：\n" + truncate(existing, 2000)));
+            chatContext.userMsg(new Message("新内容：\n" + truncate(newContent, 2000)));
 
-assistant.setChatContext(ChatContext.from(ml));
+            assistant.setChatContext(chatContext);
             CompletionsResponse resp = assistant.completions(null);
             String answer = resp.choices[0].message.content.trim().toUpperCase();
             boolean conflict = answer.contains("YES");

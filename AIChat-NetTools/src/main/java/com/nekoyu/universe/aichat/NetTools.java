@@ -30,7 +30,7 @@ public class NetTools extends AIChatPlugin {
                 .parameters(JsonSchema.object()
                         .property("Domain", JsonSchema.string().description("要查询的域名"))
                         .required("Domain"))
-                .callback(args -> {
+                .syncCallback(args -> {
                     JsonObject o = args.getAsJsonObject();
                     // Using this API to lookup: https://xxapi.cn/doc/whois
                     Request req = new Request.Builder()
@@ -54,7 +54,7 @@ public class NetTools extends AIChatPlugin {
                         .property("RRType", JsonSchema.enumType("A", "AAAA", "CNAME", "MX", "NS", "TXT")
                                 .description("要解析的记录种类，默认 A"))
                         .required("Domain"))
-                .callback(args -> {
+                .syncCallback(args -> {
                     JsonObject o = args.getAsJsonObject();
                     String rr = o.has("RRType") ? o.get("RRType").getAsString() : "A";
                     Request req = new Request.Builder()

@@ -20,7 +20,7 @@ import java.util.List;
 
 public class ChatContext implements Context {
     private static final String ROLE = "role";
-    private static final String ROLE_TAG = "assistant";
+    private static final String ROLE_ASSISTANT = "assistant";
     private static final String ROLE_TOOL = "tool";
     private static final String ROLE_SYSTEM = "system";
 
@@ -71,10 +71,10 @@ public class ChatContext implements Context {
         for (MCMessage m : base) {
             Message message = new Message();
             if (assistantAccount != null && m.sender != null && m.sender.equals(assistantAccount)) {
-                message.role = ROLE_TAG;
+                message.role = ROLE_ASSISTANT;
             } else if (m.getMetainfo(ROLE) instanceof String role) {
                 message.role = role;
-                if (role.equals(ROLE_TAG) && m.getMetainfo("Tool_calls") instanceof Tool_call[] toolCalls) {
+                if (role.equals(ROLE_ASSISTANT) && m.getMetainfo("Tool_calls") instanceof Tool_call[] toolCalls) {
                     if (m.getMetainfo("reasoning") instanceof String reasoning) {
                         message.reasoning_content = reasoning;
                     }
@@ -115,7 +115,7 @@ public class ChatContext implements Context {
 
     @Override
     public void assistantMsg(Message message) {
-        MCMessage mcm = toMCMessage(message, ROLE_TAG);
+        MCMessage mcm = toMCMessage(message, ROLE_ASSISTANT);
         if (message.reasoning_content != null) mcm.putMetainfo("reasoning", message.reasoning_content);
         if (message.tool_calls != null) mcm.putMetainfo("Tool_calls", message.tool_calls);
         base.add(mcm);
