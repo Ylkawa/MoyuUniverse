@@ -20,4 +20,19 @@ public abstract class LLMProvider extends Provider {
         /** 输出中，每接收到一行data就会把模型输出的词输出到这里 */
         void onCompletion(String outputs);
     }
+
+    /** 是否启用跨请求后台异步工具结果 */
+    public boolean asyncToolsEnabled() {
+        return false;
+    }
+
+    /** 异步工具结果默认最大等待时间（毫秒） */
+    public long asyncMaxWaitMillis() {
+        return 30_000;
+    }
+
+    /** 新消息静默去抖时长（毫秒） */
+    public long asyncDebounceMillis() {
+        return 5_000;
+    }
 }

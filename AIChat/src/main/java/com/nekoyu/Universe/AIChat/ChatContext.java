@@ -15,8 +15,13 @@ import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.Tool_call;
 
 import java.net.MalformedURLException;
 import java.net.URL;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Deque;
 import java.util.List;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
+import java.util.concurrent.TimeUnit;
 
 public class ChatContext implements Context {
     private static final String ROLE = "role";
@@ -30,6 +35,15 @@ public class ChatContext implements Context {
     private final Account assistantAccount;
     private String systemPromptFirst = null;
     private String systemPromptLast = null;
+
+    /** 新到达待批次处理的消息（用户触发消息与异步工具结果），静默去抖后统一触发回复 */
+    private final Deque<MCMessage> pendingMsgs = new ArrayDeque<>();
+    private volatile long lastNewMessageTime = 0;
+    private volatile long debounceMillis = 5_000;
+    private volatile ScheduledExecutorService debounceScheduler = null;
+    private volatile ScheduledFuture<?> debounceTask = null;
+    /** 去抖到期回调（由上层注入，负责检查条件并触发回复） */
+    private volatile Runnable onDebounceFire = null;
 
     public ChatContext() {
         this(new MessageList(), null);
@@ -62,6 +76,75 @@ public class ChatContext implements Context {
 
     public MessageList getBase() {
         return base;
+    }
+
+    /**
+     * 配置去抖参数与到期回调（开启异步工具结果时调用）。
+     *
+     * @param debounceMillis   静默等待时长（毫秒）
+     * @param scheduler        用于排期去抖任务的线程池
+     * @param onDebounceFire   到期回调
+     */
+    public void configureDebounce(long debounceMillis, ScheduledExecutorService scheduler, Runnable onDebounceFire) {
+        this.debounceMillis = debounceMillis;
+        this.debounceScheduler = scheduler;
+        this.onDebounceFire = onDebounceFire;
+    }
+
+    /** 是否有待批次处理的新消息 */
+    public synchronized boolean hasPendingMessages() {
+        return !pendingMsgs.isEmpty();
+    }
+
+    /** 待批次处理的消息句柄（快照，不移除） */
+    public synchronized List<MCMessage> peekPendingMessages() {
+        return new ArrayList<>(pendingMsgs);
+    }
+
+    /** 取出并清空待批次处理的消息 */
+    public synchronized List<MCMessage> drainPendingMessages() {
+        List<MCMessage> drained = new ArrayList<>(pendingMsgs);
+        pendingMsgs.clear();
+        return drained;
+    }
+
+    public long getLastNewMessageTime() {
+        return lastNewMessageTime;
+    }
+
+    /**
+     * 记录一条需要处理的新消息并重置静默去抖计时。
+     * 新消息（用户触发消息 / 异步工具结果）到达时会前取消旧定时并重新排期。
+     */
+    public synchronized void enqueuePendingMessage(MCMessage msg) {
+        pendingMsgs.add(msg);
+        lastNewMessageTime = System.currentTimeMillis();
+        rescheduleDebounce();
+    }
+
+    private synchronized void rescheduleDebounce() {
+        if (debounceScheduler == null) return;
+        if (debounceTask != null) debounceTask.cancel(false);
+        debounceTask = debounceScheduler.schedule(() -> {
+            Runnable fire = onDebounceFire;
+            if (fire != null) fire.run();
+        }, debounceMillis, TimeUnit.MILLISECONDS);
+    }
+
+    /** 以指定时长重新排期去抖（用于未决工具尚未回应时延长等待） */
+    public synchronized void rearmDebounce(long delayMillis) {
+        if (debounceScheduler == null) return;
+        if (debounceTask != null) debounceTask.cancel(false);
+        debounceTask = debounceScheduler.schedule(() -> {
+            Runnable fire = onDebounceFire;
+            if (fire != null) fire.run();
+        }, Math.max(0, delayMillis), TimeUnit.MILLISECONDS);
+    }
+
+    /** 会话关闭时取消未触发的去抖任务 */
+    public synchronized void cancelDebounce() {
+        if (debounceTask != null) debounceTask.cancel(false);
+        debounceTask = null;
     }
 
     /** 由底层会话重建请求体消息列表，等价于旧 OpenAIChannel 的构建逻辑 */

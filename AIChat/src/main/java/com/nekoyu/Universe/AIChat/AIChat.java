@@ -10,6 +10,7 @@ import com.nekoyu.Universe.AIChat.Skill.Skill;
 import com.nekoyu.Universe.AIChat.Skill.SkillManager;
 import com.nekoyu.Universe.AIChat.Skill.SkillRegistry;
 import com.nekoyu.Universe.API.MessageChannel.*;
+import com.nekoyu.Universe.API.MessageChannel.MessageField.MsgField;
 import com.nekoyu.Universe.API.MessageChannel.MessageField.StickerField;
 import com.nekoyu.Universe.API.MessageChannel.MessageField.TextField;
 import com.nekoyu.Universe.API.PlaceHolder;
@@ -63,6 +64,10 @@ public class AIChat extends Law {
     Map<String, ChatAssistant> subAgents = new HashMap<>();
     Multimap<String, File> emojisCollect = ArrayListMultimap.create();
     public HikariDataSource dataSource;
+    /** 运行中的 AIChat 实例，供外部模块补投异步工具结果 */
+    static volatile AIChat instance;
+    /** 会话消息静默去抖（异步工具结果）排期线程池 */
+    private final ScheduledExecutorService asyncScheduler = Executors.newSingleThreadScheduledExecutor();
 
     public static void registerFunction(String toolName, LLMFunction tool) {
         llmFunctions.put(toolName, tool);
@@ -81,6 +86,7 @@ public class AIChat extends Law {
 
     @Override
     public boolean prepare() {
+        instance = this;
         getDataDir();
         File configDic = new File("./config/AIChat");
         if (!configDic.exists()) configDic.mkdir();
@@ -448,7 +454,11 @@ public class AIChat extends Law {
                 if (sessionCfg.Trigger.equals("every") || mcm.messageString.contains(sessionCfg.Keyword) || mcm.level >= 2) {
                     if (topic == null) {
                         topic = new Topic(sessionCfg);
+                        final Topic createdTopic = topic;
                         activatingTopics.put(mcm.sessionId, topic);
+                        topic.provider = llmProvider;
+                        if (llmProvider.asyncToolsEnabled())
+                            createdTopic.getChatContext().configureDebounce(llmProvider.asyncDebounceMillis(), asyncScheduler, () -> fireDebounced(createdTopic));
 
                         List<String> availableSkillIds = new ArrayList<>();
                         List<String> alwaysSkillIds = new ArrayList<>();
@@ -477,186 +487,17 @@ public class AIChat extends Law {
 
                         topic.addHistory((MessageList) MessageChannelManager.getMessageHistory(sessionCfg.SessionId).clone());
                     }
-                    if (topic.responding.compareAndSet(false, true)) { // 阻止同时回复多个消息
+topic.lastTrigger = mcm;
+                    if (llmProvider.asyncToolsEnabled()) {
+                        topic.getChatContext().enqueuePendingMessage(mcm);
+                    } else if (topic.responding.compareAndSet(false, true)) { // 阻止同时回复多个消息
                         try {
-                            ChatAssistant assistant = new ChatAssistant(llmProvider, sessionCfg.Model);
-                            if (sessionCfg.Tools != null) {
-                                for (String tool : sessionCfg.Tools) {
-                                    llmFunctions.get(tool);
-                                    for (LLMFunction func : llmFunctions.get(tool)) {  // FIXME Tool 可能被重复添加而无保护
-                                        assistant.addTool(func);
-                                    }
-                                } // 为 assistant 添加指定的 tools // 如果不存在这个 tool 就不添加
-                            }
-                            if (topic.skillManager != null) {
-                                for (String toolName : topic.skillManager.getActiveToolNames()) {
-                                    for (LLMFunction func : llmFunctions.get(toolName)) {
-                                        assistant.addTool(func);
-                                    }
-                                }
-                            }
-                            if (sessionCfg.subAgents != null) for (String subAgentName : sessionCfg.subAgents) {
-                                ChatAssistant subAgent = subAgents.get(subAgentName);
-                                // 作为 tool 添加，以供 assistant 调用 subAgent
-                                LLMFunction llmFunction = LLMFunction.builder()
-                                        .name(subAgentName)
-                                        .description(subAgent.getDescription())
-                                        .parameters(JsonSchema.object()
-                                                .property("Question", JsonSchema.string().description("要交给子代理处理的问题"))
-                                                .required("Question"))
-                                        .syncCallback(args -> {
-                                            ChatContext subCtx = new ChatContext();
-                                            subCtx.userMsg(new Message(args.getAsJsonObject().get("Question").getAsString()));
-                                            subAgent.setChatContext(subCtx);
-                                            try {
-                                                StringBuilder sb = new StringBuilder();
-                                                subAgent.completions(sb::append);
-                                                return new Message(sb.toString());
-                                            } catch (IOException e) {
-                                                return new Message("调用子代理失败: " + e.getMessage());
-                                            }
-                                        })
-                                        .build();
-                                assistant.addTool(llmFunction);
-                            } // 为 assistant 添加 subAgent
-                            if (topic.skillManager != null && topic.skillManager.hasOnDemandSkills()) {
-                                SkillManager sm = topic.skillManager;
-                                StringBuilder skillListDesc = new StringBuilder();
-                                skillListDesc.append("根据用户需求激活技能。可用技能：\n");
-                                for (Skill skill : sm.getAvailableOnDemandSkills()) {
-                                    if (!sm.isActive(skill.id)) {
-                                        skillListDesc.append("- ").append(skill.id).append(": ").append(skill.description).append("\n");
-                                    }
-                                }
-                                if (!sm.getActiveSkills().isEmpty()) {
-                                    skillListDesc.append("已激活的技能：").append(String.join(", ", sm.getActiveSkills())).append("\n");
-                                }
-                                skillListDesc.append("注意：技能一旦激活将在此会话中持续生效，请根据用户需求选择合适的技能。");
-
-                                LLMFunction manageSkillsFunc = LLMFunction.builder()
-                                        .name("ManageSkills")
-                                        .description(skillListDesc.toString())
-                                        .parameters(JsonSchema.object()
-                                                .property("skillId", JsonSchema.string().description("技能ID，必须是可用技能列表中的id"))
-                                                .required("skillId"))
-                                        .syncCallback(args -> {
-                                            JsonObject o = args.getAsJsonObject();
-                                            String skillId = o.get("skillId").getAsString();
-                                            MFChain result = new MFChain();
-                                            if (sm.activate(skillId)) {
-                                                Skill activated = SkillRegistry.get(skillId);
-                                                if (activated != null && activated.toolNames != null) {
-                                                    for (String toolName : activated.toolNames) {
-                                                        for (LLMFunction func : llmFunctions.get(toolName)) {
-                                                            assistant.addTool(func);
-                                                        }
-                                                    }
-                                                }
-                                                result.add(new TextField("技能 " + skillId + " 已激活，其工具现在可以使用了"));
-                                            } else {
-                                                result.add(new TextField("技能 " + skillId + " 激活失败，可能已激活或不存在"));
-                                            }
-                                            return Message.from(result);
-                                        })
-                                        .build();
-                                assistant.addTool(manageSkillsFunc);
-                            }
-                            // 先让插件处理事件 插件提供局部的PlaceHolder
-                            var reqEv = new RequestEvent();
-                            reqEv.locationId = mcm.getLocationId();
-                            reqEv.sessionId = mcm.sessionId;
-                            reqEv.skillManager = topic.skillManager;
-                            for (var plug : aiChatPlugins) {
-                                try {
-                                    plug.onRequest(reqEv);
-                                } catch (Exception e) {
-                                    logger.error("{} 在处理 RequestEvent 发生错误", plug.id, e);
-                                }
-                            }
-                            reqEv.messageList = topic.getChatContext();
-                            reqEv.placeholders.put("TIME", formatTimestamp(System.currentTimeMillis())); // 时间
-                            reqEv.placeholders.put("SESSION_LOCATION_ID", mcm.getLocationId()); // 会话 LocationId
-                            reqEv.placeholders.put("ACCOUNT_NICKNAME", mcm.receiver.getName()); // 账号昵称
-                            if (leading) try {
-                                String lead = leading(mcm, topic);
-                                reqEv.placeholders.put("LEADING", lead);
-                            } catch (IOException e) {
-                                logger.warn("Leading失效", e);
-                                reqEv.placeholders.put("LEADING", "Failed");
-                            }
-                            StringBuilder emojiSetAvailable = new StringBuilder();
-                            for (String emojiName : emojisCollect.keySet()) {
-                                if (emojiName != null) emojiSetAvailable.append(emojiName).append(" ");
-                            }
-                            reqEv.placeholders.put("AVAILABLE_EMOJI", emojiSetAvailable.toString());
-                            StringBuilder locationIdsString = new StringBuilder();
-                            for (var s : topic.getLocationIds()) {
-                                locationIdsString.append(s).append(" ");
-                            }
-                            reqEv.placeholders.put("LOCATION_IDS", locationIdsString.toString());
-
-                            if (memory != null) {
-                                try {
-                                    StringBuilder sb = new StringBuilder();
-                                    List<String> locationIds = topic.getLocationIds();
-                                    for (var obj : memory.getLastMemoryItems(locationIds, locationIds.size() * 5)) {
-                                        sb.append(obj.confidence)
-                                                .append(" ")
-                                                .append(obj.importance)
-                                                .append(" ")
-                                                .append(Time.formatTimestamp(obj.updateAt))
-                                                .append("[")
-                                                .append(obj.locationId)
-                                                .append("]: ")
-                                                .append(obj.content)
-                                                .append("\n");
-                                    }
-                                    reqEv.placeholders.put("MEMORY", sb.toString());
-                                } catch (Exception e) {
-                                    logger.error("无法获取记忆", e);
-                                }
-                            }
-
-                            try {
-                                ChatContext openaiCtx = topic.getOpenAIContext(mcm.receiver);
-                                for (MCMessage sysMsg : openaiCtx.getBase()) {
-                                    if ("system".equals(sysMsg.getMetainfo("role"))) {
-                                        for (int i = 0; i < sysMsg.messageFields.size(); i++) {
-                                            var field = sysMsg.messageFields.get(i);
-                                            if (field instanceof TextField tf) {
-                                                String replaced = PlaceHolder.replace(tf.toString(), reqEv.placeholders);
-                                                sysMsg.messageFields.set(i, new TextField(replaced));
-                                            }
-                                        }
-                                    }
-                                }
-                                // Completions Request
-                                CompletionsRequest completionsRequest = new CompletionsRequest();
-                                completionsRequest.placeholders.put("_LocationID", mcm.getLocationId());
-                                assistant.setThinking(sessionCfg.enable_thinking);
-                                assistant.setChatContext(openaiCtx);
-                                // 接收响应 tokens
-                                StringBuilder replyTokens = new StringBuilder();
-                                assistant.completions(outputs -> {
-                                    String[] split = outputs.split("\n\n", 2); // 每一次接收够一段就回复一次消息
-                                    if (split.length > 1) {
-                                        replyTokens.append(split[0]);
-                                        if (!replyTokens.isEmpty()) mcm.reply(decoupleMark(replyTokens.toString()));
-                                        replyTokens.setLength(0);
-                                        replyTokens.append(split[1]);
-                                    } else {
-                                        replyTokens.append(split[0]);
-                                    }
-                                });
-                                if (!replyTokens.isEmpty()) mcm.reply(decoupleMark(replyTokens.toString()));
-                            } catch (IOException e) {
-                                logger.error("生成回复时出错", e);
-                            }
+                            replyTurn(topic);
                         } finally {
                             topic.responding.set(false);
                         }
                     }
-                } else if (topic != null) { // 未触发消息回复，就检查会话是否超时，如果超时了，就构建记忆，结束会话
+                } else if (topic != null && !topic.hasPendingCalls()) { // 未触发消息回复，就检查会话是否超时，如果超时了，就构建记忆，结束会话
                     int size = topic.getMessageCount();
                     for (int i = size - 1; i >= size - TOPIC_TIMEOUT; i--) { // 检测话题是否超时
                         if (i < 0) break;
@@ -693,6 +534,328 @@ public class AIChat extends Law {
                 }
             });
         }
+    }
+
+    private boolean asyncEnabledFor(Topic topic) {
+        LLMProvider provider = topic.provider;
+        return provider != null && provider.asyncToolsEnabled();
+    }
+
+    /** 异步去抖到期：条件满足（静默等待已过且所有未决均已回应或无未决）时触发一轮回复 */
+    private void fireDebounced(Topic topic) {
+        ChatContext ctx = topic.getChatContext();
+        if (!ctx.hasPendingMessages() && !topic.hasPendingCalls()) return;
+        if (!topic.responding.compareAndSet(false, true)) return; // 正在回复中，交给后续调度
+        try {
+            List<String> expired = topic.expireOverduePendings();
+            if (!expired.isEmpty()) {
+                logger.warn("会话 {} 有 {} 个异步工具调用超时，进行兜底回答", topic.sessionCfg.SessionId, expired.size());
+                for (String toolCallId : expired) {
+                    topic.appendToolMessage(toolCallId, "该次工具调用已超时，未能在期限内返回结果，请基于当前已有信息直接回答。");
+                }
+            }
+            if (!topic.allPendingsResponded()) {
+                long earliest = topic.pendingEarliestDeadline();
+                if (earliest > System.currentTimeMillis()) {
+                    ctx.rearmDebounce(earliest - System.currentTimeMillis()); // 等待到最早的截止时间再检查
+                }
+                return;
+            }
+            ctx.drainPendingMessages();
+            replyTurn(topic);
+        } finally {
+            topic.responding.set(false);
+        }
+    }
+
+    /** 执行一轮回复：构建工具集、占位符、请求并发送回复，同时处理异步工具注册与轮次持久化 */
+    private void replyTurn(Topic topic) {
+        MCMessage mcm = topic.lastTrigger;
+        LLMProvider llmProvider = topic.provider;
+        if (mcm == null || llmProvider == null) return;
+        SessionConfig sessionCfg = topic.sessionCfg;
+        boolean leading = (sessionCfg.PromptFirst + sessionCfg.PromptLast + globalCfg.PromptFirst + globalCfg.PromptLast).contains("%LEADING%");
+        ChatAssistant assistant = new ChatAssistant(llmProvider, sessionCfg.Model);
+        if (sessionCfg.Tools != null) {
+            for (String tool : sessionCfg.Tools) {
+                llmFunctions.get(tool);
+                for (LLMFunction func : llmFunctions.get(tool)) {  // FIXME Tool 可能被重复添加而无保护
+                    assistant.addTool(func);
+                }
+            } // 为 assistant 添加指定的 tools // 如果不存在这个 tool 就不添加
+        }
+        if (topic.skillManager != null) {
+            for (String toolName : topic.skillManager.getActiveToolNames()) {
+                for (LLMFunction func : llmFunctions.get(toolName)) {
+                    assistant.addTool(func);
+                }
+            }
+        }
+        if (sessionCfg.subAgents != null) for (String subAgentName : sessionCfg.subAgents) {
+            ChatAssistant subAgent = subAgents.get(subAgentName);
+            // 作为 tool 添加，以供 assistant 调用 subAgent
+            LLMFunction llmFunction = LLMFunction.builder()
+                    .name(subAgentName)
+                    .description(subAgent.getDescription())
+                    .parameters(JsonSchema.object()
+                            .property("Question", JsonSchema.string().description("要交给子代理处理的问题"))
+                            .required("Question"))
+                    .syncCallback(args -> {
+                        ChatContext subCtx = new ChatContext();
+                        subCtx.userMsg(new Message(args.getAsJsonObject().get("Question").getAsString()));
+                        subAgent.setChatContext(subCtx);
+                        try {
+                            StringBuilder sb = new StringBuilder();
+                            subAgent.completions(sb::append);
+                            return new Message(sb.toString());
+                        } catch (IOException e) {
+                            return new Message("调用子代理失败: " + e.getMessage());
+                        }
+                    })
+                    .build();
+            assistant.addTool(llmFunction);
+        } // 为 assistant 添加 subAgent
+        if (topic.skillManager != null && topic.skillManager.hasOnDemandSkills()) {
+            SkillManager sm = topic.skillManager;
+            StringBuilder skillListDesc = new StringBuilder();
+            skillListDesc.append("根据用户需求激活技能。可用技能：\n");
+            for (Skill skill : sm.getAvailableOnDemandSkills()) {
+                if (!sm.isActive(skill.id)) {
+                    skillListDesc.append("- ").append(skill.id).append(": ").append(skill.description).append("\n");
+                }
+            }
+            if (!sm.getActiveSkills().isEmpty()) {
+                skillListDesc.append("已激活的技能：").append(String.join(", ", sm.getActiveSkills())).append("\n");
+            }
+            skillListDesc.append("注意：技能一旦激活将在此会话中持续生效，请根据用户需求选择合适的技能。");
+
+            LLMFunction manageSkillsFunc = LLMFunction.builder()
+                    .name("ManageSkills")
+                    .description(skillListDesc.toString())
+                    .parameters(JsonSchema.object()
+                            .property("skillId", JsonSchema.string().description("技能ID，必须是可用技能列表中的id"))
+                            .required("skillId"))
+                    .syncCallback(args -> {
+                        JsonObject o = args.getAsJsonObject();
+                        String skillId = o.get("skillId").getAsString();
+                        MFChain result = new MFChain();
+                        if (sm.activate(skillId)) {
+                            Skill activated = SkillRegistry.get(skillId);
+                            if (activated != null && activated.toolNames != null) {
+                                for (String toolName : activated.toolNames) {
+                                    for (LLMFunction func : llmFunctions.get(toolName)) {
+                                        assistant.addTool(func);
+                                    }
+                                }
+                            }
+                            result.add(new TextField("技能 " + skillId + " 已激活，其工具现在可以使用了"));
+                        } else {
+                            result.add(new TextField("技能 " + skillId + " 激活失败，可能已激活或不存在"));
+                        }
+                        return Message.from(result);
+                    })
+                    .build();
+            assistant.addTool(manageSkillsFunc);
+        }
+        // 先让插件处理事件 插件提供局部的PlaceHolder
+        var reqEv = new RequestEvent();
+        reqEv.locationId = mcm.getLocationId();
+        reqEv.sessionId = mcm.sessionId;
+        reqEv.skillManager = topic.skillManager;
+        for (var plug : aiChatPlugins) {
+            try {
+                plug.onRequest(reqEv);
+            } catch (Exception e) {
+                logger.error("{} 在处理 RequestEvent 发生错误", plug.id, e);
+            }
+        }
+        reqEv.messageList = topic.getChatContext();
+        reqEv.placeholders.put("TIME", formatTimestamp(System.currentTimeMillis())); // 时间
+        reqEv.placeholders.put("SESSION_LOCATION_ID", mcm.getLocationId()); // 会话 LocationId
+        reqEv.placeholders.put("ACCOUNT_NICKNAME", mcm.receiver.getName()); // 账号昵称
+        if (leading) try {
+            String lead = leading(mcm, topic);
+            reqEv.placeholders.put("LEADING", lead);
+        } catch (IOException e) {
+            logger.warn("Leading失效", e);
+            reqEv.placeholders.put("LEADING", "Failed");
+        }
+        StringBuilder emojiSetAvailable = new StringBuilder();
+        for (String emojiName : emojisCollect.keySet()) {
+            if (emojiName != null) emojiSetAvailable.append(emojiName).append(" ");
+        }
+        reqEv.placeholders.put("AVAILABLE_EMOJI", emojiSetAvailable.toString());
+        StringBuilder locationIdsString = new StringBuilder();
+        for (var s : topic.getLocationIds()) {
+            locationIdsString.append(s).append(" ");
+        }
+        reqEv.placeholders.put("LOCATION_IDS", locationIdsString.toString());
+
+        if (memory != null) {
+            try {
+                StringBuilder sb = new StringBuilder();
+                List<String> locationIds = topic.getLocationIds();
+                for (var obj : memory.getLastMemoryItems(locationIds, locationIds.size() * 5)) {
+                    sb.append(obj.confidence)
+                            .append(" ")
+                            .append(obj.importance)
+                            .append(" ")
+                            .append(Time.formatTimestamp(obj.updateAt))
+                            .append("[")
+                            .append(obj.locationId)
+                            .append("]: ")
+                            .append(obj.content)
+                            .append("\n");
+                }
+                reqEv.placeholders.put("MEMORY", sb.toString());
+            } catch (Exception e) {
+                logger.error("无法获取记忆", e);
+            }
+        }
+
+        try {
+            ChatContext openaiCtx = topic.getOpenAIContext(mcm.receiver);
+            for (MCMessage sysMsg : openaiCtx.getBase()) {
+                if ("system".equals(sysMsg.getMetainfo("role"))) {
+                    for (int i = 0; i < sysMsg.messageFields.size(); i++) {
+                        var field = sysMsg.messageFields.get(i);
+                        if (field instanceof TextField tf) {
+                            String replaced = PlaceHolder.replace(tf.toString(), reqEv.placeholders);
+                            sysMsg.messageFields.set(i, new TextField(replaced));
+                        }
+                    }
+                }
+            }
+            // Completions Request
+            CompletionsRequest completionsRequest = new CompletionsRequest();
+            completionsRequest.placeholders.put("_LocationID", mcm.getLocationId());
+            completionsRequest.placeholders.put("_SessionId", mcm.sessionId);
+            boolean asyncEnabled = asyncEnabledFor(topic);
+            Set<String> consumedRound = new HashSet<>();
+            if (asyncEnabled) {
+                consumedRound.addAll(topic.pendingCalls.keySet());
+                LLMProvider provider = topic.provider;
+                completionsRequest.asyncToolSink = (toolCallId, timeout) ->
+                        topic.registerPendingCall(toolCallId, timeout > 0 ? timeout : provider.asyncMaxWaitMillis());
+            }
+            assistant.setThinking(sessionCfg.enable_thinking);
+            assistant.setChatContext(openaiCtx);
+            // 接收响应 tokens
+            StringBuilder replyTokens = new StringBuilder();
+            assistant.completions(outputs -> {
+                String[] split = outputs.split("\n\n", 2); // 每一次接收够一段就回复一次消息
+                if (split.length > 1) {
+                    replyTokens.append(split[0]);
+                    if (!replyTokens.isEmpty()) mcm.reply(decoupleMark(replyTokens.toString()));
+                    replyTokens.setLength(0);
+                    replyTokens.append(split[1]);
+                } else {
+                    replyTokens.append(split[0]);
+                }
+            });
+            if (!replyTokens.isEmpty()) mcm.reply(decoupleMark(replyTokens.toString()));
+
+            if (asyncEnabled) {
+                // 本轮新登记的未决调用持久化到会话上下文，供后续补投结果使用
+                Set<String> newPending = new HashSet<>(topic.pendingCalls.keySet());
+                newPending.removeAll(consumedRound);
+                if (!newPending.isEmpty()) persistPendingRound(topic, openaiCtx, newPending);
+                topic.removeConsumedPendingCalls(consumedRound);
+                // 若仍有未回应的未决，排期到最早的截止时间进行兜底
+                if (!topic.allPendingsResponded()) {
+                    long earliest = topic.pendingEarliestDeadline();
+                    if (earliest > System.currentTimeMillis())
+                        topic.getChatContext().rearmDebounce(earliest - System.currentTimeMillis());
+                }
+            }
+        } catch (IOException e) {
+            logger.error("生成回复时出错", e);
+        }
+    }
+
+    /** 把本轮新登记的异步未决轮次消息（assistant tool_calls + 相关 tool 消息）复制进会话上下文 */
+    private void persistPendingRound(Topic topic, ChatContext turnCtx, Set<String> newPendingIds) {
+        List<MCMessage> src = turnCtx.getBase();
+        int start = -1;
+        for (int i = src.size() - 1; i >= 0; i--) {
+            MCMessage m = src.get(i);
+            Object role = m.getMetainfo("role");
+            if (role instanceof String r && r.equals("assistant")) {
+                Object tc = m.getMetainfo("Tool_calls");
+                if (tc instanceof Tool_call[] calls) {
+                    for (Tool_call c : calls) {
+                        if (c.id != null && newPendingIds.contains(c.id)) {
+                            start = i;
+                            break;
+                        }
+                    }
+                }
+                if (start >= 0) break;
+            }
+        }
+        if (start < 0) return;
+        int end = -1;
+        for (int i = src.size() - 1; i >= start; i--) {
+            if (isToolMessage(src.get(i))) {
+                end = i;
+                break;
+            }
+        }
+        if (end < 0) return;
+        MessageList base = topic.getChatContext().getBase();
+        for (int i = start; i <= end; i++) {
+            base.add(copyTurnMessage(src.get(i)));
+        }
+        logger.info("会话 {} 持久化异步未决轮次 {} 条消息", topic.sessionCfg.SessionId, end - start + 1);
+    }
+
+    private static boolean isToolMessage(MCMessage m) {
+        return "tool".equals(m.getMetainfo("role"));
+    }
+
+    private static MCMessage copyTurnMessage(MCMessage src) {
+        MCMessage copy = new MCMessage();
+        for (MsgField field : src.messageFields) copy.messageFields.add(field);
+        copy.sender = src.sender;
+        copy.sessionId = src.sessionId;
+        Object role = src.getMetainfo("role");
+        if (role != null) copy.putMetainfo("role", role);
+        Object toolCallId = src.getMetainfo("tool_call_id");
+        if (toolCallId != null) copy.putMetainfo("tool_call_id", toolCallId);
+        Object toolCalls = src.getMetainfo("Tool_calls");
+        if (toolCalls != null) copy.putMetainfo("Tool_calls", toolCalls);
+        Object reasoning = src.getMetainfo("reasoning");
+        if (reasoning != null) copy.putMetainfo("reasoning", reasoning);
+        return copy;
+    }
+
+    /**
+     * 外部异步工具完成后调用：把结果补投进会话，静默去抖后自动触发后续回复。
+     *
+     * @param sessionId  全局会话Id
+     * @param toolCallId 原始调用的 tool_call_id（从工具参数的 _SessionId/_ToolCallId 等占位符获取）
+     */
+    public boolean deliverAsyncToolResult(String sessionId, String toolCallId, String text) {
+        Topic topic = activatingTopics.get(sessionId);
+        if (topic == null) {
+            logger.warn("异步工具结果到达但会话 {} 不存在，丢弃 tool_call {}", sessionId, toolCallId);
+            return false;
+        }
+        if (!topic.submitAsyncResult(toolCallId, text)) {
+            logger.warn("异步工具结果 tool_call {} 已超时或不存在，丢弃: {}", toolCallId, text);
+            return false;
+        }
+        logger.info("会话 {} 收到异步工具结果 tool_call {}", sessionId, toolCallId);
+        return true;
+    }
+
+    public static boolean submitAsyncToolResult(String sessionId, String toolCallId, String text) {
+        AIChat ai = instance;
+        if (ai == null) {
+            logger.warn("AIChat 未初始化，丢弃异步工具结果 tool_call {}", toolCallId);
+            return false;
+        }
+        return ai.deliverAsyncToolResult(sessionId, toolCallId, text);
     }
 
     @Override

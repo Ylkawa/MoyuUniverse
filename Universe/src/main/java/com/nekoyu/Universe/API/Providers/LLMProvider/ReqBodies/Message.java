@@ -15,6 +15,8 @@ public class Message {
     public String tool_call_id;
     public Tool_call[] tool_calls;
     public String reasoning_content;
+    /** 工具回调返回 true 表示该调用为异步未决：该次调用的真实结果稍后通过会话补投 */
+    public transient boolean asyncPending;
 
     public Message() {
     }

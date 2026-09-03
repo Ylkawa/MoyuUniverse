@@ -59,6 +59,25 @@ public class OpenAIChannel extends LLMProvider implements Embedding {
         if (options != null) this.options = options;
     }
 
+    public CompletionsOptions getOptions() {
+        return options;
+    }
+
+    @Override
+    public boolean asyncToolsEnabled() {
+        return options.enableAsyncTools;
+    }
+
+    @Override
+    public long asyncMaxWaitMillis() {
+        return options.asyncMaxWaitMillis;
+    }
+
+    @Override
+    public long asyncDebounceMillis() {
+        return options.asyncDebounceMillis;
+    }
+
     @Override
     public CompletionsResponse completions(String model, Context context, List<LLMFunction> llmFunctions, CompletionsRequest completionsRequest, BufferCallback bufferCallback) throws IOException {
         CompletionsResponse responding = new CompletionsResponse(); // fake unstreamed response
@@ -267,8 +286,10 @@ public class OpenAIChannel extends LLMProvider implements Embedding {
                                     toolMsg.content.add(new TextPiece(ex.getMessage()));
                                 }
                             }
-                            if (args != null && args.isJsonObject())
+                            if (args != null && args.isJsonObject()) {
                                 completionsOptions.placeholders.forEach(args.getAsJsonObject()::addProperty);
+                                args.getAsJsonObject().addProperty("_ToolCallId", tool_call.id); // 供异步工具补投结果时使用
+                            }
                             Message toolResponse;
                             if (args == null) {
                                 toolResponse = new Message();
@@ -284,6 +305,11 @@ public class OpenAIChannel extends LLMProvider implements Embedding {
                                 state.exactResults.put(callKey, toolResponse.toString());
                                 next = true;
                                 toolMsg = toolResponse;
+                                if (toolResponse.asyncPending && completionsOptions.asyncToolSink != null) {
+                                    completionsOptions.asyncToolSink.onPendingResult(
+                                            tool_call.id,
+                                            llmFunction.asyncTimeoutMillis > 0 ? llmFunction.asyncTimeoutMillis : 0);
+                                }
                             }
                             context.toolMsg(toolMsg);
                             logger.info("{} 调用了 {}，参数 {}", completionsRequest.model, toolName, tool_call.function.arguments);

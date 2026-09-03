@@ -10,6 +10,8 @@ public class LLMFunction {
     public JsonSchema parameters;
     public transient Callback callback;
     public Type type;
+    /** 本工具异步结果的超时（毫秒），0 表示使用通道配置的默认值 */
+    public transient long asyncTimeoutMillis = 0;
 
     public enum Type {
         asynchronous, synchronous
@@ -79,6 +81,11 @@ public class LLMFunction {
         public Builder asyncCallback(AsyncCallback callback) {
             function.type = Type.asynchronous;
             function.callback = callback;
+            return this;
+        }
+
+        public Builder asyncTimeoutMillis(long asyncTimeoutMillis) {
+            function.asyncTimeoutMillis = asyncTimeoutMillis;
             return this;
         }
     }

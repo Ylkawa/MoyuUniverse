@@ -7,8 +7,11 @@ import com.nekoyu.Universe.API.MessageChannel.MessageField.ImageField;
 import com.nekoyu.Universe.API.MessageChannel.MessageField.MsgField;
 import com.nekoyu.Universe.API.MessageChannel.MessageField.TextField;
 import com.nekoyu.Universe.API.MessageChannel.MessageList;
+import com.nekoyu.Universe.API.Providers.LLMProvider.LLMProvider;
+import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.Tool_call;
 
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import static com.nekoyu.Universe.AIChat.AIChat.formatTimestamp;
@@ -21,6 +24,24 @@ public class Topic {
     SessionConfig sessionCfg;
     Map<UUID, Memory.Item> activatingMemory = new HashMap<>();
     SkillManager skillManager;
+    /** 本会话使用的 LLMProvider */
+    LLMProvider provider;
+    /** 最近一条触发回复的用户消息，用于异步结果补回复时的回话目标 */
+    volatile MCMessage lastTrigger;
+
+    /** 异步未决的工具调用：tool_call_id -> 未决记录 */
+    public static class PendingCall {
+        public final long deadline;            // 到期时间戳（毫秒）
+        public final String toolName;
+        public volatile boolean responded = false;
+
+        public PendingCall(long deadline, String toolName) {
+            this.deadline = deadline;
+            this.toolName = toolName;
+        }
+    }
+
+    final Map<String, PendingCall> pendingCalls = new ConcurrentHashMap<>();
 
     private int promptFirstCount = 0;
     private int promptLastCount = 0;
@@ -150,6 +171,107 @@ public class Topic {
         return new ChatContext(full, assistantAccount);
     }
 
+    /**
+     * 注册一个异步未决的工具调用。
+     *
+     * @param toolCallId    该次调用ID
+     * @param timeoutMillis 该调用允许等待的最大时长（毫秒）
+     */
+    public void registerPendingCall(String toolCallId, long timeoutMillis) {
+        pendingCalls.put(toolCallId, new PendingCall(System.currentTimeMillis() + timeoutMillis, null));
+    }
+
+    public boolean hasPendingCalls() {
+        return !pendingCalls.isEmpty();
+    }
+
+    /**
+     * 提交异步工具结果：追加一条 tool 消息到会话上下文，并标记该 tool_call 已回应。
+     *
+     * @return 是否成功追加（该 tool_call 存在且未超时丢弃）
+     */
+    public boolean submitAsyncResult(String toolCallId, String text) {
+        PendingCall call = pendingCalls.get(toolCallId);
+        if (call == null) return false;
+        call.responded = true;
+        MCMessage toolMsg = appendToolMessage(toolCallId, text);
+        trimMessagesSafely();
+        chatContext.enqueuePendingMessage(toolMsg);
+        return true;
+    }
+
+    /**
+     * 向会话上下文追加一条 tool 消息，插入到对应 assistant(tool_calls) 的紧随工具块之后，
+     * 以保证与 OpenAI 兼容 API 的消息顺序合法。
+     */
+    public MCMessage appendToolMessage(String toolCallId, String text) {
+        int insertPos = chatContext.getBase().size();
+        int anchor = findAssistantToolCallsIndex(toolCallId);
+        if (anchor >= 0) {
+            int pos = anchor + 1;
+            while (pos < chatContext.getBase().size() && isToolMessage(chatContext.getBase().get(pos))) pos++;
+            insertPos = pos;
+        }
+        MCMessage toolMsg = new MCMessage();
+        toolMsg.putMetainfo("role", "tool");
+        toolMsg.putMetainfo("tool_call_id", toolCallId);
+        toolMsg.messageFields.add(new TextField(text));
+        chatContext.getBase().add(insertPos, toolMsg);
+        return toolMsg;
+    }
+
+    private int findAssistantToolCallsIndex(String toolCallId) {
+        for (int i = chatContext.getBase().size() - 1; i >= 0; i--) {
+            MCMessage m = chatContext.getBase().get(i);
+            Object role = m.getMetainfo("role");
+            if (role instanceof String r && r.equals("assistant")) {
+                Object tc = m.getMetainfo("Tool_calls");
+                if (tc instanceof Tool_call[] calls) {
+                    for (Tool_call c : calls) {
+                        if (toolCallId.equals(c.id)) return i;
+                    }
+                }
+            }
+        }
+        return -1;
+    }
+
+    public boolean allPendingsResponded() {
+        for (PendingCall call : pendingCalls.values()) {
+            if (!call.responded) return false;
+        }
+        return true;
+    }
+
+    /** 移除并返回已超时且仍未回应的未决 tool_call_id 列表 */
+    public List<String> expireOverduePendings() {
+        long now = System.currentTimeMillis();
+        List<String> overdue = new ArrayList<>();
+        for (Map.Entry<String, PendingCall> e : pendingCalls.entrySet()) {
+            if (!e.getValue().responded && e.getValue().deadline < now) overdue.add(e.getKey());
+        }
+        overdue.forEach(pendingCalls::remove);
+        return overdue;
+    }
+
+    /** 尚未回应的未决中最早的截止时间；无则返回 -1 */
+    public long pendingEarliestDeadline() {
+        long earliest = Long.MAX_VALUE;
+        boolean found = false;
+        for (PendingCall call : pendingCalls.values()) {
+            if (!call.responded) {
+                earliest = Math.min(earliest, call.deadline);
+                found = true;
+            }
+        }
+        return found ? earliest : -1;
+    }
+
+    /** 回合已消费完毕，移除这些未决记录（释放清理保护） */
+    public void removeConsumedPendingCalls(Set<String> consumed) {
+        consumed.forEach(pendingCalls::remove);
+    }
+
     private void trimMessagesSafely() {
         int budget = sessionCfg.maxTokens / 2;
 
@@ -210,7 +332,8 @@ public class Topic {
         Iterator<MCMessage> it = chatContext.getBase().iterator();
         int removed = 0;
         while (it.hasNext() && removed < removeCount) {
-            if (isSkillMessage(it.next())) continue;
+            MCMessage msg = it.next();
+            if (isSkillMessage(msg) || isPendingProtected(msg)) continue;
             it.remove();
             removed++;
         }
@@ -218,6 +341,25 @@ public class Topic {
 
     private static boolean isSkillMessage(MCMessage m) {
         return m.getMetainfo("skillId") != null;
+    }
+
+    /** 未决异步调用轮次内的消息（assistant 的 tool_calls 与其 tool 消息）在未决期间不被清理 */
+    private boolean isPendingProtected(MCMessage m) {
+        if (pendingCalls.isEmpty()) return false;
+        Object role = m.getMetainfo("role");
+        if (role instanceof String r && r.equals("tool")) {
+            Object id = m.getMetainfo("tool_call_id");
+            return id != null && pendingCalls.containsKey(id.toString());
+        }
+        if (role instanceof String r && r.equals("assistant")) {
+            Object tc = m.getMetainfo("Tool_calls");
+            if (tc instanceof Tool_call[] calls) {
+                for (Tool_call c : calls) {
+                    if (c.id != null && pendingCalls.containsKey(c.id)) return true;
+                }
+            }
+        }
+        return false;
     }
 
     private static boolean isToolMessage(MCMessage m) {
