@@ -1,7 +1,7 @@
 package com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies;
 
 /**
- * 异步工具结果回调：当 Provider 执行工具回调并识别出 {@code asyncPending} 占位结果时调用，
+ * 异步工具结果回调：当 Context/Agent 执行工具回调并识别出 {@code asyncPending} 占位结果时调用，
  * 由上层（通常是会话编排层）登记该 tool_call 为异步未决。
  */
 public interface AsyncToolSink {

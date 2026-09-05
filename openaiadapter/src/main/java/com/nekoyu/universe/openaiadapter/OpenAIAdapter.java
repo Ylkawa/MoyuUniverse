@@ -25,13 +25,6 @@ public class OpenAIAdapter extends Law {
                 channel.defaultModel = cfg.DefaultModel;
                 channel.defaultEmbeddingModel = cfg.DefaultEmbeddingModel;
                 channel.setBaseurl(cfg.BaseUrl);
-                CompletionsOptions completionsOptions = new CompletionsOptions();
-                if (cfg.MaxToolCallsPerTurn != null) completionsOptions.maxToolCallsPerTurn = cfg.MaxToolCallsPerTurn;
-                if (cfg.MaxToolRounds != null) completionsOptions.maxToolRounds = cfg.MaxToolRounds;
-                if (cfg.EnableAsyncTools != null) completionsOptions.enableAsyncTools = cfg.EnableAsyncTools;
-                if (cfg.AsyncDebounceMillis != null) completionsOptions.asyncDebounceMillis = cfg.AsyncDebounceMillis;
-                if (cfg.AsyncMaxWaitMillis != null) completionsOptions.asyncMaxWaitMillis = cfg.AsyncMaxWaitMillis;
-                channel.setCompletionsOptions(completionsOptions);
                 Universe.Providers.put(cfg.ProviderId, channel);
             } catch (FileNotFoundException e) {
                 logger.error("能触发这个报错这辈子有了👍", e);

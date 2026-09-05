@@ -15,6 +15,7 @@ public class ChatAssistant extends Assistant {
     private final String model;
     private ChatContext chatContext = new ChatContext();
     private CompletionsRequest completionsRequest = new CompletionsRequest();
+    private ToolLoopOptions toolLoopOptions = new ToolLoopOptions();
     private final List<LLMFunction> functions = new ArrayList<>();
     private String description;
 
@@ -25,7 +26,8 @@ public class ChatAssistant extends Assistant {
 
     @Override
     public CompletionsResponse completions(LLMProvider.BufferCallback bufferCallback) throws IOException {
-        return provider.completions(model, chatContext, functions, completionsRequest, bufferCallback);
+        // Tool/Function Calling 循环由 ChatContext 状态机驱动；provider 只做单次模型请求
+        return chatContext.runTurn(provider, model, functions, completionsRequest, toolLoopOptions, bufferCallback);
     }
 
     public void addTool(LLMFunction tool) {
@@ -54,6 +56,10 @@ public class ChatAssistant extends Assistant {
 
     public void setCompletionsRequest(CompletionsRequest completionsRequest) {
         this.completionsRequest = completionsRequest;
+    }
+
+    public void setToolLoopOptions(ToolLoopOptions toolLoopOptions) {
+        this.toolLoopOptions = toolLoopOptions == null ? new ToolLoopOptions() : toolLoopOptions;
     }
 
     public String getDescription() {

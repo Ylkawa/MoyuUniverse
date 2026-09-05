@@ -4,13 +4,10 @@ import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
-import com.google.gson.JsonParser;
-import com.google.gson.JsonSyntaxException;
 import com.nekoyu.Universe.API.MessageChannel.MFChain;
 import com.nekoyu.Universe.API.Providers.LLMProvider.Embedding;
 import com.nekoyu.Universe.API.Providers.LLMProvider.LLMProvider;
 import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.*;
-import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.ContentPiece.TextPiece;
 import com.nekoyu.Universe.API.Providers.LLMProvider.RespBodies.CompletionsResponse;
 import com.nekoyu.Universe.API.Providers.LLMProvider.RespBodies.EmbeddingResponse;
 import com.nekoyu.universe.openaiadapter.RequestBodies.AliyunBailianReq;
@@ -43,9 +40,6 @@ public class OpenAIChannel extends LLMProvider implements Embedding {
     String defaultModel;
     String defaultEmbeddingModel;
     String speciallyAdaptation = null; // 特调选项
-    /** 本通道的可调参数，整体通过 {@link #setCompletionsOptions(CompletionsOptions)} 注入 */
-    CompletionsOptions options = new CompletionsOptions();
-
     public OpenAIChannel() {
         client = new OkHttpClient.Builder()
                 .connectTimeout(5, TimeUnit.SECONDS)
@@ -55,114 +49,37 @@ public class OpenAIChannel extends LLMProvider implements Embedding {
         gson = new Gson();
     }
 
-    public void setCompletionsOptions(CompletionsOptions options) {
-        if (options != null) this.options = options;
-    }
-
-    public CompletionsOptions getOptions() {
-        return options;
-    }
-
+    /**
+     * 请求一次模型并返回单轮 Model Response。
+     * <p>
+     * 本实现只负责：请求体序列化 -> 调用 OpenAI 兼容 API -> SSE 解析 -> 返回当轮结果。
+     * Tool/Function Calling 循环由上层 Context/Agent 状态机驱动，这里不做任何 Context 写入与工具执行。
+     */
     @Override
-    public boolean asyncToolsEnabled() {
-        return options.enableAsyncTools;
-    }
-
-    @Override
-    public long asyncMaxWaitMillis() {
-        return options.asyncMaxWaitMillis;
-    }
-
-    @Override
-    public long asyncDebounceMillis() {
-        return options.asyncDebounceMillis;
-    }
-
-    @Override
-    public CompletionsResponse completions(String model, Context context, List<LLMFunction> llmFunctions, CompletionsRequest completionsRequest, BufferCallback bufferCallback) throws IOException {
-        CompletionsResponse responding = new CompletionsResponse(); // fake unstreamed response
-        responding.usage.completion_tokens = 0;
-        responding.usage.prompt_tokens = 0;
-        responding.usage.total_tokens = 0;
-        responding.choices = new CompletionsResponse.Choice[]{new CompletionsResponse.Choice() {{
-            message.content = "";
-            message.reasoning_content = "";
-        }}};
-        OpenAICompletionsRequest cr;
-        switch (speciallyAdaptation) {
-            case "dashscope" -> {
-                AliyunBailianReq bailian = new AliyunBailianReq();
-                bailian.stream_options.put("include_usage", true);
-                if (completionsRequest.enable_thinking) bailian.enable_thinking = true;
-                cr = bailian;
-            }
-            case "gpt" -> {
-                OpenAIReq openai = new OpenAIReq();
-                if (completionsRequest.enable_thinking) openai.reasoning.effort = OpenAIReq.Reasoning.Effort.low;
-                cr = openai;
-            }
-            default -> cr = new OpenAICompletionsRequest();
-        }
-        if (model != null) cr.model = model;
-        else cr.model = defaultModel;
-        // Add functions if exists
-        if (llmFunctions != null) cr.tools.addAll(llmFunctions);
-        if (cr.tools.isEmpty()) cr.tools = null;
-        // Transfer Universe message list to OpenAI message list
+    public CompletionsResponse completions(String model, List<Message> messages, List<LLMFunction> llmFunctions, CompletionsRequest completionsRequest, BufferCallback bufferCallback) throws IOException {
+        OpenAICompletionsRequest cr = buildRequest(model, llmFunctions, completionsRequest);
+        cr.messages = messages;
         cr.stream = true;
-        Map<String, LLMFunction> functionsMap = new HashMap<>();
-        if (llmFunctions != null) for (LLMFunction llmFunction : llmFunctions) {
-            functionsMap.put(llmFunction.name, llmFunction);
-        }
-        CompletionsResponse completions = completions(context, cr, functionsMap, bufferCallback, completionsRequest, options.maxToolRounds, new ToolLoopControl(options), responding);
-        if (completions.usage.total_tokens > 0)
-            logger.info("Completions-Usage: ({}) 输入 {} Tokens  输出 {} Tokens", cr.model, completions.usage.prompt_tokens, completions.usage.completion_tokens); // 无言了，百炼的 API 默认不返回 usage
-        return completions;
-    }
-
-    /** 序列化请求体，并把中性层的 LLMFunction 列表装进 OpenAI 的 {"type":"function","function":{...}} 外壳 */
-    private String toBody(OpenAICompletionsRequest request) {
-        JsonObject body = gson.toJsonTree(request).getAsJsonObject();
-        if (body.has("tools") && !body.get("tools").isJsonNull() && !body.getAsJsonArray("tools").isEmpty()) {
-            JsonArray wrapped = new JsonArray();
-            for (JsonElement tool : body.getAsJsonArray("tools")) {
-                JsonObject envelope = new JsonObject();
-                envelope.addProperty("type", "function");
-                envelope.add("function", tool);
-                wrapped.add(envelope);
-            }
-            body.add("tools", wrapped);
-        }
-        return body.toString();
-    }
-
-    public CompletionsResponse completions(Context context, OpenAICompletionsRequest completionsRequest, Map<String, LLMFunction> llmFunctions, BufferCallback bufferCallback, CompletionsRequest completionsOptions, int timeout, ToolLoopControl state, CompletionsResponse responding) throws IOException {
-        completionsRequest.messages = context.getMessageList();
-        logger.debug(gson.toJson(completionsRequest));
-        boolean outputted = false;
-        if (timeout <= 0) { // 兜底：无论如何都要终结循环
-            logger.error("{} 工具调用循环未能正常中止，强制返回当前输出", completionsRequest.model);
-            return responding;
-        }
-        if (timeout <= 1 || state.calls >= state.maxCalls) { // 回合超时或本轮工具调用已达上限时，禁用所有tool，进行最后一次请求，避免死循环
-            if (state.calls >= state.maxCalls)
-                logger.warn("{} 单次回复内工具调用次数已达上限({})，工具被禁用，强制模型文字回复", completionsRequest.model, state.maxCalls);
-            completionsRequest.tools = null;
-            Message am = new Message();
-            am.content.add(new TextPiece("[WARNING] 工具调用回合超时或工具调用已达次数上限，工具已被禁用，请立即停止调用工具，直接基于已有的信息作答"));
-            am.role = "system";
-            completionsRequest.messages.add(am);
-        }
+        logger.debug(gson.toJson(cr));
         Request req = new Request.Builder()
                 .url(baseurl + "/chat/completions")
                 .addHeader("Authorization", "Bearer " + apikey)
-                .post(RequestBody.create(toBody(completionsRequest), MediaType.get("application/json; charset=utf-8")))
+                .post(RequestBody.create(toBody(cr), MediaType.get("application/json; charset=utf-8")))
                 .build();
         try (Response response = client.newCall(req).execute()) {
             if (response.isSuccessful()) {
+                CompletionsResponse responding = new CompletionsResponse();
+                responding.usage.completion_tokens = 0;
+                responding.usage.prompt_tokens = 0;
+                responding.usage.total_tokens = 0;
+                responding.choices = new CompletionsResponse.Choice[]{new CompletionsResponse.Choice() {{
+                    message.content = "";
+                    message.reasoning_content = "";
+                }}};
                 BufferedSource source = response.body().source();
                 String line;
-                Map<Integer, Tool_call> tool_calls = new HashMap<>();
+                // 以 index 收纳流式 tool_call 片段，输出时按 index 升序还原，保证多工具调用顺序稳定
+                Map<Integer, Tool_call> tool_calls = new LinkedHashMap<>();
                 String finish_reason = "unfinished";
                 StringBuilder content = new StringBuilder();
                 StringBuilder reasoning_content = new StringBuilder();
@@ -176,7 +93,6 @@ public class OpenAIChannel extends LLMProvider implements Embedding {
                                 DataLine.Choice choice = dl.choices[0];
                                 if (choice.delta.content != null && !choice.delta.content.isBlank()) {
                                     if (bufferCallback != null) bufferCallback.onCompletion(choice.delta.content);
-                                    outputted = true;
                                     content.append(choice.delta.content);
                                     responding.choices[0].message.content += choice.delta.content;
                                 }
@@ -214,119 +130,65 @@ public class OpenAIChannel extends LLMProvider implements Embedding {
                         }
                     }
                 }
-                // 响应体接收完毕
-                Message assistantMsg = new Message(content.toString());
-                switch (finish_reason) {
-                    case "stop" -> {
-                        context.assistantMsg(assistantMsg);
-                        return responding;
-                    }
-                    case "tool_calls" -> {
-                        if (outputted) {
-                            responding.choices[0].message.content += "\n\n";
-                            if (bufferCallback != null) bufferCallback.onCompletion("\n\n");
-                        }
-                        if (responding.choices[0].message.reasoning_content != null)
-                            assistantMsg.reasoning_content = responding.choices[0].message.reasoning_content;
-                        Tool_call[] toolCalls = tool_calls.values().toArray(new Tool_call[0]);
-                        assistantMsg.tool_calls = toolCalls;
-                        context.assistantMsg(assistantMsg);
-                        boolean next = false;
-                        for (Tool_call tool_call : toolCalls) {
-                            if (tool_call.function.arguments.startsWith("\""))
-                                tool_call.function.arguments = tool_call.function.arguments.substring(1, tool_call.function.arguments.length() - 1); // 不知道为什么DeepSeek喜欢在arg前后各加一个"，删了
-                            logger.debug(gson.toJson(tool_call));
-                            Message toolMsg = new Message();
-                            toolMsg.tool_call_id = tool_call.id;
-                            if (llmFunctions == null) {
-                                logger.error("LLMFunctions is null and LLM is trying to callSync a undefined function {}", tool_call.function.name);
-                                toolMsg.content.add(new TextPiece("None function exist, stop calling functions."));
-                                return completions(context, completionsRequest, llmFunctions, bufferCallback, completionsOptions, timeout - 1, state, responding);
-                            }
-                            String toolName = tool_call.function.name;
-                            LLMFunction llmFunction = llmFunctions.get(toolName);
-                            if (llmFunction == null) {
-                                logger.error("LLM is trying to callSync a undefined function {}", toolName);
-                                toolMsg.content.add(new TextPiece("You're trying to callSync a undefined function " + toolName + "."));
-                                return completions(context, completionsRequest, llmFunctions, bufferCallback, completionsOptions, timeout - 1, state, responding);
-                            }
-
-                            // 防死循环：单次回复内工具调用次数已达上限则不再执行，仅告知模型停止调用
-                            if (state.calls >= state.maxCalls) {
-                                logger.warn("{} 单次回复内工具调用次数已达到上限({})，跳过执行工具 {}", completionsRequest.model, state.maxCalls, toolName);
-                                toolMsg.content.add(new TextPiece(
-                                        "你本次回复已经达到工具调用次数上限(" + state.maxCalls + ")，该调用已被忽略。" +
-                                                "请立即停止调用任何工具，直接基于你已有的信息回答用户。如果信息不足，请如实说明。"));
-                                context.toolMsg(toolMsg);
-                                next = true;
-                                continue;
-                            }
-
-                            // 防死循环：完全相同的参数不再重复执行，直接返回上次的结果
-                            String callKey = toolName + "|" + normalizeArgs(tool_call.function.arguments);
-                            if (state.exactResults.containsKey(callKey)) {
-                                logger.warn("{} 重复调用 {}，参数 {}", completionsRequest.model, toolName, tool_call.function.arguments);
-                                toolMsg.content.add(new TextPiece(
-                                        "你已经用完全相同的参数调用过工具 " + toolName + "，请不要重复调用！直接基于已有信息回答。\n上次结果：\n" +
-                                                state.exactResults.get(callKey)));
-                                context.toolMsg(toolMsg);
-                                next = true;
-                                continue;
-                            }
-
-                            JsonElement args = null;
-                            try {
-                                args = JsonParser.parseString(tool_call.function.arguments);
-                            } catch (JsonSyntaxException e) {
-                                tool_call.function.arguments.replaceAll("\\\\", ""); // 再捞一下 LLM 的零分试卷
-                                try {
-                                    args = JsonParser.parseString(tool_call.function.arguments);
-                                } catch (JsonSyntaxException ex) {
-                                    logger.warn("Assistant 唐完了，输出的参数 Gson 无法解析 {}", tool_call.function.arguments);
-                                    toolMsg.content.add(new TextPiece(ex.getMessage()));
-                                }
-                            }
-                            if (args != null && args.isJsonObject()) {
-                                completionsOptions.placeholders.forEach(args.getAsJsonObject()::addProperty);
-                                args.getAsJsonObject().addProperty("_ToolCallId", tool_call.id); // 供异步工具补投结果时使用
-                            }
-                            Message toolResponse;
-                            if (args == null) {
-                                toolResponse = new Message();
-                                toolResponse.content.add(new TextPiece("未知原因的工具调用错误"));
-                            } else try {
-                                toolResponse = llmFunction.callback.callSync(args);
-                            } catch (Exception e) {
-                                toolResponse = new Message();
-                                toolResponse.content.add(new TextPiece("调用工具失败: " + e.getMessage()));
-                            }
-                            if (toolResponse != null) {
-                                state.calls++;
-                                state.exactResults.put(callKey, toolResponse.toString());
-                                next = true;
-                                toolMsg = toolResponse;
-                                if (toolResponse.asyncPending && completionsOptions.asyncToolSink != null) {
-                                    completionsOptions.asyncToolSink.onPendingResult(
-                                            tool_call.id,
-                                            llmFunction.asyncTimeoutMillis > 0 ? llmFunction.asyncTimeoutMillis : 0);
-                                }
-                            }
-                            context.toolMsg(toolMsg);
-                            logger.info("{} 调用了 {}，参数 {}", completionsRequest.model, toolName, tool_call.function.arguments);
-                        }
-                        if (next)
-                            return completions(context, completionsRequest, llmFunctions, bufferCallback, completionsOptions, timeout - 1, state, responding);
-                    }
-                    case "unfinished" ->
-                            logger.error("出现意外导致请求未完成\nRaw req: {}", gson.toJson(completionsRequest));
-                }
+                Tool_call[] toolCalls = tool_calls.entrySet().stream()
+                        .sorted(Map.Entry.comparingByKey())
+                        .map(Map.Entry::getValue)
+                        .toArray(Tool_call[]::new);
+                responding.choices[0].message.tool_calls = toolCalls;
+                responding.choices[0].message.content = content.toString();
+                responding.choices[0].message.reasoning_content = reasoning_content.toString();
+                responding.choices[0].finish_reason = finish_reason;
+                if ("unfinished".equals(finish_reason))
+                    logger.error("出现意外导致请求未完成\nRaw req: {}", gson.toJson(cr));
+                if (responding.usage.total_tokens > 0)
+                    logger.info("Completions-Usage: ({}) 输入 {} Tokens  输出 {} Tokens", cr.model, responding.usage.prompt_tokens, responding.usage.completion_tokens); // 无言了，百炼的 API 默认不返回 usage
+                return responding;
             } else {
-                logger.error("Error Req Body {}", gson.toJson(completionsRequest));
+                logger.error("Error Req Body {}", gson.toJson(cr));
                 logger.error("Error Resp Body {}", response.body().string());
                 throw new IOException("Unexpected code " + response); // 没成功就是抽风了，至于是服务器抽风，还是账号抽风，还是网络抽风，不想管
             }
         }
-        throw new IOException("Unknown error");
+    }
+
+    /** 构建 OpenAI 兼容请求体（含 dashscope / gpt 特调），并把中性工具列表装入请求 */
+    private OpenAICompletionsRequest buildRequest(String model, List<LLMFunction> llmFunctions, CompletionsRequest completionsRequest) {
+        OpenAICompletionsRequest cr;
+        switch (speciallyAdaptation) {
+            case "dashscope" -> {
+                AliyunBailianReq bailian = new AliyunBailianReq();
+                bailian.stream_options.put("include_usage", true);
+                if (completionsRequest.enable_thinking) bailian.enable_thinking = true;
+                cr = bailian;
+            }
+            case "gpt" -> {
+                OpenAIReq openai = new OpenAIReq();
+                if (completionsRequest.enable_thinking) openai.reasoning.effort = OpenAIReq.Reasoning.Effort.low;
+                cr = openai;
+            }
+            default -> cr = new OpenAICompletionsRequest();
+        }
+        if (model != null) cr.model = model;
+        else cr.model = defaultModel;
+        if (llmFunctions != null) cr.tools.addAll(llmFunctions);
+        if (cr.tools.isEmpty()) cr.tools = null;
+        return cr;
+    }
+
+    /** 序列化请求体，并把中性层的 LLMFunction 列表装进 OpenAI 的 {"type":"function","function":{...}} 外壳 */
+    private String toBody(OpenAICompletionsRequest request) {
+        JsonObject body = gson.toJsonTree(request).getAsJsonObject();
+        if (body.has("tools") && !body.get("tools").isJsonNull() && !body.getAsJsonArray("tools").isEmpty()) {
+            JsonArray wrapped = new JsonArray();
+            for (JsonElement tool : body.getAsJsonArray("tools")) {
+                JsonObject envelope = new JsonObject();
+                envelope.addProperty("type", "function");
+                envelope.add("function", tool);
+                wrapped.add(envelope);
+            }
+            body.add("tools", wrapped);
+        }
+        return body.toString();
     }
 
     public void setBaseurl(String baseurl) {
@@ -344,22 +206,6 @@ public class OpenAIChannel extends LLMProvider implements Embedding {
             return;
         }
         speciallyAdaptation = "none";
-    }
-
-    /** 单次回复内工具调用的状态锁存，用于防止模型陷入工具调用死循环 */
-    private static class ToolLoopControl {
-        final int maxCalls;
-        int calls;
-        final Map<String, String> exactResults = new HashMap<>();
-
-        ToolLoopControl(CompletionsOptions options) {
-            this.maxCalls = Math.max(1, options.maxToolCallsPerTurn);
-        }
-    }
-
-    private static String normalizeArgs(String args) {
-        if (args == null) return "";
-        return args.replaceAll("\\s+", "").toLowerCase(Locale.ROOT);
     }
 
     @Override

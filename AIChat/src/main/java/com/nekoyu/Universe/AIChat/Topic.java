@@ -22,6 +22,7 @@ public class Topic {
     private final ChatContext chatContext = new ChatContext();
     List<MCMessage> systemPrompts = new ArrayList<>();
     SessionConfig sessionCfg;
+    private final ToolLoopOptions toolLoopOptions;
     Map<UUID, Memory.Item> activatingMemory = new HashMap<>();
     SkillManager skillManager;
     /** 本会话使用的 LLMProvider */
@@ -48,6 +49,11 @@ public class Topic {
 
     public Topic(SessionConfig sessionCfg) {
         this.sessionCfg = sessionCfg;
+        this.toolLoopOptions = sessionCfg.ToolLoop == null ? new ToolLoopOptions() : sessionCfg.ToolLoop;
+    }
+
+    public ToolLoopOptions getToolLoopOptions() {
+        return toolLoopOptions;
     }
 
     public void initSystemPrompts(String promptFirstGlobal, String promptFirstSession,
@@ -209,7 +215,13 @@ public class Topic {
         int anchor = findAssistantToolCallsIndex(toolCallId);
         if (anchor >= 0) {
             int pos = anchor + 1;
-            while (pos < chatContext.getBase().size() && isToolMessage(chatContext.getBase().get(pos))) pos++;
+            int newCallIndex = findToolCallIndex(chatContext.getBase().get(anchor), toolCallId);
+            while (pos < chatContext.getBase().size() && isToolMessage(chatContext.getBase().get(pos))) {
+                String existingId = (String) chatContext.getBase().get(pos).getMetainfo("tool_call_id");
+                int existingIndex = findToolCallIndex(chatContext.getBase().get(anchor), existingId);
+                if (newCallIndex >= 0 && existingIndex >= 0 && existingIndex > newCallIndex) break;
+                pos++;
+            }
             insertPos = pos;
         }
         MCMessage toolMsg = new MCMessage();
@@ -231,6 +243,17 @@ public class Topic {
                         if (toolCallId.equals(c.id)) return i;
                     }
                 }
+            }
+        }
+        return -1;
+    }
+
+    private static int findToolCallIndex(MCMessage assistant, String toolCallId) {
+        if (toolCallId == null) return -1;
+        Object tc = assistant.getMetainfo("Tool_calls");
+        if (tc instanceof Tool_call[] calls) {
+            for (Tool_call call : calls) {
+                if (toolCallId.equals(call.id)) return call.index;
             }
         }
         return -1;

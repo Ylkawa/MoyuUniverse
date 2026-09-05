@@ -467,8 +467,8 @@ public class AIChat extends Law {
                         final Topic createdTopic = topic;
                         activatingTopics.put(mcm.sessionId, topic);
                         topic.provider = llmProvider;
-                        if (llmProvider.asyncToolsEnabled())
-                            createdTopic.getChatContext().configureDebounce(llmProvider.asyncDebounceMillis(), asyncScheduler, () -> fireDebounced(createdTopic));
+                        if (createdTopic.getToolLoopOptions().EnableAsyncTools)
+                            createdTopic.getChatContext().configureDebounce(createdTopic.getToolLoopOptions().AsyncDebounceMillis, asyncScheduler, () -> fireDebounced(createdTopic));
 
                         List<String> availableSkillIds = new ArrayList<>();
                         List<String> alwaysSkillIds = new ArrayList<>();
@@ -498,7 +498,7 @@ public class AIChat extends Law {
                         topic.addHistory((MessageList) MessageChannelManager.getMessageHistory(sessionCfg.SessionId).clone());
                     }
 topic.lastTrigger = mcm;
-                    if (llmProvider.asyncToolsEnabled()) {
+                    if (topic.getToolLoopOptions().EnableAsyncTools) {
                         topic.getChatContext().enqueuePendingMessage(mcm);
                     } else if (topic.responding.compareAndSet(false, true)) { // 阻止同时回复多个消息
                         try {
@@ -547,8 +547,7 @@ topic.lastTrigger = mcm;
     }
 
     private boolean asyncEnabledFor(Topic topic) {
-        LLMProvider provider = topic.provider;
-        return provider != null && provider.asyncToolsEnabled();
+        return topic.getToolLoopOptions().EnableAsyncTools;
     }
 
     /** 异步去抖到期：条件满足（静默等待已过且所有未决均已回应或无未决）时触发一轮回复 */
@@ -744,11 +743,11 @@ topic.lastTrigger = mcm;
             Set<String> consumedRound = new HashSet<>();
             if (asyncEnabled) {
                 consumedRound.addAll(topic.pendingCalls.keySet());
-                LLMProvider provider = topic.provider;
                 completionsRequest.asyncToolSink = (toolCallId, timeout) ->
-                        topic.registerPendingCall(toolCallId, timeout > 0 ? timeout : provider.asyncMaxWaitMillis());
+                        topic.registerPendingCall(toolCallId, timeout > 0 ? timeout : topic.getToolLoopOptions().AsyncMaxWaitMillis);
             }
             assistant.setThinking(sessionCfg.enable_thinking);
+            assistant.setToolLoopOptions(topic.getToolLoopOptions());
             assistant.setChatContext(openaiCtx);
             // 接收响应 tokens
             StringBuilder replyTokens = new StringBuilder();
@@ -1041,7 +1040,7 @@ topic.lastTrigger = mcm;
         chatContext.setSystemPromptLast(memoryPrompt.toString());
 
         StringBuilder sb = new StringBuilder();
-        completions.completions(globalCfg.Annotator.model, chatContext, null, args, sb::append);
+        chatContext.runTurn(completions, globalCfg.Annotator.model, null, args, new ToolLoopOptions(), sb::append);
         int countOfUpdatedMemory = 0;
         int countOfDeletedMemory = 0;
         List<Memory.Item> newMemory = new ArrayList<>();

@@ -17,4 +17,5 @@ public class SessionConfig {
     int maxTokens = 20000;
     String[] skills;
     String[] availableSkills;
+    ToolLoopOptions ToolLoop = new ToolLoopOptions();
 }
