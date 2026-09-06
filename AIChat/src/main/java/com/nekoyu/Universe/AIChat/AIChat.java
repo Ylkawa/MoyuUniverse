@@ -747,6 +747,7 @@ topic.lastTrigger = mcm;
                         topic.registerPendingCall(toolCallId, timeout > 0 ? timeout : topic.getToolLoopOptions().AsyncMaxWaitMillis);
             }
             assistant.setThinking(sessionCfg.enable_thinking);
+            assistant.setCompletionsRequest(completionsRequest);
             assistant.setToolLoopOptions(topic.getToolLoopOptions());
             assistant.setChatContext(openaiCtx);
             // 接收响应 tokens
