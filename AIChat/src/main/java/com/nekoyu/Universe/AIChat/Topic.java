@@ -3,10 +3,7 @@ package com.nekoyu.Universe.AIChat;
 import com.nekoyu.Universe.AIChat.Skill.SkillManager;
 import com.nekoyu.Universe.API.MessageChannel.Account;
 import com.nekoyu.Universe.API.MessageChannel.MCMessage;
-import com.nekoyu.Universe.API.MessageChannel.MessageField.AtField;
-import com.nekoyu.Universe.API.MessageChannel.MessageField.ImageField;
-import com.nekoyu.Universe.API.MessageChannel.MessageField.MsgField;
-import com.nekoyu.Universe.API.MessageChannel.MessageField.TextField;
+import com.nekoyu.Universe.API.MessageChannel.MessageField.*;
 import com.nekoyu.Universe.API.MessageChannel.MessageList;
 import com.nekoyu.Universe.API.Providers.LLMProvider.LLMProvider;
 import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.Tool_call;
@@ -125,7 +122,9 @@ public class Topic {
                 } else if (mf instanceof TextField) {
                     oaiM.messageFields.add(mf);
                 } else if (mf instanceof AtField atField) {
-                    oaiM.messageFields.add(new TextField("<@:" + atField.target.getLocationId() + ">"));
+                    oaiM.messageFields.add(new TextField("<at:" + atField.target.getLocationId() + ">"));
+                } else if (mf instanceof ReplyField replyField) {
+                    oaiM.messageFields.add(new TextField("<reply:" + replyField.reply + ">"));
                 } else {
                     oaiM.messageFields.add(new TextField(mf.toString()));
                 }

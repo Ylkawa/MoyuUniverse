@@ -10,10 +10,7 @@ import com.nekoyu.Universe.AIChat.Skill.Skill;
 import com.nekoyu.Universe.AIChat.Skill.SkillManager;
 import com.nekoyu.Universe.AIChat.Skill.SkillRegistry;
 import com.nekoyu.Universe.API.MessageChannel.*;
-import com.nekoyu.Universe.API.MessageChannel.MessageField.AtField;
-import com.nekoyu.Universe.API.MessageChannel.MessageField.MsgField;
-import com.nekoyu.Universe.API.MessageChannel.MessageField.StickerField;
-import com.nekoyu.Universe.API.MessageChannel.MessageField.TextField;
+import com.nekoyu.Universe.API.MessageChannel.MessageField.*;
 import com.nekoyu.Universe.API.PlaceHolder;
 import com.nekoyu.Universe.API.Providers.LLMProvider.Embedding;
 import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.*;
@@ -65,13 +62,21 @@ public class AIChat extends Law {
     Map<String, ChatAssistant> subAgents = new HashMap<>();
     Multimap<String, File> emojisCollect = ArrayListMultimap.create();
     public HikariDataSource dataSource;
-    /** 运行中的 AIChat 实例，供外部模块补投异步工具结果 */
+    /**
+     * 运行中的 AIChat 实例，供外部模块补投异步工具结果
+     */
     static volatile AIChat instance;
-    /** 会话消息静默去抖（异步工具结果）排期线程池 */
+    /**
+     * 会话消息静默去抖（异步工具结果）排期线程池
+     */
     private final ScheduledExecutorService asyncScheduler = Executors.newSingleThreadScheduledExecutor();
-    /** 异步演示工具的补投调度线程池（后台投递结果，不阻塞去抖主循环） */
+    /**
+     * 异步演示工具的补投调度线程池（后台投递结果，不阻塞去抖主循环）
+     */
     private static final ScheduledExecutorService asyncDeliveryScheduler = Executors.newSingleThreadScheduledExecutor();
-    /** 异步演示工具名：会话 Tools 列表填入该名称即可测试跨请求后台异步工具结果 */
+    /**
+     * 异步演示工具名：会话 Tools 列表填入该名称即可测试跨请求后台异步工具结果
+     */
     public static final String ASYNC_DEMO_TOOL = "AsyncResultDemo";
 
     public static void registerFunction(String toolName, LLMFunction tool) {
@@ -302,9 +307,15 @@ public class AIChat extends Law {
             }
         } else logger.warn("没有配置 SubAgent，此特性将禁用");
 
-        registerMarkDecoupler("At", args -> {
+        registerMarkDecoupler("at", args -> {
             MFChain chain = new MFChain();
             chain.add(new AtField(MessageChannelManager.getSession(args)));
+            return chain;
+        });
+
+        registerMarkDecoupler("reply", args -> {
+            MFChain chain = new MFChain();
+            chain.add(new ReplyField(args));
             return chain;
         });
 
@@ -504,7 +515,7 @@ public class AIChat extends Law {
 
                         topic.addHistory((MessageList) MessageChannelManager.getMessageHistory(sessionCfg.SessionId).clone());
                     }
-topic.lastTrigger = mcm;
+                    topic.lastTrigger = mcm;
                     if (topic.getToolLoopOptions().EnableAsyncTools) {
                         topic.getChatContext().enqueuePendingMessage(mcm);
                     } else if (topic.responding.compareAndSet(false, true)) { // 阻止同时回复多个消息
@@ -557,7 +568,9 @@ topic.lastTrigger = mcm;
         return topic.getToolLoopOptions().EnableAsyncTools;
     }
 
-    /** 异步去抖到期：条件满足（静默等待已过且所有未决均已回应或无未决）时触发一轮回复 */
+    /**
+     * 异步去抖到期：条件满足（静默等待已过且所有未决均已回应或无未决）时触发一轮回复
+     */
     private void fireDebounced(Topic topic) {
         ChatContext ctx = topic.getChatContext();
         if (!ctx.hasPendingMessages() && !topic.hasPendingCalls()) return;
@@ -584,7 +597,9 @@ topic.lastTrigger = mcm;
         }
     }
 
-    /** 执行一轮回复：构建工具集、占位符、请求并发送回复，同时处理异步工具注册与轮次持久化 */
+    /**
+     * 执行一轮回复：构建工具集、占位符、请求并发送回复，同时处理异步工具注册与轮次持久化
+     */
     private void replyTurn(Topic topic) {
         MCMessage mcm = topic.lastTrigger;
         LLMProvider llmProvider = topic.provider;
@@ -789,7 +804,9 @@ topic.lastTrigger = mcm;
         }
     }
 
-    /** 把本轮写入请求上下文的新消息（assistant 回复 / tool 消息）持久化回会话上下文，保证 assistant 消息始终进入 context */
+    /**
+     * 把本轮写入请求上下文的新消息（assistant 回复 / tool 消息）持久化回会话上下文，保证 assistant 消息始终进入 context
+     */
     private void persistTurnIntoContext(Topic topic, ChatContext turnCtx, Account botAccount) {
         MessageList base = topic.getChatContext().getBase();
         for (MCMessage m : turnCtx.getBase()) {
@@ -850,7 +867,9 @@ topic.lastTrigger = mcm;
         return ai.deliverAsyncToolResult(sessionId, toolCallId, text);
     }
 
-    /** 关闭一个会话：取消去抖任务、清空未决调用并移除活跃会话 */
+    /**
+     * 关闭一个会话：取消去抖任务、清空未决调用并移除活跃会话
+     */
     private void closeTopic(String sessionId) {
         Topic topic = activatingTopics.remove(sessionId);
         if (topic == null) return;
@@ -858,7 +877,9 @@ topic.lastTrigger = mcm;
         topic.clearPendingCalls();
     }
 
-    /** 注册异步工具演示：占位返回后按 delay 毫秒补投真实结果，用于测试跨请求后台异步工具结果 */
+    /**
+     * 注册异步工具演示：占位返回后按 delay 毫秒补投真实结果，用于测试跨请求后台异步工具结果
+     */
     private void registerAsyncDemoTool() {
         try {
             LLMFunction demo = LLMFunction.builder()

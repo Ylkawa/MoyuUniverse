@@ -316,7 +316,7 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
                                                 }
                                             }
                                             case "reply" -> {
-                                                mcm.messageFields.add(new MetaField("回复消息" + ms.data.get("id")));
+                                                mcm.messageFields.add(new ReplyField(String.valueOf(ms.data.get("id"))));
                                             }
                                             case "forward" -> {
                                                 mcm.messageFields.add(new MetaField("[合并转发]"));
