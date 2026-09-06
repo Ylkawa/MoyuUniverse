@@ -250,7 +250,33 @@ public class MessageChannelManager {
     }
 
     static public Session getSession(String sessionId) {
+        if (sessionId == null) throw new IllegalArgumentException("SessionId 或 LocationId 不能为 null");
         String[] split = sessionId.split(":", 2);
-        return getChannel(split[0]).getSession(split[1]);
+        if (split.length != 2 || split[0].isEmpty() || split[1].isEmpty()) {
+            throw new IllegalArgumentException("无效的 SessionId 或 LocationId: " + sessionId);
+        }
+
+        char prefix = split[0].charAt(0);
+        if (Character.isLowerCase(prefix)) {
+            MessageChannel channel = getChannel(split[0]);
+            if (channel == null) throw new IllegalArgumentException("不存在此 MessageChannel: " + split[0]);
+            return channel.getSession(split[1]);
+        }
+        if (!Character.isUpperCase(prefix)) {
+            throw new IllegalArgumentException("SessionId 或 LocationId 前缀必须以字母开头: " + sessionId);
+        }
+
+        RuntimeException lastException = null;
+        for (MessageChannel channel : MessageChannels.values()) {
+            if (!split[0].equals(channel.platform)) continue;
+            try {
+                Session session = channel.getSession(split[1]);
+                if (session != null) return session;
+            } catch (RuntimeException e) {
+                lastException = e;
+            }
+        }
+
+        throw new IllegalArgumentException("没有可用于 LocationId 的 MessageChannel: " + sessionId, lastException);
     }
 }

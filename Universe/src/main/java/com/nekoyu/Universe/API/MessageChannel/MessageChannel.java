@@ -7,6 +7,7 @@ import java.awt.*;
 public abstract class MessageChannel {
     public Color mainColor = Color.WHITE; // 默认主题色就是白色
     public String type;
+    public String platform;
     public final String ID;
     public String accountId;
     public String nickname;

@@ -2,6 +2,7 @@ package com.nekoyu.MoyuUniverse.Nya.OnebotAdapter;
 
 import com.google.gson.*;
 import com.google.gson.typeadapters.RuntimeTypeAdapterFactory;
+import com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.MsgFields.At;
 import com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.MsgFields.Image;
 import com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.MsgFields.Text;
 import com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.event.message.JsonMessages.JsonMessage;
@@ -88,6 +89,7 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
 
     public OnebotChannel(String id) {
         super(id);
+        platform = "QQ";
         new Thread(() -> {
             try {
                 Thread.sleep(10000);
@@ -116,7 +118,11 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
                 obMsg.add(e);
             } else if (field instanceof ImageField imgF) {
                 obMsg.add(new Image(imgF.getUrl().toString()));
-            } else obMsg.add(new Text(field.toString()));
+            } else if (field instanceof AtField atF) {
+                obMsg.add(new At(atF.target.getLocationId().split("/")[1]));
+            } else {
+                obMsg.add(new Text(field.toString()));
+            }
         }
         obr.params.put("message", obMsg);
 

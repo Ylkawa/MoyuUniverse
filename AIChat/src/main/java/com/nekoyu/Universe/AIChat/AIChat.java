@@ -10,6 +10,7 @@ import com.nekoyu.Universe.AIChat.Skill.Skill;
 import com.nekoyu.Universe.AIChat.Skill.SkillManager;
 import com.nekoyu.Universe.AIChat.Skill.SkillRegistry;
 import com.nekoyu.Universe.API.MessageChannel.*;
+import com.nekoyu.Universe.API.MessageChannel.MessageField.AtField;
 import com.nekoyu.Universe.API.MessageChannel.MessageField.MsgField;
 import com.nekoyu.Universe.API.MessageChannel.MessageField.StickerField;
 import com.nekoyu.Universe.API.MessageChannel.MessageField.TextField;
@@ -300,6 +301,12 @@ public class AIChat extends Law {
                 }
             }
         } else logger.warn("没有配置 SubAgent，此特性将禁用");
+
+        registerMarkDecoupler("At", args -> {
+            MFChain chain = new MFChain();
+            chain.add(new AtField(MessageChannelManager.getSession(args)));
+            return chain;
+        });
 
         File skillsDic = new File("./config/AIChat/Skills/");
         SkillRegistry.loadFromDir(skillsDic.getAbsolutePath());
