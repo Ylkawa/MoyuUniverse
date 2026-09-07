@@ -4,6 +4,7 @@ import com.google.gson.*;
 import com.google.gson.typeadapters.RuntimeTypeAdapterFactory;
 import com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.MsgFields.At;
 import com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.MsgFields.Image;
+import com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.MsgFields.Reply;
 import com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.MsgFields.Text;
 import com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.event.message.JsonMessages.JsonMessage;
 import com.nekoyu.MoyuUniverse.Nya.OnebotAdapter.event.message.JsonMessages.com_tencent_miniapp_01;
@@ -120,6 +121,8 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
                 obMsg.add(new Image(imgF.getUrl().toString()));
             } else if (field instanceof AtField atF) {
                 obMsg.add(new At(atF.target.getLocationId().split("/")[1]));
+            } else if (field instanceof ReplyField replyField) {
+                obMsg.add(new Reply(replyField.reply));
             } else {
                 obMsg.add(new Text(field.toString()));
             }
