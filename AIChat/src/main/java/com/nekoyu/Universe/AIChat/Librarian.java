@@ -1,7 +1,6 @@
 package com.nekoyu.Universe.AIChat;
 
 import com.nekoyu.Universe.API.Providers.LLMProvider.LLMProvider;
-import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.LLMFunction;
 import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.Message;
 import com.nekoyu.Universe.API.Providers.LLMProvider.RespBodies.CompletionsResponse;
 import com.nekoyu.Universe.Universe;
@@ -116,9 +115,7 @@ public class Librarian {
         ChatAssistant assistant = new ChatAssistant(llmProvider, model);
         assistant.setThinking(thinking);
         for (String toolName : toolNames) {
-            for (LLMFunction func : AIChat.llmFunctions.get(toolName)) {
-                assistant.addTool(func);
-            }
+            AIChat.addRegisteredTools(assistant, toolName);
         }
 
         ChatContext chatContext = new ChatContext();

@@ -83,6 +83,15 @@ public class AIChat extends Law {
         llmFunctions.put(toolName, tool);
     }
 
+    /**
+     * 把注册表中某个名字下的全部工具加入 assistant 的统一入口。
+     * 自动按 function name 去重、保持稳定顺序（利于上下文前缀缓存），并对缺失名字 / 空集合安全。
+     */
+    public static void addRegisteredTools(ChatAssistant assistant, String registeredName) {
+        if (assistant == null || registeredName == null) return;
+        assistant.addTools(llmFunctions.get(registeredName));
+    }
+
     public static void registerMarkDecoupler(String toolName, MarkDecoupler markDecoupler) {
         markDecouplers.put(toolName, markDecoupler);
     }
@@ -292,7 +301,7 @@ public class AIChat extends Law {
                         ChatAssistant assistant = new ChatAssistant(llmProvider, subAgentConfig.model);
                         assistant.setSystemPromptFirst(subAgentConfig.SystemPrompt);
                         if (subAgentConfig.tools != null) for (String toolName : subAgentConfig.tools) {
-                            llmFunctions.get(toolName).forEach(assistant::addTool);
+                            addRegisteredTools(assistant, toolName);
                         }
                         assistant.setThinking(subAgentConfig.thinking);
                         assistant.setDescription(subAgentConfig.description);
@@ -609,17 +618,12 @@ public class AIChat extends Law {
         ChatAssistant assistant = new ChatAssistant(llmProvider, sessionCfg.Model);
         if (sessionCfg.Tools != null) {
             for (String tool : sessionCfg.Tools) {
-                llmFunctions.get(tool);
-                for (LLMFunction func : llmFunctions.get(tool)) {  // FIXME Tool 可能被重复添加而无保护
-                    assistant.addTool(func);
-                }
-            } // 为 assistant 添加指定的 tools // 如果不存在这个 tool 就不添加
+                addRegisteredTools(assistant, tool); // 为 assistant 添加指定的 tools；不存在则跳过，重复自动去重
+            }
         }
         if (topic.skillManager != null) {
             for (String toolName : topic.skillManager.getActiveToolNames()) {
-                for (LLMFunction func : llmFunctions.get(toolName)) {
-                    assistant.addTool(func);
-                }
+                addRegisteredTools(assistant, toolName);
             }
         }
         if (sessionCfg.subAgents != null) for (String subAgentName : sessionCfg.subAgents) {
@@ -646,6 +650,10 @@ public class AIChat extends Law {
                     .build();
             assistant.addTool(llmFunction);
         } // 为 assistant 添加 subAgent
+        var reqEv = new RequestEvent();
+        reqEv.locationId = mcm.getLocationId();
+        reqEv.sessionId = mcm.sessionId;
+        reqEv.skillManager = topic.skillManager;
         if (topic.skillManager != null && topic.skillManager.hasOnDemandSkills()) {
             SkillManager sm = topic.skillManager;
             StringBuilder skillListDesc = new StringBuilder();
@@ -672,12 +680,13 @@ public class AIChat extends Law {
                         MFChain result = new MFChain();
                         if (sm.activate(skillId)) {
                             Skill activated = SkillRegistry.get(skillId);
-                            if (activated != null && activated.toolNames != null) {
-                                for (String toolName : activated.toolNames) {
-                                    for (LLMFunction func : llmFunctions.get(toolName)) {
-                                        assistant.addTool(func);
+                            if (activated != null) {
+                                if (activated.toolNames != null) {
+                                    for (String toolName : activated.toolNames) {
+                                        addRegisteredTools(assistant, toolName);
                                     }
                                 }
+                                injectSkillPromptIntoCurrentTurn(assistant, activated, reqEv.placeholders);
                             }
                             result.add(new TextField("技能 " + skillId + " 已激活，其工具现在可以使用了"));
                         } else {
@@ -689,10 +698,6 @@ public class AIChat extends Law {
             assistant.addTool(manageSkillsFunc);
         }
         // 先让插件处理事件 插件提供局部的PlaceHolder
-        var reqEv = new RequestEvent();
-        reqEv.locationId = mcm.getLocationId();
-        reqEv.sessionId = mcm.sessionId;
-        reqEv.skillManager = topic.skillManager;
         for (var plug : aiChatPlugins) {
             try {
                 plug.onRequest(reqEv);
@@ -802,6 +807,34 @@ public class AIChat extends Law {
         } catch (IOException e) {
             logger.error("生成回复时出错", e);
         }
+    }
+
+    /**
+     * 技能被动态激活后，把其系统提示词注入当前轮次的请求上下文，使提示词在本轮立即生效。
+     * activate 已将其写入会话上下文（下一轮起由 getOpenAIContext 带出），此处补齐当前轮的副本上下文。
+     */
+    private static void injectSkillPromptIntoCurrentTurn(ChatAssistant assistant, Skill skill, Map<String, String> placeholders) {
+        if (skill.systemPrompt == null || skill.systemPrompt.isEmpty()) return;
+        ChatContext ctx = assistant.getChatContext();
+        if (ctx == null) return;
+        MessageList base = ctx.getBase();
+        for (MCMessage m : base) {
+            if (skill.id.equals(m.getMetainfo("skillId"))) return; // 本轮上下文已含该技能提示词，避免重复注入
+        }
+        MCMessage sysMsg = new MCMessage();
+        sysMsg.putMetainfo("role", "system");
+        sysMsg.putMetainfo("skillId", skill.id);
+        sysMsg.messageFields.add(new TextField(PlaceHolder.replace(skill.systemPrompt, placeholders)));
+        // 插入到最近一条 assistant(tool_calls) 之前，避免破坏 tool 结果消息与其调用的相邻性
+        int insertPos = base.size();
+        for (int i = base.size() - 1; i >= 0; i--) {
+            MCMessage m = base.get(i);
+            if ("assistant".equals(m.getMetainfo("role")) && m.getMetainfo("Tool_calls") != null) {
+                insertPos = i;
+                break;
+            }
+        }
+        base.add(insertPos, sysMsg);
     }
 
     /**

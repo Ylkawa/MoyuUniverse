@@ -172,6 +172,9 @@ public class OpenAIChannel extends LLMProvider implements Embedding {
         else cr.model = defaultModel;
         if (llmFunctions != null) cr.tools.addAll(llmFunctions);
         if (cr.tools.isEmpty()) cr.tools = null;
+        // 仅在确实携带 tools 时下发 tool_choice，避免无 tools 时设置 tool_choice 触发部分 Provider 报错
+        if (cr.tools != null && completionsRequest != null && completionsRequest.toolChoice != null)
+            cr.tool_choice = completionsRequest.toolChoice;
         return cr;
     }
 

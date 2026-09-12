@@ -11,6 +11,8 @@ public class OpenAICompletionsRequest {
     public boolean stream;
     public List<Message> messages;
     public List<LLMFunction> tools;
+    /** OpenAI 兼容协议的 tool_choice：null 时 Gson 不序列化该字段，保持默认行为 */
+    public String tool_choice;
 
     public OpenAICompletionsRequest() {
         messages = new LinkedList<>();

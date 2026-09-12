@@ -197,26 +197,39 @@ public class ChatContext implements Context {
         int rounds = maxRounds;
         Map<String, String> exactResults = new HashMap<>();
         Map<String, LLMFunction> functionsMap = new HashMap<>();
-        if (tools != null) for (LLMFunction llmFunction : tools) {
-            if (llmFunction != null) functionsMap.put(llmFunction.name, llmFunction);
-        }
 
         while (true) {
             if (rounds <= 0) { // 兜底：无论如何都要终结循环
                 LOGGER.error("{} 工具调用循环未能正常中止，强制返回当前输出", model);
                 return responding;
             }
-            // 回合超时或本轮工具调用已达上限时，禁用所有tool，进行最后一次请求，避免死循环
+            // 每轮重建函数映射，保证轮次中途新增的工具（如动态激活技能后追加的）能立即被解析执行
+            functionsMap.clear();
+            if (tools != null) for (LLMFunction llmFunction : tools) {
+                if (llmFunction != null) functionsMap.put(llmFunction.name, llmFunction);
+            }
+            // 回合超时或本轮工具调用已达上限时，进行最后一次请求，避免死循环。
+            // 关键：不再把 tools 置空——tools 会被渲染进 prompt 前部，移除会使前缀（含已累积的整段上下文）缓存全部失效，
+            // 而这恰恰发生在工具链最长、上下文最大、最该命中缓存的收官请求上。
+            // 改为保留 tools 列表不变、仅通过 tool_choice="none" 禁止模型再次调用工具，在强制收尾的同时复用上下文缓存。
             boolean disableTools = (rounds <= 1) || (calls >= maxCalls);
+            boolean hasTools = tools != null && !tools.isEmpty();
             List<Message> roundMessages = getMessageList();
             List<LLMFunction> roundTools = tools;
             if (disableTools) {
                 if (calls >= maxCalls)
-                    LOGGER.warn("{} 单次回复内工具调用次数已达上限({})，工具被禁用，强制模型文字回复", model, maxCalls);
-                roundTools = null;
+                    LOGGER.warn("{} 单次回复内工具调用次数已达上限({})，已禁止继续调用工具，强制模型文字回复", model, maxCalls);
+                if (hasTools) {
+                    request.toolChoice = "none"; // 保留 tools 前缀不变，仅禁止再次调用
+                } else {
+                    request.toolChoice = null;
+                    roundTools = null;
+                }
                 Message am = new Message("[WARNING] 工具调用回合超时或工具调用已达次数上限，工具已被禁用，请立即停止调用工具，直接基于已有的信息作答");
                 am.role = ROLE_SYSTEM;
                 roundMessages.add(am);
+            } else {
+                request.toolChoice = null;
             }
             CompletionsResponse round = provider.completions(model, roundMessages, roundTools, request, bufferCallback);
             if (round == null) {
@@ -241,6 +254,13 @@ public class ChatContext implements Context {
                 return responding;
             }
             if ("tool_calls".equals(finish)) {
+                // 收官轮已通过 tool_choice="none" 要求停止调用工具，但 Provider 未严格遵守仍返回 tool_calls：
+                // 直接结束本回合，且绝不写入 assistant(tool_calls) —— 否则会留下一条没有对应 tool 结果的悬空消息，
+                // 破坏消息序列合法性，导致后续每一轮请求都被 API 拒绝。
+                if (disableTools) {
+                    LOGGER.warn("{} 收官轮已禁用工具，但模型仍返回 tool_calls，忽略并结束本回合", model);
+                    break;
+                }
                 boolean outputted = content != null && !content.isBlank();
                 if (outputted) {
                     responding.choices[0].message.content += "\n\n";
