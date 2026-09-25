@@ -66,14 +66,17 @@ public class MFChain extends LinkedList<MsgField> {
         public Builder() {
             mfChain = new MFChain();
         }
-        public void text(String text) {
+        public Builder text(String text) {
             this.mfChain.add(new TextField(text));
+            return this;
         }
-        public void text(TextField textField) {
+        public Builder text(TextField textField) {
             this.mfChain.add(textField);
+            return this;
         }
-        public void image(ImageField image) {
+        public Builder image(ImageField image) {
             this.mfChain.add(image);
+            return this;
         }
         public MFChain build() {
             return mfChain;
