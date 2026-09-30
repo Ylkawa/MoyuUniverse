@@ -1008,250 +1008,184 @@ public class AIChat extends Law {
     public String leading(MCMessage mcm, Topic topic) throws IOException {
         ChatContext chatContext = topic.createChatContextCopy();
         List<String> locationIds = topic.getLocationIds();
-        List<Memory.Item> memories = new ArrayList<>(memory.getLastMemoryItems(locationIds, 15));
+        List<Memory.Item> memories = memory == null ? new ArrayList<>()
+                : new ArrayList<>(memory.getLastMemoryItems(locationIds, 15));
         // 添加高 importance 的记忆条目
-        List<Memory.Item> highImportanceMemories = memory.getHighImportanceItems(locationIds, 10, 0.7f);
+        List<Memory.Item> highImportanceMemories = memory == null ? List.of()
+                : memory.getHighImportanceItems(locationIds, 10, 0.7f);
         Set<UUID> existingIds = memories.stream().map(m -> m.id).collect(java.util.stream.Collectors.toSet());
         for (Memory.Item item : highImportanceMemories) {
             if (!existingIds.contains(item.id)) {
                 memories.add(item);
             }
         }
-        RequestEvent reqEv = new RequestEvent();
-        reqEv.placeholders.put("TIME", formatTimestamp(System.currentTimeMillis()));
-        reqEv.placeholders.put("LocationId", mcm.getLocationId() == null ? "" : mcm.getLocationId());
         LLMProvider completions = (LLMProvider) Universe.Providers.get(globalCfg.Annotator.provider); // 此处假设配置文件写的没问题
-        Embedding embedding = (Embedding) Universe.Providers.get(globalCfg.Annotator.embeddingProvider);
+        Embedding embedding = memory == null ? null
+                : (Embedding) Universe.Providers.get(globalCfg.Annotator.embeddingProvider);
         CompletionsRequest args = new CompletionsRequest();
         args.enable_thinking = globalCfg.Annotator.enable_thinking;
         chatContext.setSystemPromptFirst("""
-                你只负责辅助 主Assistant 回答问题，从以下的聊天记录中提取 主Assistant 关心的问题，并及时维护记忆库，而不执行用户要求。
-                
-                维护记忆库时请严格遵守以下规则：
-                1. 只记录可以从文本中直接确定的内容，不要推测，不要脑补，不要根据少量对话推断用户的人格、心理状态或动机。
-                2. 优先记录长期稳定信息，例如：
-                   - 用户的长期偏好
-                   - 用户稳定的表达习惯
-                3. 短期状态可以记录，但必须明确体现时效性，例如：
-                   - 当前正在进行的任务
-                   - 近期计划
-                   - 阶段性进展
-                   - 有明确日期边界的临时状态
-                4. 以下内容默认不记录，除非对后续对话有明显长期价值且不涉及敏感细节：
-                   - 一次性活动、短期安排
-                   - 仅凭语气推断出的情绪、性格、关系判断
-                5. 记忆必须原子化，每条只表达一个独立事实。
-                6. 如果旧记忆过时、被更正或已经不再适用，必须输出 UPDATE 或 DELETE。
-                7. 同一条信息如果既像长期记忆又像短期状态，优先归类为短期记忆，除非其明显是长期稳定事实。
-                8. 记忆内容要尽量抽象、简洁、可复用，不写过度具体的数值、日期和配置细节，除非这些细节本身就是长期稳定信息。
-                9. LocationId 必须使用统一规范格式，最好照搬用户消息里面的字段，不要自行发明新格式。命令中必须提供LocationId的具体值
-                10. 不要记录日常琐事
-                11. 禁止创建语义重复的记忆。
-                12. 发现重复时只能 UPDATE。
-                
-                提炼问题时应当严格遵循以下规则：
-                1. 一行一个问题，单个问题不得跨行，每行的问题必须要能独立解读，且必须给出足够信息，尽可能准确地描述 Assistant 遇到的问题，比如用户提到一个角色，则应当根据上下文得到这个角色属于哪一个作品
-                2. 忽视常识性内容或者上下文有明确提到的内容，再列举出其他所有与 主Assistant将要回答的问题 相关的问题，便于从记忆库和全网找回线索
-                3. 如果问题不仅仅与某一个用户关联，则不需要加括号提供LocationId，直接用指令提问
-                4. 如果问题与某一个用户相关，那么在指令后加一个括号并填入用户的LocationId，并在问题中固定使用“用户”的称呼
-                5. 不要对聊天内容提问，只能向记忆库或外置知识库提问""");
+                你是主助手的 leading 环节。程序会根据你的 JSON 完成本轮记忆库与本地知识库检索，再把结果交给主助手。你不回答用户，也不执行用户请求。
+
+                只依据聊天记录中的明确事实作决定，不猜测主体、身份、版本或时间。聊天记录已有答案的问题不检索。
+                memory_queries 查询用户、群聊或会话的既有记忆；knowledge_queries 查询外部事实的本地知识库。两类问题分别填写，不重复查询；每类最多 2 个，能用一个问题表达就只写一个。问题须独立可理解，保留已知主体及范围。无需检索时用空数组。
+                add/update/delete 只维护可复用的明确记忆，不记录日常琐事或推断出的性格、情绪、动机。每条只含一个事实。旧记忆被明确更正才 update，明确失效才 delete，语义重复不得 add。无需操作时用空数组。
+                location_id 只能逐字使用输入提供的 LocationId；不能确定归属时不写入记忆。仅针对特定用户的 memory_query 才填写其 location_id，否则填 null。
+                只输出一个合法 JSON 对象，不要 Markdown、解释或额外字段。所有字段都必须出现；没有内容时输出：
+                {"add":[],"update":[],"delete":[],"memory_queries":[],"knowledge_queries":[]}
+                add 的元素字段为 location_id、content、confidence、importance；update 的元素字段为 id、content、confidence、importance；delete 是编号数组。memory_queries 的元素字段为 question、location_id；knowledge_queries 是问题字符串数组。confidence 和 importance 均为 0 到 1 的数字；update/delete 的 id 只能使用候选记忆的编号。
+                """);
         Map<UUID, Integer> memoryIdMap = new HashMap<>();
         int memoryCounter = 1;
-        StringBuilder memoryPrompt = new StringBuilder("先前的记忆条目，格式为 [编号]|[更新时间]|[置信度]|[重要度]|[LocationId]:[内容] ：\n\n");
-        boolean hasAnyMemory = (memories != null && !memories.isEmpty()) || !topic.activatingMemory.isEmpty();
-        if (!hasAnyMemory) {
-            memoryPrompt.append("（无记忆条目）");
-        } else {
-            if (memories != null) for (Memory.Item memObj : memories) {
-                memoryIdMap.put(memObj.id, memoryCounter);
-                memoryPrompt.append(memoryCounter++).append("|").append(memObj.toString()).append("\n");
-            }
-            if (!topic.activatingMemory.isEmpty()) {
-                for (Memory.Item memObj : topic.activatingMemory.values()) {
-                    if (!memoryIdMap.containsKey(memObj.id)) {
-                        memoryIdMap.put(memObj.id, memoryCounter);
-                        memoryPrompt.append(memoryCounter++).append("|").append(memObj.toString()).append("\n");
-                    }
-                }
+        StringBuilder memoryPrompt = new StringBuilder("候选记忆（编号|更新时间|置信度|重要度|LocationId|内容）：\n");
+        Set<String> allowedLocations = new LinkedHashSet<>(locationIds);
+        if (mcm.getLocationId() != null) allowedLocations.add(mcm.getLocationId());
+        for (Memory.Item item : memories) {
+            if (memoryIdMap.putIfAbsent(item.id, memoryCounter) == null) {
+                memoryPrompt.append(memoryCounter++).append("|").append(item).append("\n");
+                if (item.locationId != null) allowedLocations.add(item.locationId);
             }
         }
-        memoryPrompt.append("""
-                输出必须严格符合以下格式，允许先解释后输出指令，但指令必须在独立行，且指令不允许包含多余参数：
-                
-                NEW [置信度] [重要度] [[目标LocationId]]: [要新增的记忆]
-                UPDATE [记忆条目ID] [置信度] [重要度]: [修改后的记忆内容]
-                DELETE [记忆条目ID]
-                QUIZ [问题]
-                QUIZ(LocationId) [问题]
-                例如（只参考格式，不可参考参数）：
-                NEW 0.76 0.8 [Universe:group/12435678]: 群聊主要讨论人工智能大语言模型应用开发
-                UPDATE 1 0.63 0.5: 用户比较喜欢VOCALOID的音乐
-                DELETE 2
-                QUIZ 《异环》是什么时候发布的游戏
-                QUIZ 《绝区零》的'啥子蛇'是什么角色
-                QUIZ 《异环》的娜娜莉怎么配队
-                QUIZ(example_platform:example_id) 用户的电脑的硬件配置是什么
-                补充约束：
-                - NEW 只能写入新的、未重复的有效记忆。
-                - UPDATE 只能修改与原记忆语义一致但更准确的内容。
-                - DELETE 只能删除过时、错误、重复或无长期价值的记忆。
-                - 对于明显临时的内容，如果没有长期价值，宁可不输出任何记忆。
-                - 置信度(0-1)：对记忆内容确定程度，1表示完全确定。
-                - 重要度(0-1)：记忆的长期价值，1表示非常重要（如用户核心偏好、关键事实），0.5表示一般重要，0表示临时信息。
-                - 如果不能提取有用记忆和Assistant遇到的非常识性问题，输出一句"END"直接结束输出""");
+        for (Memory.Item item : topic.activatingMemory.values()) {
+            if (memoryIdMap.putIfAbsent(item.id, memoryCounter) == null) {
+                memoryPrompt.append(memoryCounter++).append("|").append(item).append("\n");
+                if (item.locationId != null) allowedLocations.add(item.locationId);
+            }
+        }
+        if (memoryCounter == 1) memoryPrompt.append("（无）\n");
+        memoryPrompt.append("可用 LocationId：").append(allowedLocations.isEmpty() ? "（无）" : String.join("、", allowedLocations));
         chatContext.setSystemPromptLast(memoryPrompt.toString());
 
         StringBuilder sb = new StringBuilder();
         chatContext.runTurn(completions, globalCfg.Annotator.model, null, args, new ToolLoopOptions(), sb::append);
-        int countOfUpdatedMemory = 0;
-        int countOfDeletedMemory = 0;
-        List<Memory.Item> newMemory = new ArrayList<>();
-        class Quiz {
-            List<String> locationIds = new ArrayList<>();
-            String question;
+        LeadingPlan plan;
+        try {
+            plan = LeadingPlan.parse(sb.toString(), allowedLocations, new HashSet<>(memoryIdMap.values()));
+        } catch (IllegalArgumentException e) {
+            logger.warn("Leading JSON 无效，本轮跳过预检索和记忆修改", e);
+            return "本轮预检索未完成。";
         }
-        List<Quiz> questions = new ArrayList<>();
-        logger.debug(sb.toString());
-        for (String line : sb.toString().split("\n")) {
-            if (line.strip().equalsIgnoreCase("END")) break; // 允许LLM主动结束记忆更新和注释
-            Pattern COMMAND_PATTERN =
-                    Pattern.compile("^([^(\\s]+)(?:\\(([^)]*)\\))?");
-            Matcher matcher = COMMAND_PATTERN.matcher(line);
-            if (!matcher.find()) continue;
-            String command = matcher.group(1).toUpperCase();
-            String cmdArgs = matcher.group(2);
-            switch (command) {
-                case "NEW", "UPDATE", "DELETE" -> {
-                    final Pattern UPDATE_PATTERN = Pattern.compile("^UPDATE\\s+(\\d+)\\s+([0-9]*\\.?[0-9]+)\\s+([0-9]*\\.?[0-9]+)\\s*:\\s*(.+)$");
-                    final Pattern DELETE_PATTERN = Pattern.compile("^DELETE\\s+(\\d+)\\s*$");
-                    final Pattern NEW_PATTERN = Pattern.compile("^NEW\\s+([0-9]*\\.?[0-9]+)\\s+([0-9]*\\.?[0-9]+)\\s+\\[(.+?)]\\s*:\\s*(.+)$");
-                    Matcher updateMatcher = UPDATE_PATTERN.matcher(line);
-                    if (updateMatcher.matches()) {
-                        int number = Integer.parseInt(updateMatcher.group(1));
-                        UUID uuid = null;
-                        for (var entry : memoryIdMap.entrySet()) {
-                            if (entry.getValue() == number) {
-                                uuid = entry.getKey();
-                                break;
-                            }
-                        }
-                        if (uuid == null) {
-                            logger.warn("傻子模型 {} 想修改一个不存在的记忆条目编号👍", globalCfg.Annotator.model);
-                            continue;
-                        }
-                        float confidence = Float.parseFloat(updateMatcher.group(2));
-                        float importance = Float.parseFloat(updateMatcher.group(3));
-                        String content = updateMatcher.group(4);
-                        memory.update(uuid, confidence, importance, content.trim());
-                        countOfUpdatedMemory++;
-                        continue;
-                    }
+        Map<Integer, UUID> numberedMemoryIds = new HashMap<>();
+        memoryIdMap.forEach((uuid, number) -> numberedMemoryIds.put(number, uuid));
 
-                    Matcher deleteMatcher = DELETE_PATTERN.matcher(line);
-                    if (deleteMatcher.matches()) {
-                        int number = Integer.parseInt(deleteMatcher.group(1));
-                        UUID uuid = null;
-                        for (var entry : memoryIdMap.entrySet()) {
-                            if (entry.getValue() == number) {
-                                uuid = entry.getKey();
-                                break;
-                            }
-                        }
-                        if (uuid == null) {
-                            logger.warn("傻子模型 {} 想删一个不存在的记忆条目编号👍", globalCfg.Annotator.model);
-                            continue;
-                        }
-                        memory.delete(uuid);
-                        topic.activatingMemory.remove(uuid);
-                        countOfDeletedMemory++;
-                        continue;
-                    }
+        int changedMemories = 0;
+        if (memory != null) {
+            List<Memory.Item> newMemories = new ArrayList<>();
+            for (LeadingPlan.NewMemory addition : plan.additions) {
+                Memory.Item item = new Memory.Item();
+                item.locationId = addition.locationId();
+                item.content = addition.content();
+                item.confidence = addition.confidence();
+                item.importance = addition.importance();
+                newMemories.add(item);
+            }
+            if (!newMemories.isEmpty()) {
+                try {
+                    memory.insert(newMemories);
+                    for (Memory.Item item : newMemories) topic.activatingMemory.put(item.id, item);
+                    changedMemories += newMemories.size();
+                } catch (RuntimeException e) {
+                    logger.warn("Leading memory insert failed", e);
+                }
+            }
+            for (LeadingPlan.UpdatedMemory update : plan.updates) {
+                UUID id = numberedMemoryIds.get(update.id());
+                try {
+                    memory.update(id, update.confidence(), update.importance(), update.content());
+                    topic.activatingMemory.remove(id);
+                    changedMemories++;
+                } catch (RuntimeException e) {
+                    logger.warn("Leading memory update failed: {}", id, e);
+                }
+            }
+            for (Integer number : plan.deletions) {
+                UUID id = numberedMemoryIds.get(number);
+                try {
+                    memory.delete(id);
+                    topic.activatingMemory.remove(id);
+                    changedMemories++;
+                } catch (RuntimeException e) {
+                    logger.warn("Leading memory delete failed: {}", id, e);
+                }
+            }
+        }
 
-                    Matcher newMatcher = NEW_PATTERN.matcher(line);
-                    if (newMatcher.matches()) {
-                        float confidence = Float.parseFloat(newMatcher.group(1));
-                        float importance = Float.parseFloat(newMatcher.group(2));
-                        String locId = newMatcher.group(3).trim();
-                        if (locId.equals("Universe:group/12435678")) {
-                            logger.warn("傻子模型 {} 赢了，照着模板抄一个错的参数👍记忆无法插入", globalCfg.Annotator.model);
-                            continue;
-                        }
-                        String content = newMatcher.group(4);
-                        Memory.Item item = new Memory.Item();
-                        item.confidence = confidence;
-                        item.importance = importance;
-                        item.locationId = locId;
-                        item.content = content;
-                        newMemory.add(item);
-                        topic.activatingMemory.put(item.id, item);
-                        continue;
+        Map<UUID, Memory.Item> memoryHits = new LinkedHashMap<>();
+        if (memory != null && embedding != null && !plan.memoryQueries.isEmpty()) {
+            try {
+                EmbeddingRequest request = new EmbeddingRequest();
+                for (LeadingPlan.MemoryQuery query : plan.memoryQueries) {
+                    request.message.add(new MFChain(new TextField(query.question())));
+                }
+                EmbeddingResponse response = embedding.embedding(request);
+                if (response.data == null || response.data.size() != plan.memoryQueries.size()) {
+                    throw new IOException("Leading memory embedding count mismatch");
+                }
+                for (var data : response.data) {
+                    if (data.index < 0 || data.index >= plan.memoryQueries.size()) {
+                        throw new IOException("Leading memory embedding index out of range");
                     }
-                }
-                case "QUIZ" -> {
-                    String quiz = line.split(" ", 2)[1];
-                    if (Objects.equals(cmdArgs, "example_platform:example_id")) {
-                        logger.warn("傻子模型 {} 赢了，照着模板抄一个错的参数👍无法按用户实施精确查找记忆", globalCfg.Annotator.model);
-                        cmdArgs = null;
-                    }
-                    Quiz selection = new Quiz();
-                    if (cmdArgs != null && locationIds.contains(cmdArgs)) {
-                        selection.locationIds.add(cmdArgs);
-                    } else selection.locationIds = locationIds;
-                    selection.question = quiz;
-                    questions.add(selection);
-                }
-            }
-        }
-        if (!newMemory.isEmpty()) memory.insert(newMemory);
-        EmbeddingRequest req = new EmbeddingRequest();
-        for (Quiz quiz : questions) {
-            req.message.add(new MFChain(new TextField(quiz.question)));
-        }
-        List<Memory.Item> memoryResults = new ArrayList<>();
-        List<KnowledgeStore.KnowledgeResult> ksResults = new ArrayList<>();
-        StringBuilder ret = new StringBuilder();
-        if (!questions.isEmpty()) {
-            List<String> strings = new ArrayList<>();
-            questions.forEach(question -> strings.add(question.question));
-            logger.debug("Questions in this round: {}", strings);
-            EmbeddingResponse res = embedding.embedding(req);
-            if (res.data.size() != questions.size()) {
-                throw new RuntimeException("Embedding的结果数量不正确，逻辑中断");
-            }
-            for (var data : res.data) {
-                int idx = data.index;
-                List<Float> vector = new ArrayList<>();
-                for (double v : data.embedding) {
-                    vector.add((float) v);
-                }
-                List<Memory.Item> memoryResult =
-                        memory.query(vector, questions.get(idx).locationIds);
-                memoryResults.addAll(memoryResult);
-            }
-            if (knowledgeStore != null) {
-                for (Quiz quiz : questions) {
+                    List<Float> vector = new ArrayList<>();
+                    for (double value : data.embedding) vector.add((float) value);
+                    LeadingPlan.MemoryQuery query = plan.memoryQueries.get(data.index);
+                    List<String> scope = query.locationId() == null
+                            ? new ArrayList<>(allowedLocations) : List.of(query.locationId());
+                    if (scope.isEmpty()) continue;
                     try {
-                        ksResults.addAll(knowledgeStore.search(quiz.question));
-                    } catch (IOException e) {
-                        logger.error("KnowledgeStore search failed for: {}", quiz.question, e);
+                        for (Memory.Item item : memory.query(vector, scope)) memoryHits.putIfAbsent(item.id, item);
+                    } catch (RuntimeException e) {
+                        logger.warn("Leading memory query failed", e);
                     }
                 }
-            }
-            memoryResults.forEach(result -> topic.activatingMemory.put(result.id, result));
-            ret.append("本地记忆内容：\n");
-            for (Memory.Item item : topic.activatingMemory.values()) {
-                ret.append(item.toString()).append("\n");
-            }
-            ret.append("\n知识库内容：\n");
-            for (KnowledgeStore.KnowledgeResult item : ksResults) {
-                ret.append(item.toString()).append("\n");
+            } catch (IOException | RuntimeException e) {
+                logger.warn("Leading memory retrieval failed", e);
             }
         }
-        String log = "";
-        if (countOfUpdatedMemory != 0 || countOfDeletedMemory != 0 || !newMemory.isEmpty())
-            log += "本次记忆改动：新增 " + newMemory.size() + " 更新 " + countOfUpdatedMemory + " 删除 " + countOfDeletedMemory + " ";
-        if (!memoryResults.isEmpty()) log += "命中 " + memoryResults.size() + " 条本地记忆";
-        if (!log.isEmpty()) logger.info(log);
+        for (Memory.Item item : memoryHits.values()) topic.activatingMemory.put(item.id, item);
+
+        Map<Long, KnowledgeStore.KnowledgeResult> knowledgeHits = new LinkedHashMap<>();
+        if (knowledgeStore != null) {
+            for (String question : plan.knowledgeQueries) {
+                try {
+                    for (KnowledgeStore.KnowledgeResult hit : knowledgeStore.search(question, 6)) {
+                        KnowledgeStore.KnowledgeResult previous = knowledgeHits.get(hit.documentId);
+                        if (previous == null || hit.bestScore > previous.bestScore) {
+                            knowledgeHits.put(hit.documentId, hit);
+                        }
+                    }
+                } catch (IOException e) {
+                    logger.warn("Leading knowledge query failed", e);
+                }
+            }
+        }
+
+        StringBuilder ret = new StringBuilder("本轮预检索（候选信息，回答前核对来源与适用范围）：\n");
+        ret.append("记忆库：\n");
+        int shown = 0;
+        for (Memory.Item item : memoryHits.values()) {
+            if (shown++ >= 6) break;
+            ret.append("- ").append(item).append("\n");
+        }
+        if (shown == 0) ret.append("（无命中）\n");
+        ret.append("本地知识库：\n");
+        List<KnowledgeStore.KnowledgeResult> rankedKnowledge = new ArrayList<>(knowledgeHits.values());
+        rankedKnowledge.sort((a, b) -> Float.compare(b.bestScore, a.bestScore));
+        shown = 0;
+        for (KnowledgeStore.KnowledgeResult hit : rankedKnowledge) {
+            if (shown++ >= 4) break;
+            ret.append("- 标题：").append(hit.title).append("；来源：").append(hit.url)
+                    .append("；匹配问题：").append(hit.bestQuery)
+                    .append("；结论：").append(hit.bestConclusion)
+                    .append("；相似度：").append(hit.bestScore).append("\n");
+            if (hit.content != null && !hit.content.isBlank()) {
+                ret.append("  来源摘要：")
+                        .append(hit.content, 0, Math.min(hit.content.length(), 800)).append("\n");
+            }
+        }
+        if (shown == 0) ret.append("（无命中）\n");
+        logger.info("Leading complete: memoryChanges={}, memoryQueries={}, knowledgeQueries={}, memoryHits={}, knowledgeHits={}",
+                changedMemories, plan.memoryQueries.size(), plan.knowledgeQueries.size(),
+                memoryHits.size(), knowledgeHits.size());
         return ret.toString();
     }
 

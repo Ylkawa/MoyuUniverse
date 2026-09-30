@@ -293,15 +293,15 @@ public class Memory {
             payload.put("importance", ValueFactory.value(importance));
             payload.put("content", ValueFactory.value(content));
 
-            Points.PointStruct point = Points.PointStruct.newBuilder()
+            Points.PointVectors point = Points.PointVectors.newBuilder()
                     .setId(PointIdFactory.id(uuid))
                     .setVectors(namedVectors(Map.of(vectorName, vector(vector))))
-                    .putAllPayload(payload)
                     .build();
 
-            client.upsertAsync(collection, List.of(point)).get();
+            client.updateVectorsAsync(collection, List.of(point)).get();
+            client.setPayloadAsync(collection, payload, List.of(PointIdFactory.id(uuid)), true, null, null).get();
         } catch (Exception e) {
-            logger.error("Update failed", e);
+            throw new RuntimeException("Update memory failed: " + uuid, e);
         }
     }
 
@@ -321,7 +321,7 @@ public class Memory {
                     null  // shardKey: 分片键，传 null 使用默认值
             ).get();
         } catch (Exception e) {
-            logger.error("Delete failed", e);
+            throw new RuntimeException("Delete memory failed: " + uuid, e);
         }
     }
 
