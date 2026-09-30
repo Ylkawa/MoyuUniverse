@@ -11,6 +11,10 @@ public class Config {
     String SerpApiKey;
     String BrightDataApiKey;
     String BrightDataZone;
+    boolean EnableSauceNAO = true;
+    String SauceNAOApiKey;
+    int SauceNAOShortLimit = 4;
+    int SauceNAOLongLimit = 100;
     SearchParam SearchParam = new SearchParam();
     SeleniumConfig Selenium = null;
 

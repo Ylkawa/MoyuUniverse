@@ -66,10 +66,11 @@ public class Web extends AIChatPlugin {
                     able = false;
                 }
             }
-            if (config.EnableYouTubeAPI)
+            if (config.EnableYouTubeAPI) {
                 ytbClient = new com.nekoyu.Universe.AIChat.Web.YouTubeAPI.Client(config.GoogleAPIKey);
-            ytbClient.setProxy(proxy);
-            switch (config.SearchProvider) {
+                ytbClient.setProxy(proxy);
+            }
+            if (config.SearchProvider != null) switch (config.SearchProvider) {
                 case "SerpApiGoogle" ->
                         searchClient = new com.nekoyu.Universe.AIChat.Web.SearchAPI.SerpApi.GoogleSearch.Client(config.SerpApiKey, proxy);
                 case "Google" ->
@@ -77,7 +78,7 @@ public class Web extends AIChatPlugin {
                 case "BrightDataGoogle" ->
                         searchClient = new com.nekoyu.Universe.AIChat.Web.SearchAPI.BrightData.GoogleSearch.Client(config.BrightDataApiKey, config.BrightDataZone);
             }
-            searchClient.setSearchParam(config.SearchParam);
+            if (searchClient != null) searchClient.setSearchParam(config.SearchParam);
         } catch (FileNotFoundException e) {
             config = new Config();
             try (FileWriter fw = new FileWriter("./config/AIChat/Plugins/Web/config.json")) {
@@ -92,6 +93,8 @@ public class Web extends AIChatPlugin {
                 .proxy(proxy)
                 .followRedirects(false) // 不这样设置，短链的重定向会直接跳过去，识别不到
                 .build();
+
+        registerSauceNAO(proxy);
 
         var dst = LLMFunction.builder()
                 .name("WebSearch")
@@ -122,6 +125,39 @@ public class Web extends AIChatPlugin {
     @Override
     public void onDisable() {
 
+    }
+
+    private void registerSauceNAO(Proxy proxy) {
+        if (!config.EnableSauceNAO) return;
+        String key = config.SauceNAOApiKey;
+        if (key == null || key.isBlank()) key = System.getenv("SAUCENAO_API_KEY");
+        if (key == null || key.isBlank()) {
+            logger.info("SauceNAO 未配置密钥，跳过工具注册");
+            return;
+        }
+        if (config.SauceNAOShortLimit <= 0 || config.SauceNAOLongLimit <= 0) {
+            logger.warn("SauceNAO 限流配置必须为正数，跳过工具注册");
+            return;
+        }
+        var sauceClient = new com.nekoyu.Universe.AIChat.Web.SauceNAO.Client(key, proxy);
+        var sauceService = new com.nekoyu.Universe.AIChat.Web.SauceNAO.SearchService(
+                sauceClient::search, config.SauceNAOShortLimit, config.SauceNAOLongLimit);
+        registerFunction("SauceNAOSearch", LLMFunction.builder()
+                .name("SauceNAOSearch")
+                .description("查询图片来源，返回相似度、作品、作者和来源链接。聊天附件优先使用图片引用 <quote:N>，执行前会替换成图片 URL；也支持用户实际提供的图片直链，不得编造链接。结果为来源候选，相似度不证明角色身份，证据不足时回答无法确认。")
+                .parameters(JsonSchema.object()
+                        .property("URL", JsonSchema.string().description("聊天图片引用 <quote:N> 或用户提供的 HTTP/HTTPS 图片直链"))
+                        .required("URL"))
+                .syncCallback(args -> {
+                    try {
+                        var url = args.getAsJsonObject().get("URL");
+                        if (url == null || !url.isJsonPrimitive() || !url.getAsJsonPrimitive().isString())
+                            return new Message("SauceNAO 参数错误：URL 必须为字符串");
+                        return new Message(sauceService.search(url.getAsString()));
+                    } catch (RuntimeException error) {
+                        return new Message("SauceNAO 参数错误：需要包含 URL 字符串的对象");
+                    }
+                }).build());
     }
 
     private String search(String content) {
