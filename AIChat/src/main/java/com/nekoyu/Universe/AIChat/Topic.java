@@ -161,7 +161,7 @@ public class Topic {
     public ChatContext createChatContextCopy() {
         MessageList copy = new MessageList();
         copy.addAll(chatContext.getBase());
-        return new ChatContext(copy);
+        return chatContext.copyWithMessages(copy, null);
     }
 
     /** 构建本次请求的完整上下文：开头的 system prompts + 会话消息 + 末尾的 system prompts */
@@ -176,7 +176,7 @@ public class Topic {
         for (int i = systemPrompts.size() - promptLastCount; i < systemPrompts.size(); i++) {
             full.add(copySystemMessage(systemPrompts.get(i)));
         }
-        return new ChatContext(full, assistantAccount);
+        return chatContext.copyWithMessages(full, assistantAccount);
     }
 
     /**

@@ -2,6 +2,9 @@ package com.nekoyu.Universe.AIChat;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonElement;
+import com.google.gson.JsonArray;
+import com.google.gson.JsonObject;
+import com.google.gson.JsonPrimitive;
 import com.google.gson.JsonParser;
 import com.google.gson.JsonSyntaxException;
 import com.nekoyu.Universe.API.MessageChannel.Account;
@@ -33,6 +36,9 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.WeakHashMap;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
@@ -53,11 +59,35 @@ public class ChatContext implements Context {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(ChatContext.class);
     private static final Gson GSON = new Gson();
+    private static final Pattern IMAGE_QUOTE = Pattern.compile("<quote:([0-9]+)>");
+    private static final String IMAGE_QUOTE_PROMPT =
+            "每张图片后面的 <quoteId:N> 是该图片的引用编号。需要向工具传递图片时，" +
+            "在工具参数的字符串值中使用 <quote:N>，执行前会自动替换成该图片的 URL。" +
+            "只能引用当前上下文中实际图片后的编号，不要自行编造编号。";
+
+    /** ImageField 未覆盖 equals/hashCode，因此这里按图片对象身份分配编号，且不阻止图片回收。 */
+    private static final class ImageQuotes {
+        private final Map<ImageField, Integer> ids = new WeakHashMap<>();
+        private long nextId = 1;
+
+        synchronized int idFor(ImageField image) {
+            Integer existing = ids.get(image);
+            if (existing != null) return existing;
+            if (nextId > Integer.MAX_VALUE) {
+                throw new IllegalStateException("图片 quoteId 已超出 int 范围");
+            }
+            int id = (int) nextId++;
+            ids.put(image, id);
+            return id;
+        }
+    }
 
     /** 底层会话消息（MCMessage），兼容旧实现：assistant/tool 消息直接写回此列表 */
     private final MessageList base;
     /** 用于区分 assistant 消息的角色判定账号 */
     private final Account assistantAccount;
+    private final ImageQuotes imageQuotes;
+    private volatile Map<Integer, String> activeImageQuotes = Map.of();
     private String systemPromptFirst = null;
     private String systemPromptLast = null;
 
@@ -79,8 +109,18 @@ public class ChatContext implements Context {
     }
 
     public ChatContext(MessageList ml, Account assistantAccount) {
+        this(ml, assistantAccount, new ImageQuotes());
+    }
+
+    private ChatContext(MessageList ml, Account assistantAccount, ImageQuotes imageQuotes) {
         this.base = ml == null ? new MessageList() : ml;
         this.assistantAccount = assistantAccount;
+        this.imageQuotes = imageQuotes;
+    }
+
+    /** 会话副本共享编号，但各自仅允许引用自己发送给模型的图片。 */
+    ChatContext copyWithMessages(MessageList messages, Account account) {
+        return new ChatContext(messages, account, imageQuotes);
     }
 
     public static ChatContext from(MessageList ml) {
@@ -215,6 +255,12 @@ public class ChatContext implements Context {
             boolean disableTools = (rounds <= 1) || (calls >= maxCalls);
             boolean hasTools = tools != null && !tools.isEmpty();
             List<Message> roundMessages = getMessageList();
+            Map<Integer, String> roundImageQuotes = activeImageQuotes;
+            if (hasTools && !roundImageQuotes.isEmpty()) {
+                Message quotePrompt = new Message(IMAGE_QUOTE_PROMPT);
+                quotePrompt.role = ROLE_SYSTEM;
+                roundMessages.add(quotePrompt);
+            }
             List<LLMFunction> roundTools = tools;
             if (disableTools) {
                 if (calls >= maxCalls)
@@ -340,15 +386,16 @@ public class ChatContext implements Context {
                         LOGGER.warn("Assistant 返回的 tool_call {} 缺少 arguments", toolCall.id);
                         toolMsg.content.add(new TextPiece("工具调用缺少参数"));
                     }
-                    if (args != null && args.isJsonObject()) {
-                        request.placeholders.forEach(args.getAsJsonObject()::addProperty);
-                        args.getAsJsonObject().addProperty("_ToolCallId", toolCall.id); // 供异步工具补投结果时使用
-                    }
                     Message toolResponse;
                     if (args == null) {
                         toolResponse = new Message();
                         toolResponse.content.add(new TextPiece("未知原因的工具调用错误"));
                     } else try {
+                        args = resolveImageQuotes(args, roundImageQuotes);
+                        if (args.isJsonObject()) {
+                            request.placeholders.forEach(args.getAsJsonObject()::addProperty);
+                            args.getAsJsonObject().addProperty("_ToolCallId", toolCall.id); // 供异步工具补投结果时使用
+                        }
                         toolResponse = llmFunction.callback.callSync(args);
                     } catch (Exception e) {
                         toolResponse = new Message();
@@ -396,10 +443,47 @@ public class ChatContext implements Context {
         return args.replaceAll("\\s+", "").toLowerCase(Locale.ROOT);
     }
 
+    /** 只替换 JSON 字符串值，不改变对象键，也不修改历史 tool_calls 中的原始参数。 */
+    private static JsonElement resolveImageQuotes(JsonElement value, Map<Integer, String> quotes) {
+        if (value.isJsonObject()) {
+            JsonObject resolved = new JsonObject();
+            for (Map.Entry<String, JsonElement> entry : value.getAsJsonObject().entrySet()) {
+                resolved.add(entry.getKey(), resolveImageQuotes(entry.getValue(), quotes));
+            }
+            return resolved;
+        }
+        if (value.isJsonArray()) {
+            JsonArray resolved = new JsonArray();
+            for (JsonElement element : value.getAsJsonArray()) {
+                resolved.add(resolveImageQuotes(element, quotes));
+            }
+            return resolved;
+        }
+        if (!value.isJsonPrimitive() || !value.getAsJsonPrimitive().isString()) return value.deepCopy();
+        Matcher matcher = IMAGE_QUOTE.matcher(value.getAsString());
+        StringBuilder resolved = new StringBuilder();
+        while (matcher.find()) {
+            int id;
+            try {
+                id = Integer.parseInt(matcher.group(1));
+            } catch (NumberFormatException e) {
+                throw new IllegalArgumentException("图片引用编号超出 int 范围: " + matcher.group());
+            }
+            String url = quotes.get(id);
+            if (url == null) {
+                throw new IllegalArgumentException("图片引用不存在或已不在当前上下文中: " + matcher.group());
+            }
+            matcher.appendReplacement(resolved, Matcher.quoteReplacement(url));
+        }
+        matcher.appendTail(resolved);
+        return new JsonPrimitive(resolved.toString());
+    }
+
     /** 由底层会话重建请求体消息列表，等价于旧 OpenAIChannel 的构建逻辑 */
     @Override
     public List<Message> getMessageList() {
         List<Message> messages = new ArrayList<>();
+        Map<Integer, String> quotes = new HashMap<>();
         for (MCMessage m : base) {
             Message message = new Message();
             String role;
@@ -427,7 +511,11 @@ public class ChatContext implements Context {
             }
             for (MsgField mf : m.messageFields) {
                 if (mf instanceof ImageField imageField) {
-                    message.content.add(new ImageUrlPiece(imageField.getUrl().toString()));
+                    String url = imageField.getUrl().toString();
+                    int quoteId = imageQuotes.idFor(imageField);
+                    message.content.add(new ImageUrlPiece(url));
+                    message.content.add(new TextPiece("<quoteId:" + quoteId + ">"));
+                    quotes.put(quoteId, url);
                 } else {
                     message.content.add(new TextPiece(mf.toString()));
                 }
@@ -444,6 +532,7 @@ public class ChatContext implements Context {
             last.role = ROLE_SYSTEM;
             messages.add(last);
         }
+        activeImageQuotes = Map.copyOf(quotes);
         return messages;
     }
 
