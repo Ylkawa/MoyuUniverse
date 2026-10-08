@@ -15,6 +15,9 @@ public class Config {
     String SauceNAOApiKey;
     int SauceNAOShortLimit = 4;
     int SauceNAOLongLimit = 100;
+    boolean EnableAmap = true;
+    String AmapApiKey;
+    int AmapRequestsPerMinute = 60;
     SearchParam SearchParam = new SearchParam();
     SeleniumConfig Selenium = null;
 

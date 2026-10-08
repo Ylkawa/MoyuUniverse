@@ -95,6 +95,7 @@ public class Web extends AIChatPlugin {
                 .build();
 
         registerSauceNAO(proxy);
+        registerMap(proxy);
 
         var dst = LLMFunction.builder()
                 .name("WebSearch")
@@ -125,6 +126,26 @@ public class Web extends AIChatPlugin {
     @Override
     public void onDisable() {
 
+    }
+
+    private void registerMap(Proxy proxy) {
+        if (!config.EnableAmap) return;
+        String key = config.AmapApiKey;
+        if (key == null || key.isBlank()) key = System.getenv("AMAP_API_KEY");
+        if (key == null || key.isBlank()) {
+            logger.info("高德未配置密钥，跳过 map 技能注册");
+            return;
+        }
+        if (config.AmapRequestsPerMinute <= 0) {
+            logger.warn("高德每分钟请求限流必须为正数，跳过 map 技能注册");
+            return;
+        }
+        var amapClient = new com.nekoyu.Universe.AIChat.Web.Amap.Client(key, proxy, config.AmapRequestsPerMinute);
+        var service = new com.nekoyu.Universe.AIChat.Web.Amap.MapService(amapClient);
+        for (var function : com.nekoyu.Universe.AIChat.Web.Amap.MapSkill.tools(service)) {
+            registerFunction(function.name, function);
+        }
+        registerSkill(com.nekoyu.Universe.AIChat.Web.Amap.MapSkill.definition());
     }
 
     private void registerSauceNAO(Proxy proxy) {

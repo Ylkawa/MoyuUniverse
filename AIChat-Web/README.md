@@ -1,4 +1,71 @@
-# SauceNAO 图片来源查询
+# AIChat-Web
+
+## map 地图与出行技能
+
+Web 插件内置原生 AIChat `map` Skill，默认 `ON_DEMAND`。天气、行政区、地理编码、逆地理编码、地点搜索和路线查询分别注册为 `MapWeather`、`MapDistrict`、`MapGeocode`、`MapRegeocode`、`MapSearch`、`MapRoute`，由同一个 Skill 的 `toolNames` 关联。插件先注册技能及其回调，模型使用现有 `ManageSkills` 激活 `map` 后才加载操作说明和六个函数。无需向会话 `Tools` 列表添加各项地图功能。
+
+在 `config/AIChat/Plugins/Web/config.json` **原有配置中合并**：
+
+```json
+{
+  "EnableAmap": true,
+  "AmapApiKey": "你的高德Web服务API密钥",
+  "AmapRequestsPerMinute": 60
+}
+```
+
+也可省略 `AmapApiKey`，由启动 Java 的进程读取环境变量 `AMAP_API_KEY`。配置字段优先；禁用、缺少密钥或限流非正数时，工具和 skill 均不注册。密钥需为高德 **Web 服务 API** 类型，相应接口权限、账户额度与访问限制以高德控制台为准。客户端沿用 Web 的 `EnableProxy` / `HttpProxyURI`，关闭 Web 代理时直连。
+
+会话未指定 `availableSkills` 且全局未限制可用技能时，自动发现已注册的 `map`。如果已有可用技能白名单，在目标会话 `availableSkills` 原有数组中追加 `"map"`：
+
+```json
+{
+  "availableSkills": ["map"]
+}
+```
+
+这是最小示例，保留其他可用技能和会话字段。希望始终加载时，可在会话小写 `skills` 数组中追加 `"map"`。重启应用后配置生效；技能与 MaiBot 一样在 Java 中创建 `Skill` 并通过 `registerSkill` 注册，无需额外的技能资源文件。已有 `config/AIChat/Skills/*.json` 若使用相同 `map` ID，可能覆盖内置定义，应避免重名。
+
+操作与参数：
+
+| function | 必填参数 | 可选参数 | 能力 |
+|---|---|---|---|
+| `MapWeather` | `location` 地区名或 adcode | `province`、`type=live/forecast/both`，默认 live | 实况与返回日期内的预报 |
+| `MapDistrict` | `location` 地区名或 adcode | `province`、`limit` | 行政区候选及编码 |
+| `MapGeocode` | `location` 完整地址或地标 | `city`、`limit` | 地址转 GCJ-02 坐标 |
+| `MapRegeocode` | `location` GCJ-02 坐标 | 无 | 坐标转地址与行政区 |
+| `MapSearch` | `keywords`，以及 `city` 或中心坐标 `location` | `limit`、周边搜索的 `radius` | 城市内地点搜索或周边设施 |
+| `MapRoute` | `origin`、`destination` 完整地址或 GCJ-02 坐标 | `city`、`travelMode=driving/walking`，默认 driving | 驾车或步行路线 |
+
+`limit` 默认5，范围1～10；`radius` 默认3000米，范围1～50000。坐标为 `经度,纬度`，小数最多6位。模型调用对应函数并传入该函数的参数，无需传入 action，回调会提取声明的查询字段，忽略 AIChat 追加的会话占位符和调用 ID。地点缺失/同名地区/地址多候选时明确要求确认，不自动选择第一个候选；省份天气需进一步指定城市（直辖市除外）。路线地址仅匹配到省、市或区县时不能作为具体起终点。用户提供 WGS-84、百度或未知坐标系时应先确认/转换，本技能没有实现坐标转换。
+
+模型可组合调用，例如：先 `MapSearch` 找到准确 POI，再以其坐标 `MapRoute` 规划路线；先 `MapRegeocode` 获取区县 adcode，再 `MapWeather` 查天气。查询失败、无结果或超出预报日期时直接说明，不编造答案。公交、骑行、历史/逐小时天气、空气质量、预警、实时导航暂不支持。
+
+调用示例：
+
+```text
+MapWeather({"location":"杭州市","type":"both"})
+MapWeather({"location":"朝阳区","province":"北京市","type":"forecast"})
+MapSearch({"city":"杭州市","keywords":"杭州东站"})
+MapSearch({"location":"120.15507,30.274084","keywords":"咖啡店","radius":3000})
+MapRoute({"origin":"120.15507,30.274084","destination":"120.16007,30.270084","travelMode":"walking"})
+```
+
+所有结果以类型明确的 Gson 对象解析后格式化为文本，附高德来源及查询时间。天气保留 `reporttime` 和真实预报日期；地点保留地址、POI ID 和坐标；路线保留距离、预计耗时、收费/限行提示及最多12段指示。字段缺失显示“未提供”，高德缺失字符串的 `[]` 被单独处理，真实列表不被替换。接口错误只展示受控提示和 infocode，不将密钥、完整请求 URL、原始响应或网络异常详情传给模型。
+
+插件进程内共用256项 LRU 缓存，并合并并发相同请求。实况5分钟、预报30分钟、行政区24小时、地理/逆地理编码1小时、地点5分钟、路线1分钟；成功的空结果也缓存，失败不缓存。缓存命中和合并请求不消耗本地限流，每个新 HTTP 请求（失败也算）计入滚动60秒窗口，默认60次；天气 `both` 和地点解析可能产生多个请求。此限额是本地保护，并非账户额度。不自动重试；连接超时10秒、单次请求总超时20秒。
+
+验证入口均在 `src/test/java`，可直接在 IDE 运行 main：
+
+- `MapServiceTest`：离线验证参数/URL编码、各类响应、地点歧义、缓存失效、限流、并发合并、部分天气失败与错误脱敏。
+- `MapSkillIntegrationTest`：离线验证 Web 注册、按需激活/去激活、六个函数加载及真实 ChatContext 工具回合的结果回传。使用模拟模型和高德响应，未验证真实模型选择技能。
+- `MapDemo`：设置 `AMAP_API_KEY`，输入内部 MapService 查询 JSON（含 action，仅用于直接调试服务） 或以一个程序参数传入；默认直连，打印真实 API 的格式化结果，无需启动机器人。
+
+编译验证类：`mvn.cmd -o -Dmaven.repo.local=C:/Users/imylk/.m2/repository -pl AIChat-Web -am test-compile -DskipTests`；打包时将 `test-compile` 改为 `package`，生成 `AIChat-Web/target/AIChat-Web-2.0-Phototaxis.jar`。验证类是 main 程序，需要另行运行，Maven `test-compile` 不会执行它们。部署 Web JAR 到 `data/AIChat/Plugins/` 并重启应用；最终真实验收需在目标聊天分别查询“杭州明天天气”“杭州东站在哪里”“从已确认的起点到终点步行怎么走”，确认 `ManageSkills(map)`、对应地图函数的调用及回复。
+
+接口依据：[天气](https://lbs.amap.com/api/webservice/guide/api/weatherinfo)、[行政区](https://lbs.amap.com/api/webservice/guide/api/district/)、[地理/逆地理编码](https://lbs.amap.com/api/webservice/guide/api/georegeo/)、[地点搜索](https://lbs.amap.com/api/webservice/guide/api-advanced/search)、[路径规划 v3](https://lbs.amap.com/api/webservice/guide/api/direction)。
+
+## SauceNAO 图片来源查询
 
 客户端：`src/main/java/com/nekoyu/Universe/AIChat/Web/SauceNAO/Client.java`。
 调用 `new Client(apiKey).search(imageUrl)` 得到 `SearchResponse` 响应对象。按模块现有风格使用 Gson 反序列化，`header`、`results`、每项的 `header` 和 `data` 均为字段明确的 Java 类。支持传入 `Proxy`，不新增依赖。
