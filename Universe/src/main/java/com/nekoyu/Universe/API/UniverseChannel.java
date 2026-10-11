@@ -266,13 +266,63 @@ public class UniverseChannel {
                 if (!resp.isSuccessful()) throw new IOException("Request failed with unexpected code " + resp);
                 if (resp.body() == null) throw new IOException("Response body is null");
                 var body = resp.body();
-                String extension;
-                if (body.contentType() != null) switch (body.contentType().toString()) {
-                    case "application/json" -> extension = ".json";
-                    case "image/jpeg" -> extension = ".jpeg";
-                    default -> extension = "";
-                }
-                else extension = "";
+                var contentType = body.contentType();
+                // type/subtype 不包含 charset 等参数，且 OkHttp 已将其转为小写。
+                String mimeType = contentType == null ? "" : contentType.type() + "/" + contentType.subtype();
+                String extension = switch (mimeType) {
+                    case "application/json", "text/json" -> ".json";
+                    case "application/xml", "text/xml" -> ".xml";
+                    case "text/plain" -> ".txt";
+                    case "text/html" -> ".html";
+                    case "text/css" -> ".css";
+                    case "text/csv" -> ".csv";
+                    case "text/markdown" -> ".md";
+                    case "text/javascript", "application/javascript" -> ".js";
+                    case "image/jpeg", "image/pjpeg" -> ".jpeg";
+                    case "image/png" -> ".png";
+                    case "image/gif" -> ".gif";
+                    case "image/webp" -> ".webp";
+                    case "image/bmp", "image/x-ms-bmp" -> ".bmp";
+                    case "image/svg+xml" -> ".svg";
+                    case "image/tiff" -> ".tiff";
+                    case "image/x-icon", "image/vnd.microsoft.icon" -> ".ico";
+                    case "image/avif" -> ".avif";
+                    case "image/heic" -> ".heic";
+                    case "image/heif" -> ".heif";
+                    case "audio/mpeg" -> ".mp3";
+                    case "audio/mp4", "audio/x-m4a" -> ".m4a";
+                    case "audio/aac" -> ".aac";
+                    case "audio/wav", "audio/wave", "audio/x-wav", "audio/vnd.wave" -> ".wav";
+                    case "audio/flac", "audio/x-flac" -> ".flac";
+                    case "audio/ogg", "application/ogg" -> ".ogg";
+                    case "audio/opus" -> ".opus";
+                    case "audio/webm", "video/webm" -> ".webm";
+                    case "audio/midi", "audio/x-midi" -> ".mid";
+                    case "video/mp4" -> ".mp4";
+                    case "video/mpeg" -> ".mpeg";
+                    case "video/quicktime" -> ".mov";
+                    case "video/x-msvideo" -> ".avi";
+                    case "video/x-matroska" -> ".mkv";
+                    case "video/ogg" -> ".ogv";
+                    case "application/pdf" -> ".pdf";
+                    case "application/msword" -> ".doc";
+                    case "application/vnd.openxmlformats-officedocument.wordprocessingml.document" -> ".docx";
+                    case "application/vnd.ms-excel" -> ".xls";
+                    case "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" -> ".xlsx";
+                    case "application/vnd.ms-powerpoint" -> ".ppt";
+                    case "application/vnd.openxmlformats-officedocument.presentationml.presentation" -> ".pptx";
+                    case "application/rtf", "text/rtf" -> ".rtf";
+                    case "application/zip", "application/x-zip-compressed" -> ".zip";
+                    case "application/gzip", "application/x-gzip" -> ".gz";
+                    case "application/x-tar" -> ".tar";
+                    case "application/x-7z-compressed" -> ".7z";
+                    case "application/vnd.rar", "application/x-rar-compressed" -> ".rar";
+                    default -> {
+                        if (contentType != null && contentType.subtype().endsWith("+json")) yield ".json";
+                        if (contentType != null && contentType.subtype().endsWith("+xml")) yield ".xml";
+                        yield "";
+                    }
+                };
                 UUID uuid = UUID.randomUUID();
                 cf = new CachedFile("./cache/reposts/" + uuid + extension);
                 cf.outboundUrl = new URL(outboundHttpAddress + "/Universe/" + uuid + extension);
