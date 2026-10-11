@@ -338,6 +338,8 @@ public class KnowledgeStore {
                             .addAllVector(vector)
                             .setVectorName(vectorName)
                             .setLimit(candidateLimit)
+                            // 与记忆库一致，低相关候选不进入上下文或工具结果。
+                            .setScoreThreshold(0.6f)
                             .setFilter(filter)
                             .setWithPayload(Points.WithPayloadSelector.newBuilder().setEnable(true).build())
                             .build()
