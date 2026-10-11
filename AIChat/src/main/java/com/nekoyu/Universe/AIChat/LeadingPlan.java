@@ -25,19 +25,36 @@ final class LeadingPlan {
     record MemoryQuery(String question, String locationId) {}
 
     static LeadingPlan parse(String output, Set<String> allowedLocations, Set<Integer> knownMemoryIds) {
+        JsonObject root = readRoot(output, FIELDS);
+        LeadingPlan plan = parseMemoryOperations(root, allowedLocations, knownMemoryIds, 3);
+        parseQueries(root, allowedLocations, plan);
+        return plan;
+    }
+
+    /** 会话结束时复用相同记忆校验，但不施加 leading 每轮最多三条的限制。 */
+    static LeadingPlan parseMemory(String output, Set<String> allowedLocations, Set<Integer> knownMemoryIds) {
+        return parseMemoryOperations(readRoot(output, Set.of("add", "update", "delete")),
+                allowedLocations, knownMemoryIds, Integer.MAX_VALUE);
+    }
+
+    private static JsonObject readRoot(String output, Set<String> fields) {
         JsonObject root;
         try {
             JsonElement parsed = JsonParser.parseString(output);
             if (!parsed.isJsonObject()) throw new IllegalArgumentException("Expected JSON object");
             root = parsed.getAsJsonObject();
-            if (!root.keySet().equals(FIELDS)) throw new IllegalArgumentException("Leading JSON fields do not match contract");
-            for (String field : FIELDS) {
+            if (!root.keySet().equals(fields)) throw new IllegalArgumentException("Plan JSON fields do not match contract");
+            for (String field : fields) {
                 if (!root.get(field).isJsonArray()) throw new IllegalArgumentException("Expected array: " + field);
             }
         } catch (RuntimeException e) {
-            throw new IllegalArgumentException("Invalid leading JSON", e);
+            throw new IllegalArgumentException("Invalid plan JSON", e);
         }
+        return root;
+    }
 
+    private static LeadingPlan parseMemoryOperations(JsonObject root, Set<String> allowedLocations,
+                                                     Set<Integer> knownMemoryIds, int limit) {
         LeadingPlan plan = new LeadingPlan();
         Set<Integer> touchedIds = new HashSet<>();
         Set<String> addedFacts = new HashSet<>();
@@ -50,7 +67,7 @@ final class LeadingPlan {
             Float importance = fraction(value, "importance");
             if (allowedLocations.contains(location) && content != null && confidence != null && importance != null
                     && addedFacts.add(location + "\n" + content)
-                    && plan.additions.size() < 3) {
+                    && plan.additions.size() < limit) {
                 plan.additions.add(new NewMemory(location, content, confidence, importance));
             }
         }
@@ -62,17 +79,21 @@ final class LeadingPlan {
             Float confidence = fraction(value, "confidence");
             Float importance = fraction(value, "importance");
             if (id != null && knownMemoryIds.contains(id) && !touchedIds.contains(id) && content != null
-                    && confidence != null && importance != null && plan.updates.size() < 3) {
+                    && confidence != null && importance != null && plan.updates.size() < limit) {
                 plan.updates.add(new UpdatedMemory(id, content, confidence, importance));
                 touchedIds.add(id);
             }
         }
         for (JsonElement element : array(root, "delete")) {
             Integer id = positiveInteger(element);
-            if (id != null && knownMemoryIds.contains(id) && touchedIds.add(id) && plan.deletions.size() < 3) {
+            if (id != null && knownMemoryIds.contains(id) && touchedIds.add(id) && plan.deletions.size() < limit) {
                 plan.deletions.add(id);
             }
         }
+        return plan;
+    }
+
+    private static void parseQueries(JsonObject root, Set<String> allowedLocations, LeadingPlan plan) {
         Set<String> seenMemoryQueries = new HashSet<>();
         for (JsonElement element : array(root, "memory_queries")) {
             if (!element.isJsonObject()) continue;
@@ -94,7 +115,6 @@ final class LeadingPlan {
                 plan.knowledgeQueries.add(question);
             }
         }
-        return plan;
     }
 
     private static JsonArray array(JsonObject object, String key) {

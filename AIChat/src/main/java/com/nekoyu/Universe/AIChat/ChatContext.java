@@ -226,7 +226,7 @@ public class ChatContext implements Context {
      * 单次回复内的工具执行次数与总请求轮数受 Agent 的 {@link ToolLoopOptions} 约束；完全相同的工具参数
      * 不会重复执行（去重），防止模型陷入工具调用死循环。
      *
-     * @return 本回合累计的 Model Response（内容/usage 为各轮合并结果，含工具轮次间的 "\n\n" 分隔）
+     * @return 本回合 Model Response；普通正文跨轮合并，结构化正文只返回最终回答，usage 始终累计。
      */
     public CompletionsResponse runTurn(LLMProvider provider, String model, List<LLMFunction> tools, CompletionsRequest request, ToolLoopOptions options, LLMProvider.BufferCallback bufferCallback) throws IOException {
         CompletionsResponse responding = newFakeResponse();
@@ -237,6 +237,8 @@ public class ChatContext implements Context {
         int rounds = maxRounds;
         Map<String, String> exactResults = new HashMap<>();
         Map<String, LLMFunction> functionsMap = new HashMap<>();
+        boolean structuredOutput = request != null && request.responseFormat != null
+                && ("json_schema".equals(request.responseFormat.type) || "json_object".equals(request.responseFormat.type));
 
         while (true) {
             if (rounds <= 0) { // 兜底：无论如何都要终结循环
@@ -277,7 +279,11 @@ public class ChatContext implements Context {
             } else {
                 request.toolChoice = null;
             }
-            CompletionsResponse round = provider.completions(model, roundMessages, roundTools, request, bufferCallback);
+            // 暂存结构化片段，工具轮次的正文不能混进最终 JSON 或调用方回调。
+            List<String> structuredChunks = new ArrayList<>();
+            LLMProvider.BufferCallback roundCallback = structuredOutput && bufferCallback != null
+                    ? structuredChunks::add : bufferCallback;
+            CompletionsResponse round = provider.completions(model, roundMessages, roundTools, request, roundCallback);
             if (round == null) {
                 LOGGER.error("{} Provider 返回 null，结束本回合", model);
                 return responding;
@@ -290,7 +296,11 @@ public class ChatContext implements Context {
             responding.choices[0].finish_reason = finish;
             String content = round.choices[0].message.content;
             String reasoning = round.choices[0].message.reasoning_content;
-            if (content != null) responding.choices[0].message.content += content;
+            if (structuredOutput) {
+                responding.choices[0].message.content = "tool_calls".equals(finish) || content == null ? "" : content;
+                if (!"tool_calls".equals(finish) && bufferCallback != null)
+                    structuredChunks.forEach(bufferCallback::onCompletion);
+            } else if (content != null) responding.choices[0].message.content += content;
             if (reasoning != null) responding.choices[0].message.reasoning_content += reasoning;
 
             if ("stop".equals(finish)) {
@@ -308,7 +318,7 @@ public class ChatContext implements Context {
                     break;
                 }
                 boolean outputted = content != null && !content.isBlank();
-                if (outputted) {
+                if (outputted && !structuredOutput) {
                     responding.choices[0].message.content += "\n\n";
                     if (bufferCallback != null) bufferCallback.onCompletion("\n\n");
                 }

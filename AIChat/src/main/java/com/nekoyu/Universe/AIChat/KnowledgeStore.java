@@ -5,6 +5,7 @@ import com.nekoyu.Universe.API.MessageChannel.MessageField.TextField;
 import com.nekoyu.Universe.API.Providers.LLMProvider.Embedding;
 import com.nekoyu.Universe.API.Providers.LLMProvider.LLMProvider;
 import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.EmbeddingRequest;
+import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.CompletionsRequest;
 import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.Message;
 import com.nekoyu.Universe.API.Providers.LLMProvider.RespBodies.CompletionsResponse;
 import com.nekoyu.Universe.API.Providers.LLMProvider.RespBodies.EmbeddingResponse;
@@ -439,16 +440,17 @@ public class KnowledgeStore {
 
     private List<KnowledgeQueryParser.Entry> generateQueriesWithConclusions(String content) throws IOException {
         ChatAssistant assistant = new ChatAssistant(llmProvider, llmModel);
+        CompletionsRequest request = new CompletionsRequest();
+        request.responseFormat = StructuredOutputs.knowledge();
+        assistant.setCompletionsRequest(request);
         ChatContext chatContext = new ChatContext();
         chatContext.setSystemPromptFirst(Prompt.queryGenerator.formatted(queryCount));
         chatContext.userMsg(new Message(content));
 
         assistant.setChatContext(chatContext);
         CompletionsResponse resp = assistant.completions(null);
-        String output = resp == null || resp.choices == null || resp.choices.length == 0
-                || resp.choices[0].message == null ? null : resp.choices[0].message.content;
         try {
-            List<KnowledgeQueryParser.Entry> results = KnowledgeQueryParser.parse(output, queryCount);
+            List<KnowledgeQueryParser.Entry> results = KnowledgeQueryParser.parse(StructuredOutputs.content(resp), queryCount);
             logger.debug("Generated {} query-conclusion pairs for content (len={})", results.size(), content.length());
             return results;
         } catch (IllegalArgumentException e) {
@@ -569,7 +571,7 @@ public class KnowledgeStore {
                 优先保留具体名称、数值、日期、变化和使用方法。相同事实只生成一条，不为凑数改写问法；本块最多 %d 条。
                 confidence 是原文支持程度，范围 0.8 到 1；支持程度不足 0.8 时不生成。ttl_days 只能取 7、30、90、180、365、730、3650：短期活动或价格取较短期限，版本相关事实取 180，一般稳定事实取 365 或更长。不要把相对时间猜成绝对时间。
 
-                只输出合法 JSON 对象，不要 Markdown 或解释。顶层只含 items 数组；每项只含 question、conclusion、confidence、ttl_days。没有合格事实时输出 {"items":[]}。
+                按提供的输出 Schema 返回提取结果；没有合格事实时 items 为空数组。
                 """;
     }
 }

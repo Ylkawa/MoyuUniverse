@@ -2,6 +2,7 @@ package com.nekoyu.Universe.AIChat;
 
 import com.nekoyu.Universe.API.Providers.LLMProvider.LLMProvider;
 import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.Message;
+import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.CompletionsRequest;
 import com.nekoyu.Universe.API.Providers.LLMProvider.RespBodies.CompletionsResponse;
 import com.nekoyu.Universe.Universe;
 import org.slf4j.Logger;
@@ -48,17 +49,17 @@ public class Librarian {
             }
         });
 
-        CompletableFuture<String> webFuture = CompletableFuture.supplyAsync(() -> {
+        CompletableFuture<LibrarianResult> webFuture = CompletableFuture.supplyAsync(() -> {
             try {
                 return webSearch(question);
             } catch (Exception e) {
                 logger.error("Web search failed", e);
-                return "（联网搜索失败）";
+                return LibrarianResult.withoutSources("（联网搜索失败）");
             }
         });
 
         String localResult;
-        String webResult;
+        LibrarianResult webResult;
         try {
             localResult = localFuture.get(60, java.util.concurrent.TimeUnit.SECONDS);
         } catch (Exception e) {
@@ -69,12 +70,12 @@ public class Librarian {
             webResult = webFuture.get(120, java.util.concurrent.TimeUnit.SECONDS);
         } catch (Exception e) {
             logger.error("Web search timeout", e);
-            webResult = "（联网搜索超时）";
+            webResult = LibrarianResult.withoutSources("（联网搜索超时）");
         }
 
         logger.debug("Local search latency: {}ms", System.currentTimeMillis() - start);
 
-        String merged;
+        LibrarianResult merged;
         try {
             merged = mergeResults(question, localResult, webResult);
         } catch (Exception e) {
@@ -83,15 +84,14 @@ public class Librarian {
         }
 
         if (enableAsyncUpdate) {
-            MergeResult mr = parseSources(merged);
-            merged = mr.cleanContent;
-            if (!mr.sources.isEmpty()) {
-                CompletableFuture.runAsync(() -> asyncUpdateKnowledge(mr.sources));
+            if (!merged.sources().isEmpty()) {
+                List<LibrarianResult.Source> sources = merged.sources();
+                CompletableFuture.runAsync(() -> asyncUpdateKnowledge(sources));
             }
         }
 
         logger.info("Librarian search complete: elapsed={}ms", System.currentTimeMillis() - start);
-        return merged;
+        return merged.answer();
     }
 
     private String localSearch(String question) throws IOException {
@@ -111,9 +111,12 @@ public class Librarian {
         return sb.toString();
     }
 
-    private String webSearch(String question) throws IOException {
+    private LibrarianResult webSearch(String question) throws IOException {
         ChatAssistant assistant = new ChatAssistant(llmProvider, model);
-        assistant.setThinking(thinking);
+        CompletionsRequest request = new CompletionsRequest();
+        request.enable_thinking = thinking;
+        request.responseFormat = StructuredOutputs.research();
+        assistant.setCompletionsRequest(request);
         for (String toolName : toolNames) {
             AIChat.addRegisteredTools(assistant, toolName);
         }
@@ -124,30 +127,22 @@ public class Librarian {
                 回答必须在开头明确指出该信息所属的【主体】（如具体游戏、产品、系统的名称）与【适用范围】（如版本号、平台、模式、时间段）。
                 如果问题本身未指明主体，先判断最可能的游戏/产品并在回答首行明确写明，禁止用"新版本""该游戏""这个系统"等含糊表述带过。
                 
-                在回答的最后，你必须输出你参考的所有信息来源，格式如下（每个来源之间空一行）：
-                
-                ===SOURCES===
-                URL: 来源网址
-                TITLE: 页面标题
-                CONTENT: 该来源的核心内容摘要
-                
-                URL: 来源网址2
-                TITLE: 页面标题2
-                CONTENT: 该来源的核心内容摘要2
-                ===END===
-                
-                如果没有可引用的来源（例如纯靠自身知识回答），仍然输出 ===SOURCES=== 和 ===END===，中间不写任何来源。
+                按提供的输出 Schema 返回完整回答和实际参考的信息来源。
+                来源摘要可包含多行；没有可引用来源时 sources 为空数组。不要编造来源网址。
                 """));
         chatContext.userMsg(new Message(question));
 
         assistant.setChatContext(chatContext);
         CompletionsResponse resp = assistant.completions(null);
-        return resp.choices[0].message.content;
+        return LibrarianResult.parse(StructuredOutputs.content(resp));
     }
 
-    private String mergeResults(String question, String localResult, String webResult) throws IOException {
+    private LibrarianResult mergeResults(String question, String localResult, LibrarianResult webResult) throws IOException {
         ChatAssistant assistant = new ChatAssistant(llmProvider, model);
-        assistant.setThinking(thinking);
+        CompletionsRequest request = new CompletionsRequest();
+        request.enable_thinking = thinking;
+        request.responseFormat = StructuredOutputs.research();
+        assistant.setCompletionsRequest(request);
 
         ChatContext chatContext = new ChatContext();
         chatContext.userMsg(new Message("""
@@ -164,67 +159,61 @@ public class Librarian {
                 - 回答开头必须明确指出信息所属的【主体】（具体游戏/产品/系统名）与【适用范围】（版本号/平台/模式）
                 - 如果问题本身或检索结果无法确定主体与适用范围，如实说明，严禁编造主体或用"新版本/该游戏/这个系统"等含糊表述充数
                 
-                在回答的最后，你必须列出所有被采纳信息的来源URL，格式如下：
-                
-                ===SOURCES===
-                URL: 来源网址
-                TITLE: 页面标题
-                CONTENT: 该来源的核心内容摘要
-                
-                ===END===
-                
-                如果没有可列出的来源，仍然输出 ===SOURCES=== 和 ===END===，中间不写任何来源。
+                按提供的输出 Schema 返回完整回答和所有被采纳信息的来源。
+                来源摘要可包含多行；没有可引用来源时 sources 为空数组。不要编造来源网址。
                 """));
         chatContext.userMsg(new Message("问题：" + question));
         chatContext.userMsg(new Message("本地知识库结果：\n" + localResult));
-        chatContext.userMsg(new Message("联网搜索结果：\n" + webResult));
+        chatContext.userMsg(new Message("联网搜索结果：\n" + webResult.toJson()));
 
         assistant.setChatContext(chatContext);
         CompletionsResponse resp = assistant.completions(null);
-        return resp.choices[0].message.content;
+        return LibrarianResult.parse(StructuredOutputs.content(resp));
     }
 
-    private void asyncUpdateKnowledge(List<WebSource> sources) {
-        for (WebSource source : sources) {
-            if (source.url == null || source.url.isEmpty()) continue;
+    private void asyncUpdateKnowledge(List<LibrarianResult.Source> sources) {
+        for (LibrarianResult.Source source : sources) {
+            if (source.url() == null || source.url().isEmpty()) continue;
             try {
-                if (!knowledgeStore.hasDocument(source.url)) {
-                    logger.info("New source, indexing: url={}", source.url);
-                    knowledgeStore.indexDocument(source.url, source.title, source.content);
+                if (!knowledgeStore.hasDocument(source.url())) {
+                    logger.info("New source, indexing: url={}", source.url());
+                    knowledgeStore.indexDocument(source.url(), source.title(), source.content());
                 } else {
-                    Long docId = knowledgeStore.getDocumentIdByUrl(source.url);
+                    Long docId = knowledgeStore.getDocumentIdByUrl(source.url());
                     if (docId != null) {
                         String existing = knowledgeStore.getDocumentContent(docId);
-                        if (existing != null && isConflicting(existing, source.content)) {
-                            logger.info("Conflict detected, re-indexing: url={}", source.url);
-                            knowledgeStore.indexDocument(source.url, source.title, source.content);
+                        if (existing != null && isConflicting(existing, source.content())) {
+                            logger.info("Conflict detected, re-indexing: url={}", source.url());
+                            knowledgeStore.indexDocument(source.url(), source.title(), source.content());
                         } else {
-                            logger.debug("No conflict, skip: url={}", source.url);
+                            logger.debug("No conflict, skip: url={}", source.url());
                         }
                     }
                 }
             } catch (Exception e) {
-                logger.error("Async update failed for url={}", source.url, e);
+                logger.error("Async update failed for url={}", source.url(), e);
             }
         }
     }
 
     private boolean isConflicting(String existing, String newContent) {
         try {
-ChatAssistant assistant = new ChatAssistant(llmProvider, model);
+            ChatAssistant assistant = new ChatAssistant(llmProvider, model);
+            CompletionsRequest request = new CompletionsRequest();
+            request.responseFormat = StructuredOutputs.conflict();
+            assistant.setCompletionsRequest(request);
             ChatContext chatContext = new ChatContext();
             chatContext.userMsg(new Message("""
                     判断以下两段内容是否存在事实性冲突（关键数据、结论、时间、参数等发生了改变）。
                     轻微措辞变化或补充信息不算冲突。
-                    只回答 YES 或 NO。
+                    按提供的输出 Schema 返回判断结果，conflict 表示是否存在事实性冲突。
                     """));
             chatContext.userMsg(new Message("已有内容：\n" + truncate(existing, 2000)));
             chatContext.userMsg(new Message("新内容：\n" + truncate(newContent, 2000)));
 
             assistant.setChatContext(chatContext);
             CompletionsResponse resp = assistant.completions(null);
-            String answer = resp.choices[0].message.content.trim().toUpperCase();
-            boolean conflict = answer.contains("YES");
+            boolean conflict = LibrarianResult.parseConflict(StructuredOutputs.content(resp));
             logger.debug("Conflict check: {}", conflict);
             return conflict;
         } catch (Exception e) {
@@ -233,45 +222,9 @@ ChatAssistant assistant = new ChatAssistant(llmProvider, model);
         }
     }
 
-    private MergeResult parseSources(String content) {
-        MergeResult result = new MergeResult();
-        int sourcesIdx = content.indexOf("===SOURCES===");
-        if (sourcesIdx < 0) {
-            result.cleanContent = content;
-            return result;
-        }
-
-        result.cleanContent = content.substring(0, sourcesIdx).trim();
-        String sourcesBlock = content.substring(sourcesIdx + "===SOURCES===".length());
-        int endIdx = sourcesBlock.indexOf("===END===");
-        if (endIdx >= 0) sourcesBlock = sourcesBlock.substring(0, endIdx);
-
-        String[] blocks = sourcesBlock.split("\n\\s*\n");
-        for (String block : blocks) {
-            WebSource source = new WebSource();
-            for (String line : block.split("\n")) {
-                if (line.startsWith("URL:")) source.url = line.substring(4).trim();
-                else if (line.startsWith("TITLE:")) source.title = line.substring(6).trim();
-                else if (line.startsWith("CONTENT:")) source.content = line.substring(8).trim();
-            }
-            if (source.url != null && !source.url.isEmpty()) result.sources.add(source);
-        }
-        return result;
-    }
-
     private static String truncate(String s, int maxLen) {
         if (s == null) return "";
         return s.length() <= maxLen ? s : s.substring(0, maxLen) + "...";
     }
 
-    private static class WebSource {
-        String url;
-        String title;
-        String content;
-    }
-
-    private static class MergeResult {
-        String cleanContent;
-        List<WebSource> sources = new ArrayList<>();
-    }
 }

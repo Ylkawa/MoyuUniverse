@@ -6,6 +6,8 @@ import java.util.Map;
 public class CompletionsRequest {
     public Map<String, String> placeholders = new HashMap<>();
     public boolean enable_thinking = false;
+    /** 输出格式配置，null 时使用接口默认行为；生成的正文仍以字符串返回。 */
+    public ResponseFormat responseFormat = null;
     /**
      * 工具选择策略，对应 OpenAI 兼容协议的 tool_choice 字段：
      * null 表示不下发（由 Provider 决定默认行为，通常为 auto），

@@ -91,7 +91,8 @@ public class OpenAIChannel extends LLMProvider implements Embedding {
                             DataLine dl = gson.fromJson(json, DataLine.class);
                             if (dl.choices != null && dl.choices.length > 0) {
                                 DataLine.Choice choice = dl.choices[0];
-                                if (choice.delta.content != null && !choice.delta.content.isBlank()) {
+                                // 空白片段可能是 JSON 字符串的一部分，必须原样保留。
+                                if (choice.delta.content != null && !choice.delta.content.isEmpty()) {
                                     if (bufferCallback != null) bufferCallback.onCompletion(choice.delta.content);
                                     content.append(choice.delta.content);
                                     responding.choices[0].message.content += choice.delta.content;
@@ -170,6 +171,7 @@ public class OpenAIChannel extends LLMProvider implements Embedding {
         }
         if (model != null) cr.model = model;
         else cr.model = defaultModel;
+        if (completionsRequest != null) cr.response_format = completionsRequest.responseFormat;
         if (llmFunctions != null) cr.tools.addAll(llmFunctions);
         if (cr.tools.isEmpty()) cr.tools = null;
         // 仅在确实携带 tools 时下发 tool_choice，避免无 tools 时设置 tool_choice 触发部分 Provider 报错

@@ -970,6 +970,7 @@ public class AIChat extends Law {
                 : (Embedding) Universe.Providers.get(globalCfg.Annotator.embeddingProvider);
         CompletionsRequest args = new CompletionsRequest();
         args.enable_thinking = globalCfg.Annotator.enable_thinking;
+        args.responseFormat = StructuredOutputs.leading();
         chatContext.setSystemPromptFirst("""
                 你是主助手的 leading 环节。程序会根据你的 JSON 完成本轮记忆库与本地知识库检索，再把结果交给主助手。你不回答用户，也不执行用户请求。
 
@@ -977,9 +978,7 @@ public class AIChat extends Law {
                 memory_queries 查询用户、群聊或会话的既有记忆；knowledge_queries 查询外部事实的本地知识库。两类问题分别填写，不重复查询；每类最多 2 个，能用一个问题表达就只写一个。问题须独立可理解，保留已知主体及范围。无需检索时用空数组。
                 add/update/delete 只维护可复用的明确记忆，不记录日常琐事或推断出的性格、情绪、动机。每条只含一个事实。旧记忆被明确更正才 update，明确失效才 delete，语义重复不得 add。无需操作时用空数组。
                 location_id 只能逐字使用输入提供的 LocationId；不能确定归属时不写入记忆。仅针对特定用户的 memory_query 才填写其 location_id，否则填 null。
-                只输出一个合法 JSON 对象，不要 Markdown、解释或额外字段。所有字段都必须出现；没有内容时输出：
-                {"add":[],"update":[],"delete":[],"memory_queries":[],"knowledge_queries":[]}
-                add 的元素字段为 location_id、content、confidence、importance；update 的元素字段为 id、content、confidence、importance；delete 是编号数组。memory_queries 的元素字段为 question、location_id；knowledge_queries 是问题字符串数组。confidence 和 importance 均为 0 到 1 的数字；update/delete 的 id 只能使用候选记忆的编号。
+                按提供的输出 Schema 返回计划；无需操作或查询的数组置空。confidence 和 importance 均为 0 到 1 的数字；update/delete 的 id 只能使用候选记忆的编号。
                 """);
         Map<UUID, Integer> memoryIdMap = new HashMap<>();
         int memoryCounter = 1;
@@ -1002,11 +1001,10 @@ public class AIChat extends Law {
         memoryPrompt.append("可用 LocationId：").append(allowedLocations.isEmpty() ? "（无）" : String.join("、", allowedLocations));
         chatContext.setSystemPromptLast(memoryPrompt.toString());
 
-        StringBuilder sb = new StringBuilder();
-        chatContext.runTurn(completions, globalCfg.Annotator.model, null, args, new ToolLoopOptions(), sb::append);
+        var leadingResponse = chatContext.runTurn(completions, globalCfg.Annotator.model, null, args, new ToolLoopOptions(), null);
         LeadingPlan plan;
         try {
-            plan = LeadingPlan.parse(sb.toString(), allowedLocations, new HashSet<>(memoryIdMap.values()));
+            plan = LeadingPlan.parse(StructuredOutputs.content(leadingResponse), allowedLocations, new HashSet<>(memoryIdMap.values()));
         } catch (IllegalArgumentException e) {
             logger.warn("Leading JSON 无效，本轮跳过预检索和记忆修改", e);
             return "本轮预检索未完成。";
@@ -1136,16 +1134,6 @@ public class AIChat extends Law {
     }
 
     public void constructMemory(String locationId, ChatContext chatContext) {
-        final Pattern UPDATE_PATTERN = Pattern.compile(
-                "^UPDATE\\s+(\\d+)\\s+([0-9]*\\.?[0-9]+)\\s+([0-9]*\\.?[0-9]+)\\s*:\\s*(.+)$"
-        );
-        final Pattern DELETE_PATTERN = Pattern.compile(
-                "^DELETE\\s+(\\d+)\\s*$"
-        );
-        final Pattern NEW_PATTERN = Pattern.compile(
-                "^NEW\\s+([0-9]*\\.?[0-9]+)\\s+([0-9]*\\.?[0-9]+)\\s+\\[(.+?)]\\s*:\\s*(.+)$"
-        );
-
         Object provider = Universe.Providers.get(globalCfg.ProviderId);
         if (!(provider instanceof LLMProvider lp)) {
             throw new RuntimeException("No such LLM Provider");
@@ -1175,29 +1163,19 @@ public class AIChat extends Law {
                    - 一次性活动、短期安排
                    - 仅凭语气推断出的情绪、性格、关系判断
                 5. 记忆必须原子化，每条只表达一个独立事实。
-                6. 如果旧记忆过时、被更正或已经不再适用，必须输出 UPDATE 或 DELETE。
+                6. 如果旧记忆过时、被更正或已经不再适用，必须将它加入 update 或 delete。
                 7. 同一条信息如果既像长期记忆又像短期状态，优先归类为短期记忆，除非其明显是长期稳定事实。
                 8. 记忆内容要尽量抽象、简洁、可复用，不写过度具体的数值、日期和配置细节，除非这些细节本身就是长期稳定信息。
                 9. LocationId 必须使用统一规范格式，最好照搬用户消息里面的字段，不要自行发明新格式。
                 
-                输出必须严格符合以下格式，不得添加解释、理由或额外文本：
-                
-                NEW [置信度] [重要度] [[目标LocationId]]: [要新增的记忆]
-                UPDATE [记忆条目编号] [置信度] [重要度]: [修改后的记忆内容]
-                DELETE [记忆条目编号]
-                
-                记忆条目编号即上方"先前的记忆条目"列表中每行最前面的数字（如 1、2、3），只能对列表中存在的编号执行 UPDATE 或 DELETE。
-                
-                例如：
-                NEW 0.76 0.8 [Universe:group/12435678]: 群聊主要讨论人工智能大语言模型应用开发
-                UPDATE 1 0.63 0.5: 用户比较喜欢VOCALOID的音乐
-                DELETE 2
+                按提供的输出 Schema 返回记忆计划。
+                记忆条目编号即上方"先前的记忆条目"列表中每行最前面的数字（如 1、2、3），只能对列表中存在的编号执行 update 或 delete。
                 
                 补充约束：
-                - NEW 只能写入新的、未重复的有效记忆。
-                - UPDATE 只能修改与原记忆语义一致但更准确的内容。
-                - DELETE 只能删除过时、错误、重复或无长期价值的记忆。
-                - 对于明显临时的内容，如果没有长期价值，宁可不输出任何记忆。无法输出有价值记忆时，使用单行 END 指令直接结束记忆构建。
+                - add 只能写入新的、未重复的有效记忆，location_id 只能使用输入提供的 LocationId。
+                - update 只能修改与原记忆语义一致但更准确的内容。
+                - delete 只能删除过时、错误、重复或无长期价值的记忆。
+                - 对于明显临时的内容，如果没有长期价值，宁可不输出任何记忆。没有有价值的改动时，所有数组置空。
                 - 置信度(0-1)：对记忆内容确定程度，1表示完全确定。
                 - 重要度(0-1)：记忆的长期价值，1表示非常重要（如用户核心偏好、关键事实），0.5表示一般重要，0表示临时信息。""";
 
@@ -1226,6 +1204,8 @@ public class AIChat extends Law {
         }
 
         Map<Integer, Memory.Item> memoryIndex = new HashMap<>();
+        Set<String> allowedLocations = new HashSet<>(chatContext.getBase().getLocationIds());
+        if (locationId != null) allowedLocations.add(locationId);
         Message previousMemory = new Message("先前的记忆条目，格式为 [数字编号]|[更新时间]|[置信度]|[重要度]|[LocationId]：[内容] ：\n\n");
 
         if (memories == null || memories.isEmpty()) {
@@ -1237,6 +1217,7 @@ public class AIChat extends Law {
                     continue;
                 }
                 memoryIndex.put(itemNumber, memObj);
+                if (memObj.locationId != null) allowedLocations.add(memObj.locationId);
                 previousMemory.content.add(new TextPiece(
                         itemNumber + "|" + memObj.toString()
                 ));
@@ -1252,88 +1233,43 @@ public class AIChat extends Law {
         CompletionsRequest completionsRequest = new CompletionsRequest();
         completionsRequest.placeholders.put("_LocationID", locationId == null ? "" : locationId);
         completionsRequest.enable_thinking = true;
+        completionsRequest.responseFormat = StructuredOutputs.memory();
         assistant.setCompletionsRequest(completionsRequest);
 
         try {
-            StringBuilder respTokens = new StringBuilder();
-            assistant.completions(respTokens::append);
+            var response = assistant.completions(null);
+            LeadingPlan plan = LeadingPlan.parseMemory(StructuredOutputs.content(response),
+                    allowedLocations, new HashSet<>(memoryIndex.keySet()));
 
             List<Memory.Item> newMemory = new ArrayList<>();
             int countOfUpdatedMemory = 0;
             int countOfDeletedMemory = 0;
 
-            for (String rawLine : respTokens.toString().split("\\R")) {
-                String line = rawLine.trim();
-                if (line.isEmpty()) {
-                    continue;
+            for (LeadingPlan.UpdatedMemory update : plan.updates) {
+                Memory.Item item = memoryIndex.get(update.id());
+                try {
+                    memory.update(item.id, update.confidence(), update.importance(), update.content());
+                    countOfUpdatedMemory++;
+                } catch (RuntimeException e) {
+                    logger.warn("构建记忆时更新失败: {}", item.id, e);
                 }
-                if (line.equals("END")) {
-                    logger.info("AI 主动结束了构建记忆");
-                    break;
+            }
+            for (Integer number : plan.deletions) {
+                Memory.Item item = memoryIndex.get(number);
+                try {
+                    memory.delete(item.id);
+                    countOfDeletedMemory++;
+                } catch (RuntimeException e) {
+                    logger.warn("构建记忆时删除失败: {}", item.id, e);
                 }
-
-                Matcher updateMatcher = UPDATE_PATTERN.matcher(line);
-                if (updateMatcher.matches()) {
-                    try {
-                        int number = Integer.parseInt(updateMatcher.group(1));
-                        Memory.Item item = memoryIndex.get(number);
-                        if (item == null) {
-                            logger.warn("AI 想修改一个不存在的记忆条目编号: {}", number);
-                            continue;
-                        }
-
-                        float confidence = Float.parseFloat(updateMatcher.group(2));
-                        float importance = Float.parseFloat(updateMatcher.group(3));
-                        String content = updateMatcher.group(4).trim();
-                        memory.update(item.id, confidence, importance, content);
-                        countOfUpdatedMemory++;
-                    } catch (Exception e) {
-                        logger.warn("解析 UPDATE 指令失败：{}", line, e);
-                    }
-                    continue;
-                }
-
-                Matcher deleteMatcher = DELETE_PATTERN.matcher(line);
-                if (deleteMatcher.matches()) {
-                    try {
-                        int number = Integer.parseInt(deleteMatcher.group(1));
-                        Memory.Item item = memoryIndex.get(number);
-                        if (item == null) {
-                            logger.warn("AI 想删除一个不存在的记忆条目编号: {}", number);
-                            continue;
-                        }
-
-                        memory.delete(item.id);
-                        countOfDeletedMemory++;
-                        memoryIndex.remove(number);
-                    } catch (Exception e) {
-                        logger.warn("解析 DELETE 指令失败：{}", line, e);
-                    }
-                    continue;
-                }
-
-                Matcher newMatcher = NEW_PATTERN.matcher(line);
-                if (newMatcher.matches()) {
-                    try {
-                        float confidence = Float.parseFloat(newMatcher.group(1));
-                        float importance = Float.parseFloat(newMatcher.group(2));
-                        String locId = newMatcher.group(3).trim();
-                        String content = newMatcher.group(4).trim();
-
-                        Memory.Item item = new Memory.Item();
-                        item.confidence = confidence;
-                        item.importance = importance;
-                        item.locationId = locId;
-                        item.content = content;
-
-                        newMemory.add(item);
-                    } catch (Exception e) {
-                        logger.warn("解析 NEW 指令失败：{}", line, e);
-                    }
-                    continue;
-                }
-
-                logger.warn("AI 在构建记忆时输出了不能被识别的格式：{}", line);
+            }
+            for (LeadingPlan.NewMemory addition : plan.additions) {
+                Memory.Item item = new Memory.Item();
+                item.confidence = addition.confidence();
+                item.importance = addition.importance();
+                item.locationId = addition.locationId();
+                item.content = addition.content();
+                newMemory.add(item);
             }
 
             if (!newMemory.isEmpty()) {
@@ -1341,8 +1277,8 @@ public class AIChat extends Law {
             }
 
             logger.info("本次记忆改动：新增 {} 更新 {} 删除 {}", newMemory.size(), countOfUpdatedMemory, countOfDeletedMemory);
-        } catch (IOException e) {
-            logger.error("生成失败", e);
+        } catch (IOException | IllegalArgumentException e) {
+            logger.error("构建记忆失败", e);
         }
     }
 }
