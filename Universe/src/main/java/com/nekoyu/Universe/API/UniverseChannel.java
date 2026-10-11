@@ -39,7 +39,7 @@ public class UniverseChannel {
     private static final Logger logger = LoggerFactory.getLogger(UniverseChannel.class);
     private static final Map<String, WebSocket> clientList = new HashMap<>();
     private static HttpServer httpServer = null;
-    private static final Map<String, File> fileMounting = new HashMap<>();
+    private static final Map<String, File> fileMounting = new ConcurrentHashMap<>();
     private static final Map<String, CachedFile> remoteUrlCachedFile = new ConcurrentHashMap<>();
     private static final Map<String, CachedFile> repostUrlCachedFile = new ConcurrentHashMap<>();
 
@@ -175,7 +175,8 @@ public class UniverseChannel {
                 }
                 return;
             }
-            if (!fileMounting.containsKey(fn)) {
+            File file = fileMounting.get(fn);
+            if (file == null) {
                 String response = """
                         400 Bad Request
                         Served file arg is invalid
@@ -189,7 +190,6 @@ public class UniverseChannel {
                 }
                 return;
             }
-            File file = fileMounting.get(fn);
             if (!file.isFile()) {
                 String response = """
                         500 Internal Server Error
@@ -259,7 +259,11 @@ public class UniverseChannel {
 
     public static URL repostFile(URL url) throws IOException {
         CachedFile cf = remoteUrlCachedFile.get(url.toString());
-        if (cf == null) {
+        if (cf != null && cf.retain()) return cf.outboundUrl;
+        // 已挂载的本地文件直接增加引用，避免从自身 HTTP 接口重复下载。
+        cf = repostUrlCachedFile.get(url.toString());
+        if (cf != null && cf.retain()) return cf.outboundUrl;
+        {
             OkHttpClient client = new OkHttpClient();
             Request req = new Request.Builder().url(url.toString()).build();
             try (var resp = client.newCall(req).execute()) {
@@ -328,6 +332,7 @@ public class UniverseChannel {
                 cf.outboundUrl = new URL(outboundHttpAddress + "/Universe/" + uuid + extension);
                 cf.uuid = uuid.toString();
                 cf.extension = extension;
+                cf.sourceUrl = url.toString();
                 if (!cf.createNewFile()) throw new IOException("Could not create file");
                 try (
                         InputStream in = body.byteStream();
@@ -345,12 +350,46 @@ public class UniverseChannel {
             remoteUrlCachedFile.put(url.toString(), cf);
             repostUrlCachedFile.put(cf.outboundUrl.toString(), cf);
         }
-        cf.ref.incrementAndGet();
+        cf.retain();
         return cf.outboundUrl;
     }
 
+    /** 注册生成的本地文件，由调用方将初始引用交给 FileField 管理。 */
+    public static synchronized URL cacheLocalFile(File file) throws IOException {
+        if (!file.isFile()) throw new IOException("Local cache file does not exist");
+        String source = file.getCanonicalFile().toURI().toString();
+        CachedFile existing = remoteUrlCachedFile.get(source);
+        if (existing != null && existing.retain()) return existing.outboundUrl;
+        String name = file.getName();
+        int dot = name.lastIndexOf('.');
+        String extension = dot >= 0 ? name.substring(dot) : "";
+        CachedFile cf = new CachedFile(file.getAbsolutePath());
+        cf.uuid = UUID.randomUUID().toString();
+        cf.extension = extension;
+        cf.sourceUrl = source;
+        try {
+            cf.outboundUrl = new URL(outboundHttpAddress + "/Universe/" + cf.uuid + extension);
+            if (!("http".equalsIgnoreCase(cf.outboundUrl.getProtocol()) || "https".equalsIgnoreCase(cf.outboundUrl.getProtocol()))
+                    || cf.outboundUrl.getHost().isBlank()) throw new MalformedURLException("HTTP address required");
+        } catch (MalformedURLException error) {
+            throw new IOException("请先配置 Universe 的对外 HTTP 地址", error);
+        }
+        cf.retain();
+        remoteUrlCachedFile.put(source, cf);
+        repostUrlCachedFile.put(cf.outboundUrl.toString(), cf);
+        fileMounting.put(cf.uuid + extension, cf);
+        return cf.outboundUrl;
+    }
+
+    /** 仅当 URL 属于受管文件缓存时增加一次引用。 */
+    public static boolean retainRepost(URL url) {
+        CachedFile cf = repostUrlCachedFile.get(url.toString());
+        return cf != null && cf.retain();
+    }
+
     public static void releaseRepost(URL url) {
-        repostUrlCachedFile.get(url.toString()).release();
+        CachedFile cf = repostUrlCachedFile.get(url.toString());
+        if (cf != null) cf.release();
     }
 
     public static Collection<WebSocket> listWebSocketConnections() {
@@ -405,13 +444,23 @@ public class UniverseChannel {
         String extension;
         String uuid;
         URL outboundUrl;
+        String sourceUrl;
+        private boolean disposed;
 
-        public void release() {
+        synchronized boolean retain() {
+            if (disposed) return false;
+            ref.incrementAndGet();
+            return true;
+        }
+
+        public synchronized void release() {
+            if (disposed) return;
             released.incrementAndGet();
             if (released.get() >= ref.get()) {
-                remoteUrlCachedFile.remove(outboundUrl.toString());
-                repostUrlCachedFile.remove(outboundUrl.toString());
-                fileMounting.remove(uuid + extension);
+                disposed = true;
+                if (sourceUrl != null) remoteUrlCachedFile.remove(sourceUrl, this);
+                repostUrlCachedFile.remove(outboundUrl.toString(), this);
+                fileMounting.remove(uuid + extension, this);
                 if (delete()) logger.debug("已清理 {} 的缓存", outboundUrl);
             }
         }

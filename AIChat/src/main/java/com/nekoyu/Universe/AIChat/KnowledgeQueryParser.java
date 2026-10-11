@@ -11,7 +11,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 
-/** Validates model-generated retrieval questions before they are embedded and indexed. */
+/** 在生成向量并写入索引之前，校验模型生成的检索问题。 */
 final class KnowledgeQueryParser {
     private static final Set<Integer> TTL_DAYS = Set.of(7, 30, 90, 180, 365, 730, 3650);
 

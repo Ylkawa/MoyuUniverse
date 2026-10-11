@@ -2,7 +2,7 @@ package com.nekoyu.Universe.AIChat.Web.Amap;
 
 import java.util.List;
 
-/** Typed Web Service v3 responses; optional scalar fields may be null. */
+/** 高德 Web 服务 v3 的类型化响应；可选标量字段可以为 null。 */
 public final class Responses {
     private Responses() {}
 

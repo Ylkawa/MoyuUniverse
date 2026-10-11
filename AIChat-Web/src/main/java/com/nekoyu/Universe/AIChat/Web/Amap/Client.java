@@ -14,7 +14,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.function.LongSupplier;
 
-/** Fixed Amap endpoints, typed parsing, bounded shared cache and request coalescing. */
+/** 使用固定的高德接口、类型化解析、有容量限制的共享缓存，并合并重复请求。 */
 public final class Client {
     private static final Set<String> ENDPOINTS = Set.of(
             "config/district", "weather/weatherInfo", "geocode/geo", "geocode/regeo",
@@ -43,7 +43,7 @@ public final class Client {
         this(apiKey, network(proxy), requestsPerMinute, () -> TimeUnit.NANOSECONDS.toMillis(System.nanoTime()));
     }
 
-    /** Injectable transport/time for offline checks, with the same URL and parsing path. */
+    /** 支持注入传输和时间实现以进行离线验证，复用相同的 URL 构造和解析流程。 */
     public Client(String apiKey, Transport transport, int requestsPerMinute, LongSupplier clock) {
         if (apiKey == null || apiKey.isBlank()) throw new IllegalArgumentException("未配置高德 API Key");
         if (requestsPerMinute <= 0) throw new IllegalArgumentException("高德请求限流必须为正数");
@@ -126,7 +126,7 @@ public final class Client {
     private <T extends Responses.Base> T parse(String raw, Class<T> type) throws IOException {
         try {
             JsonObject object = JsonParser.parseString(raw).getAsJsonObject();
-            // Only optional objects are normalized; real list fields remain arrays.
+            // 仅规范化可选对象，实际的列表字段仍保留为数组。
             normalizeObject(object, "route");
             normalizeObject(object, "regeocode");
             if (object.get("regeocode") instanceof JsonObject regeo) normalizeObject(regeo, "addressComponent");
@@ -153,7 +153,7 @@ public final class Client {
         if (value != null && value.isJsonArray() && value.getAsJsonArray().isEmpty()) object.add(field, JsonNull.INSTANCE);
     }
 
-    /** Amap uses [] for absent strings; nonempty arrays are not scalar values. */
+    /** 高德使用 [] 表示缺失的字符串；非空数组不能视为标量值。 */
     private static class OptionalStringAdapter extends TypeAdapter<String> {
         public String read(JsonReader in) throws IOException {
             if (in.peek() == JsonToken.NULL) { in.nextNull(); return null; }

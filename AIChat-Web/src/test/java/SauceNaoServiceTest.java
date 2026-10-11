@@ -3,7 +3,7 @@ import java.io.IOException;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.*;
 
-/** Offline deterministic cache, concurrency and quota checks; no API requests. */
+/** 离线验证缓存、并发和配额行为，结果可重复，不发起 API 请求。 */
 public class SauceNaoServiceTest {
     static final String A = "https://example.com/a", B = "https://example.com/b";
     static SearchResponse response(int status, Integer shortRemaining, Integer longRemaining) {
@@ -94,7 +94,7 @@ public class SauceNaoServiceTest {
                     && System.nanoTime() < deadline) Thread.yield();
             check(follower.get() != null && follower.get().getState() == Thread.State.WAITING,
                     "follower waits on in-flight request before cache exists");
-            // A different URL must fail immediately while the first request is running.
+            // 第一个请求仍在执行时，对不同 URL 的请求必须立即失败。
             check(parallel.search(B).contains("限流"), "no queue for different URL");
             release.countDown();
             check(first.get(5, TimeUnit.SECONDS).contains("未找到")

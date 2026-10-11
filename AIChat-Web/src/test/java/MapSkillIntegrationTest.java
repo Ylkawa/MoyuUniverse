@@ -14,7 +14,7 @@ import java.net.Proxy;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
-/** Native Web registration, skill activation and real ChatContext tool/result loop, offline. */
+/** 离线验证原生 Web 注册、技能激活和实际的 ChatContext 工具调用及结果循环。 */
 public class MapSkillIntegrationTest {
     static void check(boolean condition, String message) { if (!condition) throw new AssertionError(message); }
     public static void main(String[] args) throws Exception {

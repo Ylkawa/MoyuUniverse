@@ -2,7 +2,7 @@ package com.nekoyu.Universe.AIChat;
 
 import java.util.Set;
 
-/** Run directly; no model, Qdrant, or database is needed. */
+/** 可直接运行，无需模型、Qdrant 或数据库。 */
 public class LeadingPlanTest {
     public static void main(String[] args) {
         String json = """
@@ -47,13 +47,13 @@ public class LeadingPlanTest {
             LeadingPlan.parseMemory("NEW 0.9 0.8 [user:1]: fact", Set.of("user:1"), Set.of());
             throw new AssertionError("legacy memory commands were accepted");
         } catch (IllegalArgumentException expected) {
-            // Legacy text must not reach memory writes.
+            // 旧格式文本不能用于记忆写入。
         }
         try {
             LeadingPlan.parse("{\"memory_queries\":[]}", Set.of(), Set.of());
             throw new AssertionError("missing fields were accepted");
         } catch (IllegalArgumentException expected) {
-            // Invalid plans must have no effects or queries.
+            // 无效计划不得产生副作用或发起查询。
         }
         System.out.println("LeadingPlanTest passed");
     }

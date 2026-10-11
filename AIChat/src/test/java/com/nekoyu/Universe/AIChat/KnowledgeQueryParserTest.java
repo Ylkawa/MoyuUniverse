@@ -2,7 +2,7 @@ package com.nekoyu.Universe.AIChat;
 
 import java.util.List;
 
-/** Run directly; does not require a model, MySQL, or Qdrant. */
+/** 可直接运行，无需模型、MySQL 或 Qdrant。 */
 public class KnowledgeQueryParserTest {
     public static void main(String[] args) {
         String json = """
@@ -24,7 +24,7 @@ public class KnowledgeQueryParserTest {
             KnowledgeQueryParser.parse("问题|结论|0.9|30", 2);
             throw new AssertionError("old delimited output was accepted");
         } catch (IllegalArgumentException expected) {
-            // Malformed model output cannot reach the index.
+            // 格式错误的模型输出不能写入索引。
         }
         System.out.println("KnowledgeQueryParserTest passed");
     }

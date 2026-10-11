@@ -21,7 +21,7 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 
-/** Run directly; the interceptor supplies SSE without contacting a model API. */
+/** 可直接运行；拦截器提供 SSE 响应，无需调用模型 API。 */
 public class ResponseFormatTest {
     private static final Gson GSON = new Gson();
 
@@ -54,7 +54,7 @@ public class ResponseFormatTest {
                 "explicit strict false is preserved");
 
         List<LLMFunction> tools = List.of(LLMFunction.builder().name("lookup").parameters(oldSchema).build());
-        // Include a space inside a JSON string and standalone formatting whitespace.
+        // 同时包含 JSON 字符串内部的空格和独立的格式化空白字符。
         String[] pieces = {"", "{\"answer\":\"hello", " ", "world\",", "\n", "\t",
                 "\"tags\":[\"a\"],\"details\":{\"count\":1}}"};
         for (String adaptation : List.of("none", "dashscope", "gpt")) {
@@ -76,7 +76,7 @@ public class ResponseFormatTest {
             check(structuredBody.get("tool_choice").getAsString().equals("none"), "tool_choice is preserved");
             check(structured.jsonSchema.schema == schema, "reuse the supplied JsonSchema instance");
         }
-        // The transport must return even invalid/truncated JSON verbatim for the caller to handle.
+        // 传输层必须原样返回无效或被截断的 JSON，由调用方处理。
         invoke("none", structured, null, new String[]{"{\"answer\":", " "});
         System.out.println("ResponseFormatTest passed");
     }

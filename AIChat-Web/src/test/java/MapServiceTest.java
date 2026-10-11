@@ -8,7 +8,7 @@ import java.util.Map;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.*;
 
-/** Offline URL, parsing, ambiguity, cache, limit and concurrency acceptance checks. */
+/** 离线验证 URL、解析、歧义处理、缓存、限流和并发行为。 */
 public class MapServiceTest {
     static final String KEY = "secret-test-key";
     static final String HANGZHOU = "{\"status\":\"1\",\"infocode\":\"10000\",\"count\":\"1\",\"districts\":[{\"name\":\"杭州市\",\"adcode\":\"330100\",\"level\":\"city\",\"center\":\"120.15507,30.274084\",\"districts\":[]}]}";

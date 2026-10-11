@@ -1,8 +1,8 @@
 package com.nekoyu.Universe.API.MessageChannel.MessageField;
 
 import com.nekoyu.Universe.API.UniverseChannel;
-import com.nekoyu.Universe.Universe;
 
+import java.io.File;
 import java.io.IOException;
 import java.lang.ref.Cleaner;
 import java.net.URL;
@@ -16,8 +16,9 @@ public class FileField extends MsgField {
         private URL url;
         private boolean reposted = false;
 
-        State(URL url) {
+        State(URL url, boolean reposted) {
             this.url = url;
+            this.reposted = reposted;
         }
 
         void update(URL newUrl, boolean reposted) {
@@ -26,8 +27,9 @@ public class FileField extends MsgField {
         }
 
         @Override
-        public void run() {
+        public synchronized void run() {
             if (reposted) {
+                reposted = false;
                 UniverseChannel.releaseRepost(url);
             }
         }
@@ -39,24 +41,37 @@ public class FileField extends MsgField {
     public FileField(URL url) {
         super.type = "file";
 
-        this.state = new State(url);
+        this.state = new State(url, UniverseChannel.retainRepost(url));
+        this.cleanable = cleaner.register(this, state);
+    }
+
+    /** 将本地文件交由 repost() 使用的缓存和 Cleaner 管理。 */
+    public FileField(File file) throws IOException {
+        super.type = "file";
+        this.state = new State(UniverseChannel.cacheLocalFile(file), true);
         this.cleanable = cleaner.register(this, state);
     }
 
     public URL getUrl() {
-        return state.url;
+        synchronized (state) {
+            return state.url;
+        }
     }
 
     public void setUrl(URL url) {
-        state.url = url;
-        state.update(url, state.reposted);
+        synchronized (state) {
+            if (state.url.toString().equals(url.toString())) return;
+            boolean retained = UniverseChannel.retainRepost(url);
+            if (state.reposted) UniverseChannel.releaseRepost(state.url);
+            state.update(url, retained);
+        }
     }
 
     public void repost() throws IOException {
-        if (state.reposted) return;
-        URL newUrl = UniverseChannel.repostFile(state.url);
-        state.url = newUrl;
-        state.update(newUrl, true);
+        synchronized (state) {
+            if (state.reposted) return;
+            state.update(UniverseChannel.repostFile(state.url), true);
+        }
     }
 
     @Override

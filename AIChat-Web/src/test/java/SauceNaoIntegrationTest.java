@@ -15,7 +15,7 @@ import java.net.*;
 import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
 
-/** Runs registration and the real ChatContext tool loop with an offline model/query. */
+/** 使用离线模型和查询验证注册流程及实际的 ChatContext 工具调用循环。 */
 public class SauceNaoIntegrationTest {
     static void check(boolean value, String message) { if (!value) throw new AssertionError(message); }
     public static void main(String[] args) throws Exception {
@@ -58,7 +58,7 @@ public class SauceNaoIntegrationTest {
             check(url.equals(SauceNaoServiceTest.A), "query receives resolved URL");
             searches.incrementAndGet(); return SauceNaoServiceTest.response(0, 3, 99);
         }, 4, 100);
-        // Replace only the network callback; exercise the registered tool through real assistant loading/runTurn.
+        // 仅替换网络回调，通过实际的助手加载和 runTurn 流程验证已注册的工具。
         tool.callback = (LLMFunction.SyncCallback) json -> new Message(service.search(json.getAsJsonObject().get("URL").getAsString()));
         for (String quote : List.of("<quote:1>", "<quote:999>", "<quote:999999999999999>")) {
             AtomicInteger rounds = new AtomicInteger();

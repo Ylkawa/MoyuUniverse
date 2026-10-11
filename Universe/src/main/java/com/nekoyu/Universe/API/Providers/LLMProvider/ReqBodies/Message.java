@@ -2,6 +2,7 @@ package com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies;
 
 import com.nekoyu.Universe.API.MessageChannel.MFChain;
 import com.nekoyu.Universe.API.MessageChannel.MessageField.ImageField;
+import com.nekoyu.Universe.API.MessageChannel.MessageField.FileField;
 import com.nekoyu.Universe.API.MessageChannel.MessageField.MsgField;
 import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.ContentPiece.ContentPiece;
 import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.ContentPiece.ImageUrlPiece;
@@ -17,6 +18,8 @@ public class Message {
     public String reasoning_content;
     /** 工具回调返回 true 表示该调用为异步未决：该次调用的真实结果稍后通过会话补投 */
     public transient boolean asyncPending;
+    /** 将工具结果写回会话期间持有文件对象，避免缓存被提前清理。 */
+    public transient LinkedList<FileField> retainedFiles = new LinkedList<>();
 
     public Message() {
     }
@@ -28,6 +31,7 @@ public class Message {
     public static Message from(MFChain mfChain) {
         Message message = new Message();
         for (MsgField field : mfChain) {
+            if (field instanceof FileField fileField) message.retainedFiles.add(fileField);
             if (field instanceof ImageField imageField) {
                 message.content.add(new ImageUrlPiece(imageField.getUrl().toString()));
             } else {

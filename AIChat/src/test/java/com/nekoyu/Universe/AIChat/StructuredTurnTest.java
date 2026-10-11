@@ -11,7 +11,7 @@ import com.nekoyu.Universe.API.Providers.LLMProvider.RespBodies.CompletionsRespo
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 
-/** Simulates a tool round and a final answer without a model or database. */
+/** 模拟工具调用轮次和最终回复，无需模型或数据库。 */
 public class StructuredTurnTest {
     private static final String INTERMEDIATE = "{\"answer\":\"checking\",\"sources\":[]}";
     private static final String FINAL = "{\"answer\":\"hello world\",\"sources\":[]}";
@@ -91,7 +91,7 @@ public class StructuredTurnTest {
                     StructuredOutputs.content(response);
                     throw new AssertionError("truncated output was accepted");
                 } catch (IllegalArgumentException expectedFailure) {
-                    // A parseable string with finish_reason=length still cannot enter business writes.
+                    // 即使字符串可以解析，finish_reason=length 的响应也不能用于业务写入。
                 }
             } else {
                 check(LibrarianResult.parse(StructuredOutputs.content(response)).answer().equals("hello world"),

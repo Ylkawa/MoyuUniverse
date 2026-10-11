@@ -9,7 +9,7 @@ import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.Message;
 
 import java.util.List;
 
-/** AIChat's native ON_DEMAND map skill, grouping six map functions. */
+/** AIChat 原生的 ON_DEMAND 地图技能，整合六个地图功能。 */
 public final class MapSkill {
     private MapSkill() {}
 
@@ -98,7 +98,7 @@ public final class MapSkill {
                 .description(description)
                 .parameters(parameters)
                 .syncCallback(args -> {
-                    // Strip ChatContext placeholders and bind the operation to this function.
+                    // 移除 ChatContext 注入的占位字段，并将操作绑定到当前函数。
                     JsonElement query = args;
                     if (args != null && args.isJsonObject()) {
                         JsonObject fields = new JsonObject();

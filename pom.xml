@@ -20,6 +20,7 @@
         <module>openaiadapter</module>
         <module>AIChat-NetTools</module>
         <module>DashScopeAdapter</module>
+        <module>AIChat-ImageEdit</module>
     </modules>
 
     <properties>

@@ -1,6 +1,7 @@
 package com.nekoyu.Universe.API.MessageChannel;
 
 import com.nekoyu.Universe.API.MessageChannel.MessageField.MsgField;
+import com.nekoyu.Universe.API.MessageChannel.MessageField.FileField;
 
 import java.util.*;
 
@@ -13,6 +14,8 @@ public class MCMessage {
     public long time;
     public long id;
     public MFChain messageFields;
+    /** 仅持有文件对象，不序列化为消息内容，也不发送给模型接口。 */
+    public transient List<FileField> retainedFiles = new ArrayList<>();
     public int level = 0;
     public Map<String, Object> metainfo = new HashMap<>();
     public boolean isRecalled = false;

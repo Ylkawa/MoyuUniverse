@@ -20,6 +20,7 @@ import org.slf4j.LoggerFactory;
 
 import java.awt.*;
 import java.io.IOException;
+import java.io.File;
 import java.math.RoundingMode;
 import java.net.URL;
 import java.text.DecimalFormat;
@@ -36,6 +37,11 @@ public class ImageField extends FileField {
 
     public ImageField(URL url) {
         super(url);
+        super.type = "image";
+    }
+
+    public ImageField(File file) throws IOException {
+        super(file);
         super.type = "image";
     }
 

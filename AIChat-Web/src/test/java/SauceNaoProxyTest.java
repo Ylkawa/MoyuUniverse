@@ -17,7 +17,7 @@ public class SauceNaoProxyTest {
                 SauceNaoDemo.parseProxy(invalid);
                 throw new AssertionError("应拒绝无效代理配置");
             } catch (IllegalArgumentException expected) {
-                // expected
+                // 预期抛出此异常。
             }
         }
         System.out.println("SauceNaoProxyTest passed");

@@ -10,7 +10,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
-/** The validated, side-effect-free result of the leading model call. */
+/** 前置模型调用经过校验且不产生副作用的结果。 */
 final class LeadingPlan {
     static final int MAX_QUERIES_PER_STORE = 2;
     private static final Set<String> FIELDS = Set.of("add", "update", "delete", "memory_queries", "knowledge_queries");

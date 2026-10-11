@@ -5,7 +5,7 @@ import com.nekoyu.Universe.AIChat.Web.Amap.MapService;
 import java.net.Proxy;
 import java.util.Scanner;
 
-/** IDE main: AMAP_API_KEY + one MapQuery JSON argument, or interactive JSON input. */
+/** 可在 IDE 中运行 main：配置 AMAP_API_KEY 并传入一个 MapQuery JSON 参数，或交互式输入 JSON。 */
 public class MapDemo {
     public static void main(String[] args) {
         String key = System.getenv("AMAP_API_KEY");

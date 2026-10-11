@@ -569,6 +569,7 @@ public class ChatContext implements Context {
     /** 把 LLM 层的 Message 转换回 MCMessage 写回会话，等价于旧 OpenAIChannel 的写回逻辑 */
     private MCMessage toMCMessage(Message message, String role) {
         MCMessage mcm = new MCMessage();
+        mcm.retainedFiles.addAll(message.retainedFiles);
         mcm.putMetainfo(ROLE, role);
         for (ContentPiece piece : message.content) {
             if (piece instanceof ImageUrlPiece imageUrlPiece) {

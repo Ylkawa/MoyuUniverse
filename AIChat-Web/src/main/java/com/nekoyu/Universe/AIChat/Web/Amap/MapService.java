@@ -11,7 +11,7 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 
-/** One map query dispatcher shared by the map skill; returns compact, sourced text. */
+/** 地图技能共用的查询分发器，返回精简且包含来源的文本。 */
 public final class MapService {
     private static final long MINUTE = 60_000;
     private final Client client;
@@ -123,7 +123,7 @@ public final class MapService {
         List<District> result = items(response.districts).stream().filter(p -> validAdcode(p.adcode))
                 .filter(p -> provinceCode == null || p.adcode.startsWith(provinceCode.substring(0, 2)))
                 .filter(p -> !location.matches("\\d{6}") || location.equals(p.adcode)).toList();
-        // Refuse truncated candidate lists rather than treating the first page as a unique match.
+        // 拒绝使用不完整的候选列表，避免将第一页结果误判为唯一匹配。
         if (number(response.count) > 20) throw new Clarification("匹配地区过多，请提供 province 或更具体的区县名称。");
         return result;
     }
@@ -199,7 +199,7 @@ public final class MapService {
         String origin = required(args, "origin"), destination = required(args, "destination");
         String city = optional(args, "city");
         String mode = choice(args, "travelMode", "driving", "driving", "walking");
-        // Validate both coordinate-shaped inputs before spending requests on address resolution.
+        // 先校验两端形似坐标的输入，再发起地址解析请求。
         if (origin.contains(",")) coordinate(origin);
         if (destination.contains(",")) coordinate(destination);
         String from = resolveCoordinate(origin, city), to = resolveCoordinate(destination, city);

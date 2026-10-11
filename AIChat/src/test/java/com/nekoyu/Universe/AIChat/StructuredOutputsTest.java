@@ -8,7 +8,7 @@ import com.nekoyu.Universe.API.Providers.LLMProvider.RespBodies.CompletionsRespo
 import java.util.List;
 import java.util.Set;
 
-/** Offline output-contract and parser acceptance checks. */
+/** 离线验证输出契约和解析器的验收条件。 */
 public class StructuredOutputsTest {
     public static void main(String[] args) {
         Gson gson = new Gson();
@@ -77,7 +77,7 @@ public class StructuredOutputsTest {
             action.run();
             throw new AssertionError("invalid output was accepted");
         } catch (IllegalArgumentException expected) {
-            // Invalid responses cannot be used as structured business results.
+            // 无效响应不能作为结构化业务结果使用。
         }
     }
 

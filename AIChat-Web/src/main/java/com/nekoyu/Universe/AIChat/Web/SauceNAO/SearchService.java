@@ -6,7 +6,7 @@ import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.LongSupplier;
 
-/** One instance per registered tool, shared by all conversations. No persistent state. */
+/** 每个已注册工具使用一个实例，由所有会话共享，不保存持久化状态。 */
 public final class SearchService {
     @FunctionalInterface
     public interface Query { SearchResponse search(String url) throws IOException; }

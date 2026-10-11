@@ -1,6 +1,6 @@
 package com.nekoyu.Universe.AIChat;
 
-/** Agent-level policy for Function Calling and cross-request async tools. */
+/** 智能体层面的函数调用及跨请求异步工具策略。 */
 public class ToolLoopOptions {
     public static final int DEFAULT_MAX_TOOL_CALLS_PER_TURN = 20;
     public static final int DEFAULT_MAX_TOOL_ROUNDS = 5;

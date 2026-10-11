@@ -848,6 +848,7 @@ public class AIChat extends Law {
 
     private static MCMessage copyTurnMessage(MCMessage src) {
         MCMessage copy = new MCMessage();
+        copy.retainedFiles.addAll(src.retainedFiles);
         for (MsgField field : src.messageFields) copy.messageFields.add(field);
         copy.sender = src.sender;
         copy.sessionId = src.sessionId;
