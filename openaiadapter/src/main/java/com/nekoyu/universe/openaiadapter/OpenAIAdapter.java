@@ -24,6 +24,7 @@ public class OpenAIAdapter extends Law {
                 channel.apikey = cfg.APIKey;
                 channel.defaultModel = cfg.DefaultModel;
                 channel.defaultEmbeddingModel = cfg.DefaultEmbeddingModel;
+                channel.search = cfg.Search;
                 channel.setBaseurl(cfg.BaseUrl);
                 Universe.Providers.put(cfg.ProviderId, channel);
             } catch (FileNotFoundException e) {

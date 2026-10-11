@@ -23,7 +23,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
-import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
@@ -32,6 +31,18 @@ import java.util.regex.Pattern;
  * Only supports streamed outputting and function calling models
  */
 public class OpenAIChannel extends LLMProvider implements Embedding {
+    private static final Pattern BAILIAN_BASE_URL = Pattern.compile(
+            "^https://(?:[^/]+\\.aliyuncs\\.com|maas\\.qianwenaiapi\\.com)(/.*)?$");
+    private static final String SEARCH_SNAPSHOT_SUFFIX = "(?:-(?:\\d{4}-\\d{2}-\\d{2}|\\d{4}))?";
+    // 按聊天型号限制用途，数字版本不设上限；新版本的实际搜索能力仍由服务端决定。
+    private static final List<Pattern> BAILIAN_SEARCH_MODELS = List.of(
+            Pattern.compile("^qwen\\d+(?:\\.\\d+)*-(?:max|plus|flash|turbo)"
+                    + "(?:-(?:latest|preview|character))?" + SEARCH_SNAPSHOT_SUFFIX + "$"),
+            Pattern.compile("^qwen-(?:max|plus|flash|turbo)"
+                    + "(?:-(?:latest|preview|character))?" + SEARCH_SNAPSHOT_SUFFIX + "$"),
+            Pattern.compile("^deepseek-(?:v|r)\\d+(?:\\.\\d+)*"
+                    + "(?:-(?:pro|flash|exp))?" + SEARCH_SNAPSHOT_SUFFIX + "$"));
+
     Logger logger = null;
     OkHttpClient client;
     Gson gson;
@@ -39,6 +50,7 @@ public class OpenAIChannel extends LLMProvider implements Embedding {
     String baseurl;
     String defaultModel;
     String defaultEmbeddingModel;
+    boolean search = false;
     String speciallyAdaptation = null; // 特调选项
     public OpenAIChannel() {
         client = new OkHttpClient.Builder()
@@ -154,12 +166,14 @@ public class OpenAIChannel extends LLMProvider implements Embedding {
 
     /** 构建 OpenAI 兼容请求体（含 dashscope / gpt 特调），并把中性工具列表装入请求 */
     private OpenAICompletionsRequest buildRequest(String model, List<LLMFunction> llmFunctions, CompletionsRequest completionsRequest) {
+        String effectiveModel = model != null ? model : defaultModel;
         OpenAICompletionsRequest cr;
         switch (speciallyAdaptation) {
             case "dashscope" -> {
                 AliyunBailianReq bailian = new AliyunBailianReq();
                 bailian.stream_options.put("include_usage", true);
                 if (completionsRequest.enable_thinking) bailian.enable_thinking = true;
+                if (search && supportsBailianSearch(effectiveModel)) bailian.enable_search = true;
                 cr = bailian;
             }
             case "gpt" -> {
@@ -169,8 +183,7 @@ public class OpenAIChannel extends LLMProvider implements Embedding {
             }
             default -> cr = new OpenAICompletionsRequest();
         }
-        if (model != null) cr.model = model;
-        else cr.model = defaultModel;
+        cr.model = effectiveModel;
         if (completionsRequest != null) cr.response_format = completionsRequest.responseFormat;
         if (llmFunctions != null) cr.tools.addAll(llmFunctions);
         if (cr.tools.isEmpty()) cr.tools = null;
@@ -178,6 +191,14 @@ public class OpenAIChannel extends LLMProvider implements Embedding {
         if (cr.tools != null && completionsRequest != null && completionsRequest.toolChoice != null)
             cr.tool_choice = completionsRequest.toolChoice;
         return cr;
+    }
+
+    private static boolean supportsBailianSearch(String model) {
+        if (model == null) return false;
+        for (Pattern pattern : BAILIAN_SEARCH_MODELS) {
+            if (pattern.matcher(model).matches()) return true;
+        }
+        return false;
     }
 
     /** 序列化请求体，并把中性层的 LLMFunction 列表装进 OpenAI 的 {"type":"function","function":{...}} 外壳 */
@@ -198,9 +219,7 @@ public class OpenAIChannel extends LLMProvider implements Embedding {
 
     public void setBaseurl(String baseurl) {
         this.baseurl = baseurl;
-        Pattern pattern = Pattern.compile("^https://[^/]+\\.aliyuncs\\.com(/.*)?$");
-        Matcher matcher = pattern.matcher(baseurl);
-        if (matcher.find()) {
+        if (BAILIAN_BASE_URL.matcher(baseurl).matches()) {
             speciallyAdaptation = "dashscope";
             logger.debug("识别到百炼API，启用百炼特殊适配");
             return;
