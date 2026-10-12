@@ -99,7 +99,7 @@ public class Web extends AIChatPlugin {
 
         var dst = LLMFunction.builder()
                 .name("WebSearch")
-                .description("全网搜索内容，仅当用户要求或者要回答的内容具有时效性时使用")
+                .description("搜索互联网信息。用户明确要求搜索、信息具有时效性、现有证据不足、需要核实不确定事实或查找原始来源时使用。搜索词应包含已知主体和必要的版本、平台或时间范围。结果摘要不等于页面全文，不得声称已读取未访问的页面。")
                 .parameters(JsonSchema.object()
                         .property("搜索词", JsonSchema.string().description("要搜索的关键词"))
                         .required("搜索词"))
@@ -112,7 +112,9 @@ public class Web extends AIChatPlugin {
         LLMFunction visitUrl = LLMFunction.builder()
                 .name("VisitWebPage")
                 .description("""
-                        获取部分受支持的网页中的信息（内容会被精简）仅支持哔哩哔哩视频和用户空间、YouTube视频、Wikipedia词条、萌娘百科词条、Biligame Wiki词条、游民星空Handbook、米游社文章，访问其他链接会被拒绝""")
+                        获取部分受支持的网页中的信息（内容会被精简）仅支持哔哩哔哩视频和用户空间、YouTube视频、Wikipedia词条、萌娘百科词条、Biligame Wiki词条、游民星空Handbook、米游社文章，访问其他链接会被拒绝。
+                        仅根据实际返回的内容回答；抓取失败或链接不受支持时说明限制，不得声称已读取页面，也不得根据标题或网址补写正文。
+                        """)
                 .parameters(JsonSchema.object()
                         .property("URL", JsonSchema.string().description("要访问的网页链接"))
                         .required("URL"))
