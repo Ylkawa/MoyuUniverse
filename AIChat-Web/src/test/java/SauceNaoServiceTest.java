@@ -22,7 +22,7 @@ public class SauceNaoServiceTest {
         AtomicInteger calls = new AtomicInteger();
         SearchService.Query query = url -> { calls.incrementAndGet(); return response(0, 3, 99); };
         SearchService cache = new SearchService(query, 1000, 1000, 2, 100, clock::get);
-        check(cache.search("<quote:1>").contains("参数错误"), "unresolved reference");
+        check(cache.search("<ref id='1'/>").contains("参数错误"), "unresolved reference");
         check(cache.search("https://user:pass@example.com/a").contains("参数错误"), "credentials rejected");
         check(calls.get() == 0, "invalid input spends no quota");
         check(cache.search(A).contains("未找到匹配来源"), "empty result");

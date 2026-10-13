@@ -1,0 +1,15 @@
+<graph type="relation" directed="false" title="图表能力 · 数据与服务关系">
+  <node id="agent" label="主助手" icon="messages"/>
+  <node id="decoupler" label="Graph Decoupler" icon="code"/>
+  <node id="embedding" label="图标向量模型" icon="search"/>
+  <node id="qdrant" label="Qdrant 图标索引" icon="database"/>
+  <node id="java2d" label="Java2D 渲染器" icon="image"/>
+  <node id="mfchain" label="MFChain 消息链" icon="cloud"/>
+  <edge from="agent" to="decoupler" label="指定 type 与 XML 内容"/>
+  <edge from="decoupler" to="embedding" label="仅发送 icon 描述"/>
+  <edge from="embedding" to="qdrant" label="文本与图标共用向量空间"/>
+  <edge from="decoupler" to="qdrant" label="检索相似图标"/>
+  <edge from="decoupler" to="java2d" label="GraphSpec 与匹配结果"/>
+  <edge from="java2d" to="mfchain" label="PNG → ImageField"/>
+  <edge from="decoupler" to="mfchain" label="返回完整图片序列"/>
+</graph>

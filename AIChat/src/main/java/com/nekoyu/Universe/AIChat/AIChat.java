@@ -40,8 +40,6 @@ import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.jar.JarFile;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import java.util.stream.Stream;
 import java.util.zip.ZipEntry;
 
@@ -50,10 +48,11 @@ public class AIChat extends Law {
     public static final int TOPIC_TIMEOUT = 20;
     static Logger logger = LoggerFactory.getLogger(AIChat.class);
     static Multimap<String, LLMFunction> llmFunctions = ArrayListMultimap.create();
-    static Map<String, MarkDecoupler> markDecouplers = new HashMap<>();
+    static Map<String, MarkDecoupler> markDecouplers = new ConcurrentHashMap<>();
     List<SessionConfig> configs = new ArrayList<>();
     List<AIChatPlugin> aiChatPlugins = new ArrayList<>();
     Config globalCfg;
+    private com.nekoyu.Universe.AIChat.graph.GraphRuntime graphRuntime;
     Map<String, Topic> activatingTopics = new ConcurrentHashMap<>();
     @Nullable
     Memory memory = null;
@@ -85,7 +84,12 @@ public class AIChat extends Law {
     }
 
     public static void registerMarkDecoupler(String toolName, MarkDecoupler markDecoupler) {
-        markDecouplers.put(toolName, markDecoupler);
+        XmlMarks.requireName(toolName);
+        markDecouplers.put(toolName, Objects.requireNonNull(markDecoupler, "markDecoupler"));
+    }
+
+    public static void registerMarkDecoupler(String toolName, MarkDecoupler.Form form, MarkDecoupler markDecoupler) {
+        registerMarkDecoupler(toolName, MarkDecoupler.withForm(form, markDecoupler));
     }
 
     public static String formatTimestamp(long ts) {
@@ -313,13 +317,15 @@ public class AIChat extends Law {
             }
         } else logger.warn("没有配置 SubAgent，此特性将禁用");
 
-        registerMarkDecoupler("at", args -> {
+        registerMarkDecoupler("at", element -> {
+            String args = XmlMarks.requiredAttribute(element, "target");
             MFChain chain = new MFChain();
             chain.add(new AtField(MessageChannelManager.getSession(args)));
             return chain;
         });
 
-        registerMarkDecoupler("reply", args -> {
+        registerMarkDecoupler("reply", element -> {
+            String args = XmlMarks.requiredAttribute(element, "to");
             MFChain chain = new MFChain();
             chain.add(new ReplyField(args));
             return chain;
@@ -397,20 +403,47 @@ public class AIChat extends Law {
     }
 
     private void loadInternalMarkDecoupler() {
-        markDecouplers.put("emoji", args -> {
+        markDecouplers.put("emoji", element -> {
+            String args = XmlMarks.requiredAttribute(element, "name");
             MFChain result = new MFChain();
             if (emojisCollect.get(args).isEmpty()) {
                 result.add(new TextField("[" + args + "]"));
             } else {
                 try {
                     StickerField e = new StickerField(new URL(UniverseChannel.getOutboundHttpAddress() + "/AIChat/emoji/" + args));
-                    e.description = "<emoji:" + args + ">";
+                    e.description = XmlMarks.marker("emoji", "name", args);
                     result.add(e);
                 } catch (MalformedURLException ignored) {
                 }
             }
             return result;
         });
+        loadGraphDecoupler();
+    }
+
+    private void loadGraphDecoupler() {
+        if (graphRuntime != null) {
+            markDecouplers.remove("graph", graphRuntime.decoupler());
+            SkillRegistry.getAll().remove(graphRuntime.skill().id, graphRuntime.skill());
+            graphRuntime.close(); graphRuntime = null;
+        }
+        var settings = globalCfg == null || globalCfg.Graph == null
+                ? new com.nekoyu.Universe.AIChat.graph.GraphSettings() : globalCfg.Graph;
+        if (!settings.enabled) return;
+        try {
+            graphRuntime = com.nekoyu.Universe.AIChat.graph.GraphRuntime.open(settings, () -> {
+                if (globalCfg == null || globalCfg.Qdrant == null) throw new IOException("Graph icon matching requires Qdrant configuration");
+                var config = globalCfg.Qdrant;
+                var builder = io.qdrant.client.QdrantGrpcClient.newBuilder(config.address, config.port, config.encryptedConnection);
+                if (config.secretKey != null && !config.secretKey.isBlank()) builder.withApiKey(config.secretKey);
+                return new io.qdrant.client.QdrantClient(builder.build());
+            });
+            registerMarkDecoupler("graph", graphRuntime.decoupler());
+            SkillRegistry.register(graphRuntime.skill());
+            logger.info("Graph decoupler ready: list, compare, timeline, tree, flow, relation");
+        } catch (IOException | RuntimeException e) {
+            logger.error("Graph decoupler initialization failed; graph XML will remain as text", e);
+        }
     }
 
     private void loadSessionCfg(File configDic) {
@@ -776,14 +809,11 @@ public class AIChat extends Law {
             // 接收响应 tokens
             StringBuilder replyTokens = new StringBuilder();
             assistant.completions(outputs -> {
-                String[] split = outputs.split("\n\n", 2); // 每一次接收够一段就回复一次消息
-                if (split.length > 1) {
-                    replyTokens.append(split[0]);
-                    if (!replyTokens.isEmpty()) mcm.reply(decoupleMark(replyTokens.toString()));
-                    replyTokens.setLength(0);
-                    replyTokens.append(split[1]);
-                } else {
-                    replyTokens.append(split[0]);
+                replyTokens.append(outputs);
+                int end;
+                while ((end = XmlMarks.paragraphEnd(replyTokens.toString())) >= 0) {
+                    if (end > 0) mcm.reply(decoupleMark(replyTokens.substring(0, end)));
+                    replyTokens.delete(0, end + 2);
                 }
             });
             if (!replyTokens.isEmpty()) mcm.reply(decoupleMark(replyTokens.toString()));
@@ -909,6 +939,11 @@ public class AIChat extends Law {
 
     @Override
     public void stop() {
+        if (graphRuntime != null) {
+            markDecouplers.remove("graph", graphRuntime.decoupler());
+            SkillRegistry.getAll().remove(graphRuntime.skill().id, graphRuntime.skill());
+            graphRuntime.close(); graphRuntime = null;
+        }
         for (var plug : aiChatPlugins) {
             plug.onDisable();
         }
@@ -917,37 +952,26 @@ public class AIChat extends Law {
 
     public MFChain decoupleMark(String stringWithMark) {
         MFChain result = new MFChain();
-
-        Matcher matcher = Pattern.compile("<(?<command>\\w+):(?<args>[^>]+)>").matcher(stringWithMark);
-
         int last = 0;
-
-        while (matcher.find()) {
-            // 处理前面的文本
-            if (matcher.start() > last) {
-                String text = stringWithMark.substring(last, matcher.start());
-                result.add(new TextField(text));
-            }
-
-            // 处理 command
-            MarkDecoupler markDecoupler = markDecouplers.get(matcher.group("command"));
+        for (XmlMarks.Span span : XmlMarks.scan(stringWithMark)) {
+            if (!span.complete() || span.name().isEmpty()) continue;
+            MarkDecoupler decoupler = markDecouplers.get(span.name());
+            if (decoupler == null) continue;
+            String raw = stringWithMark.substring(span.start(), span.end());
+            MFChain decoded;
             try {
-                result.addAll(
-                        markDecoupler.process(matcher.group("args"))
-                );
+                if (!decoupler.form().accepts(span.selfClosing())) continue;
+                decoded = decoupler.process(XmlMarks.parse(raw));
+                if (decoded == null) throw new IllegalStateException("Decoupler returned null");
             } catch (Exception e) {
-                logger.error("Decoupler process error", e);
+                logger.error("Decoupler process error for {}", span.name(), e);
+                continue;
             }
-
-            // 更新游标
-            last = matcher.end();
+            if (span.start() > last) result.add(new TextField(stringWithMark.substring(last, span.start())));
+            result.addAll(decoded);
+            last = span.end();
         }
-
-        // 处理最后剩余文本
-        if (last < stringWithMark.length()) {
-            result.add(new TextField(stringWithMark.substring(last)));
-        }
-
+        if (last < stringWithMark.length()) result.add(new TextField(stringWithMark.substring(last)));
         return result;
     }
 

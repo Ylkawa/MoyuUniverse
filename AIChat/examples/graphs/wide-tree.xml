@@ -1,0 +1,13 @@
+<graph type="tree" title="AIChat · 宽树的父子关系">
+  <node id="aichat" label="AIChat 助手" icon="messages">
+    <node id="session" label="会话管理" icon="messages">
+      <node id="context" label="上下文与历史" icon="clipboard"/>
+    </node>
+    <node id="graph" label="图表处理" icon="chart">
+      <node id="parser" label="XML 结构与绘图预检" icon="code"/>
+      <node id="icons" label="图标语义匹配" icon="search"/>
+      <node id="renderer" label="Java2D PNG 渲染" icon="image"/>
+      <node id="publish" label="图片加入 MFChain" icon="cloud"/>
+    </node>
+  </node>
+</graph>

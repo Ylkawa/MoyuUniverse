@@ -37,8 +37,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.WeakHashMap;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
@@ -59,10 +57,9 @@ public class ChatContext implements Context {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(ChatContext.class);
     private static final Gson GSON = new Gson();
-    private static final Pattern IMAGE_QUOTE = Pattern.compile("<quote:([0-9]+)>");
     private static final String IMAGE_QUOTE_PROMPT =
-            "每张图片后面的 <quoteId:N> 是该图片的引用编号。需要向工具传递图片时，" +
-            "在工具参数的字符串值中使用 <quote:N>，执行前会自动替换成该图片的 URL。" +
+            "每张图片后面的 <ReferenceId=N> 是该图片的引用编号。需要向工具传递图片时，" +
+            "在工具参数的字符串值中使用 <ref id=\"N\"/>，执行前会自动替换成该图片的 URL。" +
             "只能引用当前上下文中实际图片后的编号，不要自行编造编号。";
 
     /** ImageField 未覆盖 equals/hashCode，因此这里按图片对象身份分配编号，且不阻止图片回收。 */
@@ -470,22 +467,28 @@ public class ChatContext implements Context {
             return resolved;
         }
         if (!value.isJsonPrimitive() || !value.getAsJsonPrimitive().isString()) return value.deepCopy();
-        Matcher matcher = IMAGE_QUOTE.matcher(value.getAsString());
+        String text = value.getAsString();
         StringBuilder resolved = new StringBuilder();
-        while (matcher.find()) {
+        int last = 0;
+        for (XmlMarks.Span span : XmlMarks.scan(text)) {
+            if (!span.name().equals("ref")) continue;
+            String raw = text.substring(span.start(), span.end());
             int id;
             try {
-                id = Integer.parseInt(matcher.group(1));
-            } catch (NumberFormatException e) {
-                throw new IllegalArgumentException("图片引用编号超出 int 范围: " + matcher.group());
+                if (!span.selfClosing()) throw new IllegalArgumentException("图片引用必须为自闭合元素");
+                String number = XmlMarks.requiredAttribute(XmlMarks.parse(raw), "id");
+                if (!number.matches("[0-9]+")) throw new IllegalArgumentException("图片引用编号必须为正整数");
+                id = Integer.parseInt(number);
+                if (id <= 0) throw new IllegalArgumentException("图片引用编号必须为正整数");
+            } catch (Exception e) {
+                throw new IllegalArgumentException("无效图片引用: " + raw, e);
             }
             String url = quotes.get(id);
-            if (url == null) {
-                throw new IllegalArgumentException("图片引用不存在或已不在当前上下文中: " + matcher.group());
-            }
-            matcher.appendReplacement(resolved, Matcher.quoteReplacement(url));
+            if (url == null) throw new IllegalArgumentException("图片引用不存在或已不在当前上下文中: " + raw);
+            resolved.append(text, last, span.start()).append(url);
+            last = span.end();
         }
-        matcher.appendTail(resolved);
+        resolved.append(text, last, text.length());
         return new JsonPrimitive(resolved.toString());
     }
 
@@ -524,7 +527,7 @@ public class ChatContext implements Context {
                     String url = imageField.getUrl().toString();
                     int quoteId = imageQuotes.idFor(imageField);
                     message.content.add(new ImageUrlPiece(url));
-                    message.content.add(new TextPiece("<quoteId:" + quoteId + ">"));
+                    message.content.add(new TextPiece("<ReferenceId=" + quoteId + ">"));
                     quotes.put(quoteId, url);
                 } else {
                     message.content.add(new TextPiece(mf.toString()));

@@ -12,23 +12,23 @@
 
 未配置技能白名单时会自动发现。配置了 `availableSkills` 白名单时，添加
 `image_edit`；需要始终加载时加入会话的 `skills`。
-聊天附件引用需要会话启用 `nativeImage`，通过 `<quote:N>` 传入工具，
+聊天附件引用需要会话启用 `nativeImage`，通过 `<ref id="N"/>` 传入工具，
 引用替换由已有 ChatContext 处理。也支持 HTTP/HTTPS 图片直链。
 
 裁切示例（保留原图正中间一半，所有位置和尺寸均为原图百分比）：
 
 ```json
-{"source_image":"<quote:1>","top_left_position":{"x":25,"y":25},"width":50,"height":50}
+{"source_image":"<ref id=\"1\"/>","top_left_position":{"x":25,"y":25},"width":50,"height":50}
 ```
 
 旋转示例（顺时针90度，负数为逆时针）：
 
 ```json
-{"source_image":"<quote:1>","angle":90}
+{"source_image":"<ref id=\"1\"/>","angle":90}
 ```
 
 结果为 PNG，保持透明度；任意角度旋转扩展画布避免截断。
-工具结果为文字，包含 URL、实际像素尺寸和 `<image_edit:编号>` 发送标记。
+工具结果为文字，包含 URL、实际像素尺寸和 `<image_edit id="编号"/>` 发送标记。
 助手在最终回复中原样使用该标记，插件的 MarkDecoupler 转换为 ImageField，
 由原有消息通道发送图片。连续编辑可使用上一步返回的 URL。
 

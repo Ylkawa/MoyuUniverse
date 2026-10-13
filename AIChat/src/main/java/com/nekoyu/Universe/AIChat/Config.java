@@ -14,6 +14,7 @@ public class Config {
     KnowledgeStore KnowledgeStore = null;
     Librarian Librarian = null;
     SkillConfig Skills = null;
+    com.nekoyu.Universe.AIChat.graph.GraphSettings Graph = new com.nekoyu.Universe.AIChat.graph.GraphSettings();
 
     public static class SkillConfig {
         String[] defaultSkills;

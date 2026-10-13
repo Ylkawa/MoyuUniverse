@@ -122,9 +122,9 @@ public class Topic {
                 } else if (mf instanceof TextField) {
                     oaiM.messageFields.add(mf);
                 } else if (mf instanceof AtField atField) {
-                    oaiM.messageFields.add(new TextField("<at:" + atField.target.getLocationId() + ">"));
+                    oaiM.messageFields.add(new TextField(XmlMarks.marker("at", "target", atField.target.getLocationId())));
                 } else if (mf instanceof ReplyField replyField) {
-                    oaiM.messageFields.add(new TextField("<reply:" + replyField.reply + ">"));
+                    oaiM.messageFields.add(new TextField(XmlMarks.marker("reply", "to", replyField.reply)));
                 } else {
                     oaiM.messageFields.add(new TextField(mf.toString()));
                 }

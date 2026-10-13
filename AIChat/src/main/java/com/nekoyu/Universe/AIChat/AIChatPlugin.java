@@ -42,6 +42,10 @@ public abstract class AIChatPlugin {
         AIChat.registerMarkDecoupler(toolName, markDecoupler);
     }
 
+    public void registerMarkDecoupler(String toolName, MarkDecoupler.Form form, MarkDecoupler markDecoupler) {
+        registerMarkDecoupler(toolName, MarkDecoupler.withForm(form, markDecoupler));
+    }
+
     public void registerSkill(Skill skill) {
         SkillRegistry.register(skill);
     }

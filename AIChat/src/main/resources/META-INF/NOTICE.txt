@@ -1,0 +1,5 @@
+AIChat graph rendering uses HarmonyOS Sans SC fonts.
+Copyright 2021 Huawei Device Co., Ltd.
+Licensed under the HarmonyOS Sans Fonts License Agreement.
+Original font files and license: fonts/harmonyos-sans/ in this artifact.
+Official source: https://developer.huawei.com/images/download/general/HarmonyOS-Sans.zip

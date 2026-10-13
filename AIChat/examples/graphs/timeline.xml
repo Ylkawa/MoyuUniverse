@@ -1,0 +1,20 @@
+<graph type="timeline" title="图表功能 · 两周发布里程碑（示例）">
+  <line time="第 1 天" icon="clipboard">明确输入协议
+确定六种 graph type、必填属性和错误处理方式。
+产出：XML 示例、字段约束与验收清单。</line>
+  <line time="第 3 天" icon="code">完成解析与图标接口
+解析成 GraphSpec，仅将 icon 属性用于语义查询。
+产出：解析器、图标资源清单和匹配服务。</line>
+  <line time="第 5 天" icon="image">接入六种图片渲染器
+完成中文换行、图标填充和图表类型路由。
+产出：可直接返回到 MFChain 的 PNG 图片。</line>
+  <line time="第 7 天" icon="check">验证长内容与异常路径
+检查分页、跨页关系、非法引用和失败文件清理。
+产出：端到端测试与六种效果预览。</line>
+  <line time="第 10 天" icon="battery">测量资源占用
+用最大画布、密集节点和并发请求检查内存。
+产出：压力测试报告与部署配置说明。</line>
+  <line time="第 14 天" icon="rocket">小范围发布与反馈
+邀请用户核对图标语义、文字可读性和关系表达。
+产出：问题清单、修订后的样式和使用文档。</line>
+</graph>

@@ -2,6 +2,7 @@ package com.nekoyu.universe.aichat.image_edit;
 
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import com.nekoyu.Universe.AIChat.XmlMarks;
 import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.Message;
 import com.nekoyu.Universe.API.MessageChannel.MessageField.ImageField;
 import okhttp3.OkHttpClient;
@@ -78,7 +79,7 @@ public final class ImageEditService {
             PublishedImage published = publisher.publish(output);
             Message result = new Message("[图片编辑 / " + ("crop".equals(action) ? "裁切" : "旋转") + "]\n"
                     + "处理成功，PNG 尺寸：" + output.getWidth() + "×" + output.getHeight() + " 像素\n"
-                    + "结果 URL：" + published.url() + "\n发送图片：<image_edit:" + published.token() + ">");
+                    + "结果 URL：" + published.url() + "\n发送图片：" + XmlMarks.marker("image_edit", "id", published.token()));
             result.retainedFiles.add(published.image());
             return result;
         } catch (IllegalArgumentException error) {
@@ -125,7 +126,7 @@ public final class ImageEditService {
                     || uri.getHost() == null || uri.getUserInfo() != null)
                 throw new IllegalArgumentException();
         } catch (IllegalArgumentException error) {
-            throw new IllegalArgumentException("source_image 必须为有效 HTTP/HTTPS 图片 URL；聊天图片请使用 <quote:N> 引用");
+            throw new IllegalArgumentException("source_image 必须为有效 HTTP/HTTPS 图片 URL；聊天图片请使用 <ref id=\"N\"/> 引用");
         }
         return source;
     }

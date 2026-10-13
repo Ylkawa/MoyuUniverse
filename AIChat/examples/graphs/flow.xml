@@ -1,0 +1,18 @@
+<graph type="flow" title="Graph Decoupler · 图片返回流程">
+  <node id="input" label="收到 graph 标签" icon="messages"/>
+  <node id="parse" label="解析并校验结构" icon="code"/>
+  <node id="icon_gate" label="是否包含图标？" icon="search"/>
+  <node id="match" label="匹配图标资源" icon="search"/>
+  <node id="render" label="按类型渲染 PNG" icon="image"/>
+  <node id="publish" label="图片加入 MFChain" icon="check"/>
+  <node id="error" label="保留原始 XML" icon="alert"/>
+  <edge from="input" to="parse" label="完整标签"/>
+  <edge from="parse" to="icon_gate" label="结构合法"/>
+  <edge from="parse" to="error" label="格式错误"/>
+  <edge from="icon_gate" to="match" label="有 icon"/>
+  <edge from="icon_gate" to="render" label="无 icon"/>
+  <edge from="match" to="render" label="匹配完成"/>
+  <edge from="match" to="error" label="服务失败"/>
+  <edge from="render" to="publish" label="各页完成"/>
+  <edge from="render" to="error" label="渲染失败"/>
+</graph>

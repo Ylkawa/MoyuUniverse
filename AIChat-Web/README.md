@@ -97,7 +97,7 @@ Web 插件在 `onEnable()` 中先注册工具，随后 AIChat 创建 assistant �
 }
 ```
 
-聊天图片被 ChatContext 标为 `<quoteId:N>`。模型应调用 `{"URL":"<quote:N>"}`（两者语法不同），ChatContext 在 callback 执行前递归替换 JSON 字符串中的引用，工具接收真实 URL。不存在/已移出上下文/超范围的引用在 callback 前失败。也支持 `{"URL":"https://example.com/image.png"}`，不得编造链接。注册不会自动启用所有会话，`nativeImage=false` 时附件不会以此方式进入模型上下文。
+聊天图片被 ChatContext 标为 `<ReferenceId=N>`。模型应调用 `{"URL":"<ref id=\"N\"/>"}`（两者语法不同），ChatContext 在 callback 执行前递归替换 JSON 字符串中的引用，工具接收真实 URL。不存在/已移出上下文/超范围的引用在 callback 前失败。也支持 `{"URL":"https://example.com/image.png"}`，不得编造链接。注册不会自动启用所有会话，`nativeImage=false` 时附件不会以此方式进入模型上下文。
 
 ## 缓存和配额保护
 

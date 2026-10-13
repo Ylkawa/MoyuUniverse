@@ -2,6 +2,7 @@ package com.nekoyu.universe.aichat.image_edit;
 
 import com.nekoyu.Universe.AIChat.AIChat;
 import com.nekoyu.Universe.AIChat.AIChatPlugin;
+import com.nekoyu.Universe.AIChat.XmlMarks;
 import java.nio.file.Path;
 
 public class ImageEdit extends AIChatPlugin {
@@ -17,7 +18,7 @@ public class ImageEdit extends AIChatPlugin {
             registerFunction(function.name, function);
         }
         registerSkill(ImageEditSkill.definition());
-        registerMarkDecoupler("image_edit", outputs::imageMessage);
+        registerMarkDecoupler("image_edit", element -> outputs.imageMessage(XmlMarks.requiredAttribute(element, "id")));
     }
 
     @Override

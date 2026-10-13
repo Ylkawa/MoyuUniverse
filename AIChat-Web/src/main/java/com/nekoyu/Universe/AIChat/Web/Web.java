@@ -167,9 +167,9 @@ public class Web extends AIChatPlugin {
                 sauceClient::search, config.SauceNAOShortLimit, config.SauceNAOLongLimit);
         registerFunction("SauceNAOSearch", LLMFunction.builder()
                 .name("SauceNAOSearch")
-                .description("查询图片来源，返回相似度、作品、作者和来源链接。聊天附件优先使用图片引用 <quote:N>，执行前会替换成图片 URL；也支持用户实际提供的图片直链，不得编造链接。结果为来源候选，相似度不证明角色身份，证据不足时回答无法确认。")
+                .description("查询图片来源，返回相似度、作品、作者和来源链接。聊天附件优先使用图片引用 <ref id=\"N\"/>，执行前会替换成图片 URL；也支持用户实际提供的图片直链，不得编造链接。结果为来源候选，相似度不证明角色身份，证据不足时回答无法确认。")
                 .parameters(JsonSchema.object()
-                        .property("URL", JsonSchema.string().description("聊天图片引用 <quote:N> 或用户提供的 HTTP/HTTPS 图片直链"))
+                        .property("URL", JsonSchema.string().description("聊天图片引用 <ref id=\"N\"/> 或用户提供的 HTTP/HTTPS 图片直链"))
                         .required("URL"))
                 .syncCallback(args -> {
                     try {

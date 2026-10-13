@@ -1,0 +1,26 @@
+package com.nekoyu.Universe.AIChat.graph;
+
+import java.io.IOException;
+import java.util.List;
+import java.util.Objects;
+
+/** Text and image outputs MUST use the same space and preserve input order. */
+public interface IconEmbeddingProvider {
+    record Space(String model, String revision, int dimension) {
+        public Space {
+            if (model == null || model.isBlank() || revision == null || revision.isBlank() || dimension <= 0)
+                throw new IllegalArgumentException("Model, revision and positive dimension are required");
+        }
+    }
+    record Image(String id, String mimeType, byte[] bytes) {
+        public Image {
+            Objects.requireNonNull(id); Objects.requireNonNull(mimeType);
+            bytes = Objects.requireNonNull(bytes).clone();
+            if (bytes.length == 0) throw new IllegalArgumentException("Image is empty");
+        }
+        @Override public byte[] bytes() { return bytes.clone(); }
+    }
+    Space space();
+    List<double[]> embedTexts(List<String> texts) throws IOException;
+    List<double[]> embedImages(List<Image> images) throws IOException;
+}

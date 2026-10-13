@@ -20,15 +20,15 @@ public final class ImageEditSkill {
         skill.toolNames = List.of("ImageEdit_Crop", "ImageEdit_Rotate");
         skill.systemPrompt = """
                 你已激活 image_edit 技能，可裁切和旋转图片。
-                source_image 优先使用聊天附件引用 <quote:N>，执行前会自动替换为图片 URL；
+                source_image 优先使用聊天附件引用 <ref id=\"N\"/>，执行前会自动替换为图片 URL；
                 也接受用户实际提供的 HTTP/HTTPS 图片直链或本技能此前返回的结果 URL，不得编造图片链接。
                 - ImageEdit_Crop：source_image、top_left_position={x,y}、width、height 均必填。
                   坐标原点为左上角，x 向右、y 向下。所有数值都是相对于原图的百分比，允许小数。
                   x、y 范围为 [0,100)，width、height 范围为 (0,100]，x+width 和 y+height 不能超过100。
-                  例如保留正中间一半：{"source_image":"<quote:1>","top_left_position":{"x":25,"y":25},"width":50,"height":50}。
+                  例如保留正中间一半：{"source_image":"<ref id='1'/>","top_left_position":{"x":25,"y":25},"width":50,"height":50}。
                 - ImageEdit_Rotate：source_image、angle 必填。角度单位为度，顺时针为正，逆时针为负，允许小数。
                   旋转会扩展画布保留整张图，新空白区域透明；例如顺时针90度传 angle=90。
-                工具返回 PNG 图片 URL、实际像素尺寸和发送标记 <image_edit:编号>。
+                工具返回 PNG 图片 URL、实际像素尺寸和发送标记 <image_edit id=\"编号\"/>。
                 最终回复原样使用工具返回的发送标记，系统会把它转换为图片消息，不能编造编号。
                 连续编辑时把上一工具结果 URL 作为下一次 source_image，最终发送最后的结果。
                 仅支持静态图，动画只处理首帧。输入和输出限制为20MiB、1600万像素、单边8192像素。
@@ -60,7 +60,7 @@ public final class ImageEditSkill {
     }
 
     private static JsonSchema sourceImage() {
-        return JsonSchema.string().description("聊天图片引用 <quote:N>、用户提供的 HTTP/HTTPS 图片直链或先前的编辑结果 URL");
+        return JsonSchema.string().description("聊天图片引用 <ref id=\"N\"/>、用户提供的 HTTP/HTTPS 图片直链或先前的编辑结果 URL");
     }
 
     private static LLMFunction function(ImageEditService service, String name, String action,

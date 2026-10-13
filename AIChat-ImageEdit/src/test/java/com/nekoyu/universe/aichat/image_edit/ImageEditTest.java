@@ -111,7 +111,7 @@ public final class ImageEditTest {
         int beforeInvalid = loads.get();
         for (String invalid : new String[]{"null", "[]", "{}", "{\"source_image\":null}",
                 "{\"source_image\":\"file:///secret.png\",\"angle\":90}",
-                "{\"source_image\":\"<quote:1>\",\"angle\":90}",
+                "{\"source_image\":\"<ref id='1'/>\",\"angle\":90}",
                 "{\"source_image\":\"https://example.invalid/a\",\"angle\":\"90\"}",
                 "{\"source_image\":\"https://example.invalid/a\",\"angle\":1e999}"})
             check(service.edit("rotate", JsonParser.parseString(invalid)).toString().contains("参数错误"), "reject " + invalid);
@@ -213,8 +213,8 @@ public final class ImageEditTest {
                     if (round == 0) {
                         String text = messages.stream().flatMap(m -> m.content.stream())
                                 .filter(p -> p instanceof TextPiece).map(p -> ((TextPiece) p).getText())
-                                .filter(t -> t.startsWith("<quoteId:")).findFirst().orElseThrow();
-                        String quote = text.replace("quoteId:", "quote:");
+                                .filter(t -> t.startsWith("<ReferenceId=")).findFirst().orElseThrow();
+                        String quote = "<ref id=\"" + text.substring("<ReferenceId=".length(), text.length() - 1) + "\"/>";
                         call(choice, "ImageEdit_Crop", cropArgs(quote, 25, 0, 50, 100), "crop");
                     } else {
                         String result = messages.stream().filter(m -> "tool".equals(m.role))
@@ -225,7 +225,7 @@ public final class ImageEditTest {
                             check(url.find(), "published result URL");
                             call(choice, "ImageEdit_Rotate", rotateArgs(url.group(1), 90), "rotate");
                         } else {
-                            var mark = Pattern.compile("<image_edit:([^>]+)>").matcher(result);
+                            var mark = Pattern.compile("<image_edit id=\"([^\"]+)\"/>").matcher(result);
                             check(mark.find(), "send marker present");
                             finalMark.set(mark.group(1));
                             choice.message.content = mark.group();
@@ -240,7 +240,7 @@ public final class ImageEditTest {
             for (String name : manager.getActiveToolNames()) assistant.addTool(tools.get(name));
             assistant.completions(null);
             check(rounds.get() == 3, "quote crop then result URL rotation tool loop");
-            var imageMessage = marks.get("image_edit").process(finalMark.get());
+            var imageMessage = marks.get("image_edit").process(com.nekoyu.Universe.AIChat.XmlMarks.parse(com.nekoyu.Universe.AIChat.XmlMarks.marker("image_edit", "id", finalMark.get())));
             check(imageMessage.getFirst() instanceof ImageField, "marker becomes actual image message");
             BufferedImage fetched = ImageEditService.download(((ImageField) imageMessage.getFirst()).getUrl().toString());
             check(fetched.getWidth() == 2 && fetched.getHeight() == 2, "result served as valid PNG");
@@ -330,9 +330,9 @@ public final class ImageEditTest {
                             call(choice, "ImageEdit_Rotate", rotateArgs(address + "/source", 90), "native-send");
                         } else {
                             String result = messages.stream().filter(m -> "tool".equals(m.role)).findFirst().orElseThrow().toString();
-                            var match = Pattern.compile("<image_edit:[^>]+>").matcher(result);
+                            var match = Pattern.compile("<image_edit id=\"[^\"]+\"/>").matcher(result);
                             check(match.find(), "tool generated a real send marker");
-                            String mark = match.group();
+                            String mark = match.group().replace(" id=", "\n\n id=");
                             String answer = "处理好了。\n\n" + mark + "\n\n这是旋转后的图片。";
                             if (characterChunks) {
                                 for (char part : answer.toCharArray()) callback.onCompletion(String.valueOf(part));
@@ -353,7 +353,7 @@ public final class ImageEditTest {
                 List<ImageField> sentImages = channel.sent.stream().flatMap(MFChain::stream)
                         .filter(f -> f instanceof ImageField).map(f -> (ImageField) f).toList();
                 check(rounds.get() == 2 && sentImages.size() == 1, "actual streaming reply sends exactly one image");
-                check(channel.sent.stream().noneMatch(m -> m.toString().contains("<image_edit:")), "image marker is decoded before sending");
+                check(channel.sent.stream().noneMatch(m -> m.toString().contains("<image_edit ")), "image marker is decoded before sending");
                 BufferedImage downloaded = ImageEditService.download(sentImages.get(0).getUrl().toString());
                 check(downloaded.getWidth() == 2 && downloaded.getHeight() == 4, "sent image URL serves rotated PNG");
                 MCMessage toolResult = topic.getChatContext().getBase().stream()
