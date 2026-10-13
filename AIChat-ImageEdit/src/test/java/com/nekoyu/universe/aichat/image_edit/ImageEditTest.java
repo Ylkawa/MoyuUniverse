@@ -301,6 +301,9 @@ public final class ImageEditTest {
         MessageList previousHistory = history.remove(sessionId);
         AIChat agent = new AIChat();
         setField(agent, "globalCfg", new com.nekoyu.Universe.AIChat.Config());
+        var startReplyService = AIChat.class.getDeclaredMethod("startReplyService");
+        startReplyService.setAccessible(true);
+        startReplyService.invoke(agent);
         var replyTurn = AIChat.class.getDeclaredMethod("replyTurn", Topic.class);
         replyTurn.setAccessible(true);
         try {
@@ -308,16 +311,11 @@ public final class ImageEditTest {
             AIChat.registerMarkDecoupler("image_edit", marker);
             for (boolean characterChunks : new boolean[]{false, true}) {
                 channel.sent.clear();
-                Topic topic = new Topic(new SessionConfig());
-                SkillManager manager = new SkillManager(topic, List.of("image_edit"), List.of());
-                manager.activate("image_edit");
-                setField(topic, "skillManager", manager);
                 MCMessage trigger = new MCMessage();
                 trigger.sessionId = sessionId;
                 trigger.sender.setLocationId("fixture:user");
                 trigger.sender.setPlatform("fixture");
                 trigger.receiver = channel.loginAccount;
-                setField(topic, "lastTrigger", trigger);
                 AtomicInteger rounds = new AtomicInteger();
                 LLMProvider provider = new LLMProvider() {
                     @Override public CompletionsResponse completions(String model, List<Message> messages, List<LLMFunction> functions,
@@ -348,11 +346,22 @@ public final class ImageEditTest {
                         return response;
                     }
                 };
-                setField(topic, "provider", provider);
+                // 会话排队改造后 replyTurn 使用独立发送目标及激活状态，通过真实创建入口建立这些前置条件。
+                var createTopic = AIChat.class.getDeclaredMethod("createTopic", String.class, SessionConfig.class, LLMProvider.class);
+                createTopic.setAccessible(true);
+                Topic topic = (Topic) createTopic.invoke(agent, sessionId, new SessionConfig(), provider);
+                SkillManager manager = new SkillManager(topic, List.of("image_edit"), List.of());
+                manager.activate("image_edit");
+                setField(topic, "skillManager", manager);
+                setField(topic, "lastTrigger", trigger);
+                Field topicsField = AIChat.class.getDeclaredField("activatingTopics"); topicsField.setAccessible(true);
+                @SuppressWarnings("unchecked") Map<String, Topic> active = (Map<String, Topic>) topicsField.get(agent);
+                active.put(sessionId, topic);
                 replyTurn.invoke(agent, topic);
                 List<ImageField> sentImages = channel.sent.stream().flatMap(MFChain::stream)
                         .filter(f -> f instanceof ImageField).map(f -> (ImageField) f).toList();
-                check(rounds.get() == 2 && sentImages.size() == 1, "actual streaming reply sends exactly one image");
+                check(rounds.get() == 2 && sentImages.size() == 1,
+                        "actual streaming reply sends exactly one image (rounds=" + rounds.get() + ", images=" + sentImages.size() + ")");
                 check(channel.sent.stream().noneMatch(m -> m.toString().contains("<image_edit ")), "image marker is decoded before sending");
                 BufferedImage downloaded = ImageEditService.download(sentImages.get(0).getUrl().toString());
                 check(downloaded.getWidth() == 2 && downloaded.getHeight() == 4, "sent image URL serves rotated PNG");
@@ -362,6 +371,10 @@ public final class ImageEditTest {
                 check(history.get(sessionId).stream().anyMatch(m -> m.messageFields.contains(sentImages.get(0))), "message history retains actual sent image");
                 history.remove(sessionId);
                 clean(sentImages.get(0));
+                active.remove(sessionId, topic);
+                Field queueField = Topic.class.getDeclaredField("replies"); queueField.setAccessible(true);
+                Object queue = queueField.get(topic);
+                var closeQueue = queue.getClass().getDeclaredMethod("close"); closeQueue.setAccessible(true); closeQueue.invoke(queue);
             }
         } finally {
             agent.stop();
