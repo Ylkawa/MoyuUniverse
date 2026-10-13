@@ -10,6 +10,7 @@ import com.nekoyu.Universe.AIChat.Skill.Skill;
 import com.nekoyu.Universe.AIChat.Skill.SkillManager;
 import com.nekoyu.Universe.AIChat.Skill.SkillRegistry;
 import com.nekoyu.Universe.API.MessageChannel.*;
+import com.nekoyu.Universe.API.MessageChannel.Features.SessionChat;
 import com.nekoyu.Universe.API.MessageChannel.MessageField.*;
 import com.nekoyu.Universe.API.PlaceHolder;
 import com.nekoyu.Universe.API.Providers.LLMProvider.Embedding;
@@ -40,6 +41,8 @@ import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.jar.JarFile;
+import java.util.function.LongSupplier;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 import java.util.zip.ZipEntry;
 
@@ -68,7 +71,56 @@ public class AIChat extends Law {
     /**
      * 会话消息静默去抖（异步工具结果）排期线程池
      */
-    private final ScheduledExecutorService asyncScheduler = Executors.newSingleThreadScheduledExecutor();
+    private final ScheduledExecutorService asyncScheduler;
+    private final ExecutorService replyWorkers;
+    private final LongSupplier replyClock;
+    private final Object topicLifecycleLock = new Object();
+    private volatile boolean acceptingMessages;
+
+    public AIChat() {
+        this(Executors.newSingleThreadScheduledExecutor(), Executors.newCachedThreadPool(),
+                () -> TimeUnit.NANOSECONDS.toMillis(System.nanoTime()));
+    }
+
+    AIChat(ScheduledExecutorService scheduler, ExecutorService workers, LongSupplier clock) {
+        asyncScheduler = scheduler;
+        replyWorkers = workers;
+        replyClock = clock;
+    }
+
+    /**
+     * 投递外部驱动输入。仅排队，不等待模型；最后一次入队静默五秒且会话空闲后回复。
+     * sessionId 使用消息通道的全局会话 ID，必须匹配已加载的会话配置。
+     */
+    public void driveMessage(String sessionId, MFChain message) {
+        if (!acceptingMessages) throw new IllegalStateException("AIChat 尚未启动或已停止");
+        if (sessionId == null || sessionId.isBlank() || message == null || message.contains(null))
+            throw new IllegalArgumentException("sessionId 和消息内容必须有效");
+        String[] parts = sessionId.split(":", 2);
+        if (parts.length != 2 || parts[0].isEmpty() || parts[1].isEmpty())
+            throw new IllegalArgumentException("无效的全局 sessionId: " + sessionId);
+        SessionConfig config = configs.stream().filter(c -> sessionId.equals(c.SessionId)).findFirst()
+                .orElseGet(() -> configs.stream().filter(c -> Pattern.matches(c.SessionId, sessionId)).findFirst()
+                        .orElseThrow(() -> new IllegalArgumentException("没有匹配的 AIChat 会话配置: " + sessionId)));
+        MFChain copy = new MFChain();
+        copy.addAll(message);
+        if (copy.isEmpty() || copy.stream().allMatch(f -> f instanceof TextField && f.toString().isBlank())) return;
+        if (!(Universe.Providers.get(config.Provider) instanceof LLMProvider provider))
+            throw new IllegalStateException("会话的 LLMProvider 不可用: " + config.Provider);
+        synchronized (topicLifecycleLock) {
+            if (!acceptingMessages) throw new IllegalStateException("AIChat 已停止");
+            Topic topic = activatingTopics.computeIfAbsent(sessionId, id -> createTopic(id, config, provider));
+            topic.replies.drive(() -> topic.addDriverMessage(copy));
+        }
+    }
+
+    /** 启动接收入口；独立方法也用于不启动 HTTP 服务的离线会话测试。 */
+    void startReplyService() {
+        synchronized (topicLifecycleLock) {
+            if (replyWorkers.isShutdown()) throw new IllegalStateException("AIChat 已停止");
+            acceptingMessages = true;
+        }
+    }
 
     public static void registerFunction(String toolName, LLMFunction tool) {
         llmFunctions.put(toolName, tool);
@@ -464,6 +516,7 @@ public class AIChat extends Law {
 
     @Override
     public void run() {
+        startReplyService();
         UniverseChannel.addHttpHandler("/AIChat/", exchange -> {
             if (!exchange.getRequestMethod().equals("GET")) {
                 String resp = "405 Method Not Allowed";
@@ -507,79 +560,7 @@ public class AIChat extends Law {
                 logger.error("Provider {} 不是有效的LLMProvider", sessionCfg.Provider);
                 continue;
             }
-            boolean leading = (sessionCfg.PromptFirst + sessionCfg.PromptLast + globalCfg.PromptFirst + globalCfg.PromptLast).contains("%LEADING%");
-            MessageChannelManager.listenToSession(sessionCfg.SessionId, mcm -> {
-                // 机器人自身消息不重复写入：replyTurn 已将其持久化为 assistant 消息，避免上下文重复与去抖自触发
-                if (mcm.sender != null && mcm.receiver != null
-                        && Objects.equals(mcm.sender.getLocationId(), mcm.receiver.getLocationId())) {
-                    return;
-                }
-                Topic topic = activatingTopics.get(mcm.sessionId);
-                if (topic != null) topic.addMsg(mcm);
-                // 检测消息是否应当回复
-                if (sessionCfg.Trigger.equals("every") || mcm.messageString.contains(sessionCfg.Keyword) || mcm.level >= 2) {
-                    if (topic == null) {
-                        topic = new Topic(sessionCfg);
-                        final Topic createdTopic = topic;
-                        activatingTopics.put(mcm.sessionId, topic);
-                        topic.provider = llmProvider;
-                        if (createdTopic.getToolLoopOptions().EnableAsyncTools)
-                            createdTopic.getChatContext().configureDebounce(createdTopic.getToolLoopOptions().AsyncDebounceMillis, asyncScheduler, () -> fireDebounced(createdTopic));
-
-                        List<String> availableSkillIds = new ArrayList<>();
-                        List<String> alwaysSkillIds = new ArrayList<>();
-
-                        if (sessionCfg.availableSkills != null) {
-                            availableSkillIds.addAll(Arrays.asList(sessionCfg.availableSkills));
-                        } else if (globalCfg.Skills != null && globalCfg.Skills.availableSkills != null) {
-                            availableSkillIds.addAll(Arrays.asList(globalCfg.Skills.availableSkills));
-                        } else {
-                            availableSkillIds.addAll(SkillRegistry.getAll().keySet());
-                        }
-
-                        if (sessionCfg.skills != null) {
-                            alwaysSkillIds.addAll(Arrays.asList(sessionCfg.skills));
-                        } else if (globalCfg.Skills != null && globalCfg.Skills.defaultSkills != null) {
-                            alwaysSkillIds.addAll(Arrays.asList(globalCfg.Skills.defaultSkills));
-                        }
-
-                        topic.skillManager = new SkillManager(topic, availableSkillIds, alwaysSkillIds);
-                        topic.initSystemPrompts(globalCfg.PromptFirst, sessionCfg.PromptFirst,
-                                sessionCfg.PromptLast, globalCfg.PromptLast);
-                        topic.skillManager.initAlwaysSkills();
-
-                        logger.info("会话 {} 初始化 Skills - 可用: {}, 始终加载: {}, 已激活: {}",
-                                mcm.sessionId, availableSkillIds, alwaysSkillIds, topic.skillManager.getActiveSkills());
-
-                        topic.addHistory((MessageList) MessageChannelManager.getMessageHistory(sessionCfg.SessionId).clone());
-                    }
-                    topic.lastTrigger = mcm;
-                    if (topic.getToolLoopOptions().EnableAsyncTools) {
-                        topic.getChatContext().enqueuePendingMessage(mcm);
-                    } else if (topic.responding.compareAndSet(false, true)) { // 阻止同时回复多个消息
-                        try {
-                            replyTurn(topic);
-                        } finally {
-                            topic.responding.set(false);
-                        }
-                    }
-                } else if (topic != null && !topic.hasPendingCalls()) { // 未触发消息回复，就检查会话是否超时，如果超时了，就构建记忆，结束会话
-                    int size = topic.getMessageCount();
-                    for (int i = size - 1; i >= size - TOPIC_TIMEOUT; i--) { // 检测话题是否超时
-                        if (i < 0) break;
-                        MCMessage message = topic.getMessage(i);
-                        if (Objects.equals(message.sender.getLocationId(), message.receiver.getLocationId())) break;
-                        if (i == size - TOPIC_TIMEOUT) {
-                            try {
-                                constructMemory(mcm.getLocationId(), topic.createChatContextCopy());
-                            } catch (RuntimeException e) {
-                                logger.error("Failed to construct memory", e);
-                            }
-                            closeTopic(mcm.sessionId);
-                        }
-                    }
-                }
-            });
+            MessageChannelManager.listenToSession(sessionCfg.SessionId, mcm -> handleSessionMessage(sessionCfg, llmProvider, mcm));
             MessageChannelManager.listenToPost(sessionCfg.SessionId, mcp -> {
                 if (sessionCfg.Trigger.equals("every") || mcp.messageString.contains(sessionCfg.Keyword) || mcp.level >= 2) {
                     logger.info("接收到MCPost");
@@ -602,6 +583,97 @@ public class AIChat extends Law {
         }
     }
 
+    private Topic createTopic(String sessionId, SessionConfig config, LLMProvider provider) {
+        String[] parts = sessionId.split(":", 2);
+        MessageChannel channel = MessageChannelManager.getChannel(parts[0]);
+        if (!(channel instanceof SessionChat) || channel.loginAccount == null)
+            throw new IllegalStateException("会话的消息通道不可用于回复: " + sessionId);
+        Topic topic = new Topic(config);
+        topic.provider = provider;
+        MCMessage target = new MCMessage();
+        target.sessionId = sessionId;
+        target.sender = channel.loginAccount;
+        target.receiver = channel.loginAccount;
+        target.session = channel.getSession(parts[1]);
+        topic.replyTarget = target;
+        topic.replies = new SessionReplyQueue(replyClock, (task, delay) -> {
+            ScheduledFuture<?> future = asyncScheduler.schedule(task, delay, TimeUnit.MILLISECONDS);
+            return () -> future.cancel(false);
+        }, replyWorkers, driven -> prepareReply(topic, driven), () -> replyTurn(topic),
+                e -> logger.error("会话 {} 处理消息或推理失败", sessionId, e));
+        if (asyncEnabledFor(topic))
+            topic.getChatContext().configureDebounce(topic.getToolLoopOptions().AsyncDebounceMillis,
+                    asyncScheduler, () -> fireDebounced(topic));
+
+        List<String> available = new ArrayList<>();
+        List<String> always = new ArrayList<>();
+        if (config.availableSkills != null) available.addAll(Arrays.asList(config.availableSkills));
+        else if (globalCfg.Skills != null && globalCfg.Skills.availableSkills != null)
+            available.addAll(Arrays.asList(globalCfg.Skills.availableSkills));
+        else available.addAll(SkillRegistry.getAll().keySet());
+        if (config.skills != null) always.addAll(Arrays.asList(config.skills));
+        else if (globalCfg.Skills != null && globalCfg.Skills.defaultSkills != null)
+            always.addAll(Arrays.asList(globalCfg.Skills.defaultSkills));
+        topic.skillManager = new SkillManager(topic, available, always);
+        topic.initSystemPrompts(globalCfg.PromptFirst, config.PromptFirst, config.PromptLast, globalCfg.PromptLast);
+        topic.skillManager.initAlwaysSkills();
+        logger.info("会话 {} 初始化 Skills - 可用: {}, 始终加载: {}, 已激活: {}",
+                sessionId, available, always, topic.skillManager.getActiveSkills());
+        MessageList history = MessageChannelManager.getMessageHistory(sessionId);
+        if (history != null) topic.addHistory((MessageList) history.clone());
+        return topic;
+    }
+
+    /** 用户输入与驱动输入共用会话执行权；原有触发条件仍由配置决定。 */
+    void handleSessionMessage(SessionConfig config, LLMProvider provider, MCMessage message) {
+        if (!acceptingMessages) return;
+        if (message.sender != null && message.receiver != null
+                && Objects.equals(message.sender.getLocationId(), message.receiver.getLocationId())) return;
+        boolean trigger = "every".equals(config.Trigger)
+                || (config.Keyword != null && message.messageString.contains(config.Keyword)) || message.level >= 2;
+        Topic topic;
+        boolean append = false;
+        synchronized (topicLifecycleLock) {
+            if (!acceptingMessages) return;
+            topic = activatingTopics.get(message.sessionId);
+            if (topic != null) append = true;
+            else if (trigger) {
+                topic = createTopic(message.sessionId, config, provider);
+                activatingTopics.put(message.sessionId, topic);
+                MessageList history = MessageChannelManager.getMessageHistory(message.sessionId);
+                append = history == null || !history.contains(message);
+            }
+        }
+        if (topic == null) return;
+        if (append) topic.addMsg(message);
+        if (trigger) {
+            topic.lastTrigger = message;
+            boolean merged = topic.replies.mergeUserTrigger();
+            if (asyncEnabledFor(topic)) topic.getChatContext().enqueuePendingMessage(message);
+            else if (!merged) topic.replies.requestReply();
+        } else if (!topic.hasPendingCalls() && !topic.replies.hasWork() && !topic.getChatContext().hasPendingMessages()) {
+            MessageList history = topic.createChatContextCopy().getBase();
+            int size = history.size();
+            for (int i = size - 1; i >= size - TOPIC_TIMEOUT && i >= 0; i--) {
+                MCMessage previous = history.get(i);
+                if (Objects.equals(previous.sender.getLocationId(), previous.receiver.getLocationId())) break;
+                if (i == size - TOPIC_TIMEOUT) {
+                    try {
+                        constructMemory(message.getLocationId(), topic.createChatContextCopy());
+                    } catch (RuntimeException e) {
+                        logger.error("Failed to construct memory", e);
+                    }
+                    closeIdleTopic(message.sessionId);
+                }
+            }
+        }
+    }
+
+    private boolean isActive(Topic topic) {
+        return acceptingMessages && activatingTopics.get(topic.replyTarget.sessionId) == topic
+                && !topic.replies.isClosed();
+    }
+
     private boolean asyncEnabledFor(Topic topic) {
         return topic.getToolLoopOptions().EnableAsyncTools;
     }
@@ -610,10 +682,15 @@ public class AIChat extends Law {
      * 异步去抖到期：条件满足（静默等待已过且所有未决均已回应或无未决）时触发一轮回复
      */
     private void fireDebounced(Topic topic) {
-        ChatContext ctx = topic.getChatContext();
-        if (!ctx.hasPendingMessages() && !topic.hasPendingCalls()) return;
-        if (!topic.responding.compareAndSet(false, true)) return; // 正在回复中，交给后续调度
-        try {
+        if (isActive(topic) && (topic.getChatContext().hasPendingMessages() || topic.hasPendingCalls()))
+            topic.replies.requestReply();
+    }
+
+    /** 工作线程持有会话执行权时处理工具超时，驱动轮次不等待后台工具。 */
+    private boolean prepareReply(Topic topic, boolean driven) {
+        synchronized (topic) {
+            if (!isActive(topic)) return false;
+            ChatContext ctx = topic.getChatContext();
             List<String> expired = topic.expireOverduePendings();
             if (!expired.isEmpty()) {
                 logger.warn("会话 {} 有 {} 个异步工具调用超时，进行兜底回答", topic.sessionCfg.SessionId, expired.size());
@@ -621,17 +698,15 @@ public class AIChat extends Law {
                     topic.appendToolMessage(toolCallId, "该次工具调用已超时，未能在期限内返回结果，请基于当前已有信息直接回答。");
                 }
             }
-            if (!topic.allPendingsResponded()) {
+            if (!driven && !topic.allPendingsResponded()) {
                 long earliest = topic.pendingEarliestDeadline();
                 if (earliest > System.currentTimeMillis()) {
                     ctx.rearmDebounce(earliest - System.currentTimeMillis()); // 等待到最早的截止时间再检查
                 }
-                return;
+                return false;
             }
-            ctx.drainPendingMessages();
-            replyTurn(topic);
-        } finally {
-            topic.responding.set(false);
+            if (!driven && asyncEnabledFor(topic) && !ctx.hasPendingMessages() && expired.isEmpty()) return false;
+            return true;
         }
     }
 
@@ -639,7 +714,7 @@ public class AIChat extends Law {
      * 执行一轮回复：构建工具集、占位符、请求并发送回复，同时处理异步工具注册与轮次持久化
      */
     private void replyTurn(Topic topic) {
-        MCMessage mcm = topic.lastTrigger;
+        MCMessage mcm = topic.replyTarget;
         LLMProvider llmProvider = topic.provider;
         if (mcm == null || llmProvider == null) return;
         SessionConfig sessionCfg = topic.sessionCfg;
@@ -779,7 +854,13 @@ public class AIChat extends Law {
         }
 
         try {
-            ChatContext openaiCtx = topic.getOpenAIContext(mcm.receiver);
+            ChatContext openaiCtx;
+            Set<String> consumedRound;
+            synchronized (topic) {
+                openaiCtx = topic.getOpenAIContext(mcm.receiver);
+                consumedRound = topic.respondedCallsIn(openaiCtx);
+                topic.getChatContext().drainPendingMessages();
+            }
             for (MCMessage sysMsg : openaiCtx.getBase()) {
                 if ("system".equals(sysMsg.getMetainfo("role"))) {
                     for (int i = 0; i < sysMsg.messageFields.size(); i++) {
@@ -796,11 +877,11 @@ public class AIChat extends Law {
             completionsRequest.placeholders.put("_LocationID", mcm.getLocationId());
             completionsRequest.placeholders.put("_SessionId", mcm.sessionId);
             boolean asyncEnabled = asyncEnabledFor(topic);
-            Set<String> consumedRound = new HashSet<>();
             if (asyncEnabled) {
-                consumedRound.addAll(topic.pendingCalls.keySet());
-                completionsRequest.asyncToolSink = (toolCallId, timeout) ->
-                        topic.registerPendingCall(toolCallId, timeout > 0 ? timeout : topic.getToolLoopOptions().AsyncMaxWaitMillis);
+                completionsRequest.asyncToolSink = (toolCallId, timeout) -> {
+                    topic.registerPendingCall(toolCallId, timeout > 0 ? timeout : topic.getToolLoopOptions().AsyncMaxWaitMillis);
+                    armAsyncWait(topic);
+                };
             }
             assistant.setThinking(sessionCfg.enable_thinking);
             assistant.setCompletionsRequest(completionsRequest);
@@ -812,11 +893,11 @@ public class AIChat extends Law {
                 replyTokens.append(outputs);
                 int end;
                 while ((end = XmlMarks.paragraphEnd(replyTokens.toString())) >= 0) {
-                    if (end > 0) mcm.reply(decoupleMark(replyTokens.substring(0, end)));
+                    if (end > 0) sendReply(topic, decoupleMark(replyTokens.substring(0, end)));
                     replyTokens.delete(0, end + 2);
                 }
             });
-            if (!replyTokens.isEmpty()) mcm.reply(decoupleMark(replyTokens.toString()));
+            if (!replyTokens.isEmpty()) sendReply(topic, decoupleMark(replyTokens.toString()));
 
             if (asyncEnabled) {
                 topic.removeConsumedPendingCalls(consumedRound);
@@ -824,14 +905,18 @@ public class AIChat extends Law {
             // 把本轮写入请求上下文的新消息（assistant 回复 / tool 消息）持久化回会话上下文，
             // 确保 assistant 消息始终进入 context，不依赖平台回显
             persistTurnIntoContext(topic, openaiCtx, mcm.receiver);
-            if (asyncEnabled && !topic.allPendingsResponded()) {
-                // 若仍有未回应的未决，排期到最早的截止时间进行兜底
-                long earliest = topic.pendingEarliestDeadline();
-                if (earliest > System.currentTimeMillis())
-                    topic.getChatContext().rearmDebounce(earliest - System.currentTimeMillis());
-            }
         } catch (IOException e) {
             logger.error("生成回复时出错", e);
+        } finally {
+            armAsyncWait(topic);
+        }
+    }
+
+    private void armAsyncWait(Topic topic) {
+        if (isActive(topic) && asyncEnabledFor(topic)) {
+            long earliest = topic.pendingEarliestDeadline();
+            if (earliest >= 0)
+                topic.getChatContext().rearmDebounce(Math.max(0, earliest - System.currentTimeMillis()));
         }
     }
 
@@ -867,18 +952,24 @@ public class AIChat extends Law {
      * 把本轮写入请求上下文的新消息（assistant 回复 / tool 消息）持久化回会话上下文，保证 assistant 消息始终进入 context
      */
     private void persistTurnIntoContext(Topic topic, ChatContext turnCtx, Account botAccount) {
-        MessageList base = topic.getChatContext().getBase();
-        for (MCMessage m : turnCtx.getBase()) {
-            Object role = m.getMetainfo("role");
-            if (!("assistant".equals(role) || "tool".equals(role))) continue;
-            if (base.contains(m)) continue; // 历史引用已存在，避免重复持久化
-            MCMessage copy = copyTurnMessage(m);
-            if ("assistant".equals(role) && botAccount != null) {
-                copy.sender = botAccount;
-                copy.receiver = botAccount;
+        synchronized (topic) {
+            MessageList base = topic.getChatContext().getBase();
+            for (MCMessage m : turnCtx.getBase()) {
+                Object role = m.getMetainfo("role");
+                if (!("assistant".equals(role) || "tool".equals(role))) continue;
+                if (base.contains(m)) continue; // 历史引用已存在，避免重复持久化
+                MCMessage copy = copyTurnMessage(m);
+                if ("assistant".equals(role) && botAccount != null) {
+                    copy.sender = botAccount;
+                    copy.receiver = botAccount;
+                }
+                base.add(copy);
             }
-            base.add(copy);
         }
+    }
+
+    private void sendReply(Topic topic, MFChain message) {
+        if (isActive(topic)) MessageChannelManager.sendMessage(topic.replyTarget.sessionId, message);
     }
 
     private static MCMessage copyTurnMessage(MCMessage src) {
@@ -906,7 +997,7 @@ public class AIChat extends Law {
      */
     public boolean deliverAsyncToolResult(String sessionId, String toolCallId, String text) {
         Topic topic = activatingTopics.get(sessionId);
-        if (topic == null) {
+        if (topic == null || !isActive(topic)) {
             logger.warn("异步工具结果到达但会话 {} 不存在，丢弃 tool_call {}", sessionId, toolCallId);
             return false;
         }
@@ -930,15 +1021,30 @@ public class AIChat extends Law {
     /**
      * 关闭一个会话：取消去抖任务、清空未决调用并移除活跃会话
      */
-    private void closeTopic(String sessionId) {
-        Topic topic = activatingTopics.remove(sessionId);
-        if (topic == null) return;
-        topic.getChatContext().cancelDebounce();
-        topic.clearPendingCalls();
+    private void closeIdleTopic(String sessionId) {
+        synchronized (topicLifecycleLock) {
+            Topic topic = activatingTopics.get(sessionId);
+            if (topic != null && !topic.hasPendingCalls() && !topic.replies.hasWork()
+                    && !topic.getChatContext().hasPendingMessages()) closeTopic(sessionId);
+        }
+    }
+
+    void closeTopic(String sessionId) {
+        synchronized (topicLifecycleLock) {
+            Topic topic = activatingTopics.remove(sessionId);
+            if (topic == null) return;
+            topic.replies.close();
+            topic.getChatContext().cancelDebounce();
+            topic.clearPendingCalls();
+        }
     }
 
     @Override
     public void stop() {
+        synchronized (topicLifecycleLock) {
+            acceptingMessages = false;
+            for (String sessionId : new ArrayList<>(activatingTopics.keySet())) closeTopic(sessionId);
+        }
         if (graphRuntime != null) {
             markDecouplers.remove("graph", graphRuntime.decoupler());
             SkillRegistry.getAll().remove(graphRuntime.skill().id, graphRuntime.skill());
@@ -948,6 +1054,8 @@ public class AIChat extends Law {
             plug.onDisable();
         }
         asyncScheduler.shutdownNow();
+        replyWorkers.shutdownNow();
+        if (instance == this) instance = null;
     }
 
     public MFChain decoupleMark(String stringWithMark) {

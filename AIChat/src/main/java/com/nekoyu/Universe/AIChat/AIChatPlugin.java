@@ -3,6 +3,7 @@ package com.nekoyu.Universe.AIChat;
 import com.nekoyu.Universe.AIChat.Event.RequestEvent;
 import com.nekoyu.Universe.AIChat.Skill.Skill;
 import com.nekoyu.Universe.AIChat.Skill.SkillRegistry;
+import com.nekoyu.Universe.API.MessageChannel.MFChain;
 import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.LLMFunction;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,6 +22,11 @@ public abstract class AIChatPlugin {
     public abstract void onDisable();
 
     public void onRequest(RequestEvent event) {}
+
+    /** 向指定会话投递驱动消息，等待会话空闲且静默五秒后回复。 */
+    public void driveMessage(String sessionId, MFChain message) {
+        aiChat.driveMessage(sessionId, message);
+    }
 
     public File getConfigDir() {
         File file = new File("./config/AIChat/Plugins/" + id + "/");
