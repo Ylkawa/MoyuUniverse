@@ -1,0 +1,8 @@
+{
+  "ProviderId": "DashScope",
+  "APIKey": "",
+  "BaseUrl": "https://llm-a1bz0eifucqm4izg.cn-beijing.maas.aliyuncs.com/api/v1",
+  "DefaultEmbeddingModel": "tongyi-embedding-vision-plus-2026-03-06",
+  "EmbeddingSpaceVersion": "v1",
+  "EmbeddingResolutionLevel": 1
+}

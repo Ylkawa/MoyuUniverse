@@ -1,0 +1,9 @@
+<component name="ArtifactManager">
+  <artifact type="jar" name="DashScopeAdapter:jar">
+    <output-path>$PROJECT_DIR$/out/artifacts/DashScopeAdapter_jar</output-path>
+    <root id="archive" name="DashScopeAdapter.jar">
+      <element id="module-output" name="DashScopeAdapter" />
+      <element id="file-copy" path="$PROJECT_DIR$/DashScopeAdapter/src/main/resources/law.yml" />
+    </root>
+  </artifact>
+</component>

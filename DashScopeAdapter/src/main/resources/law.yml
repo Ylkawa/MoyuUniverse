@@ -1,0 +1,4 @@
+name: DashScopeAdapter
+main: com.nekoyu.universe.dashscope_adapter.DashScopeAdapter
+version: 1.0
+dependencies: []

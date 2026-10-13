@@ -234,6 +234,9 @@ public class OpenAIChannel extends LLMProvider implements Embedding {
 
     @Override
     public EmbeddingResponse embedding(EmbeddingRequest embeddingRequest) {
+        if ((embeddingRequest.inputs != null && !embeddingRequest.inputs.isEmpty()) || embeddingRequest.enableFusion
+                || embeddingRequest.dimension != null || embeddingRequest.resolutionLevel != null)
+            throw new UnsupportedOperationException("OpenAIChannel 当前只支持原有 message 文本向量请求；多模态向量请使用相应 Provider");
         int batchesNum = (int) Math.ceil((double) embeddingRequest.message.size() / 10); // 分几次请求完成
         EmbeddingResponse finalResponse = new EmbeddingResponse();
         String model;
