@@ -18,8 +18,12 @@ import okhttp3.Response;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.openqa.selenium.JavascriptExecutor;
+import org.openqa.selenium.PageLoadStrategy;
+import org.openqa.selenium.TimeoutException;
+import org.openqa.selenium.WebDriverException;
 import org.openqa.selenium.chrome.ChromeOptions;
 import org.openqa.selenium.remote.RemoteWebDriver;
+import org.openqa.selenium.remote.http.ClientConfig;
 import org.openqa.selenium.support.ui.WebDriverWait;
 
 import java.io.FileNotFoundException;
@@ -467,28 +471,66 @@ public class Web extends AIChatPlugin {
 
             if (config.Selenium == null) return new MFChain("不支持的链接类型, 请停止访问此链接，只允许访问支持的页面");
             // 特殊适配未命中，Fallback到直接返回网页内容
-            try {
-                RemoteWebDriver driver = new RemoteWebDriver(
-                        new URL(config.Selenium.URL),
-                        new ChromeOptions()
-                );
-                driver.get(url);
-                WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(30));
-
-                wait.until(webDriver ->
-                        ((JavascriptExecutor) webDriver)
-                                .executeScript("return document.readyState")
-                                .equals("complete")
-                );
-
-                Document document = Jsoup.parse(driver.getPageSource());
-                String text = document.body().text();
-                if (text.length() < 5000) return new MFChain(text);
-                else return new MFChain(text.substring(0, 5000));
-            } catch (MalformedURLException e) {
-                logger.error(e.getMessage());
-            }
+            return visitWithSelenium(url);
         }
         return new MFChain("未知原因导致访问失败");
+    }
+
+    private MFChain visitWithSelenium(String url) {
+        URL endpoint;
+        try {
+            if (config.Selenium.URL == null || config.Selenium.URL.isBlank())
+                return new MFChain("Selenium 配置错误：服务 URL 不能为空");
+            endpoint = new URL(config.Selenium.URL);
+            if (!(endpoint.getProtocol().equals("http") || endpoint.getProtocol().equals("https"))
+                    || endpoint.getHost().isBlank())
+                return new MFChain("Selenium 配置错误：服务 URL 必须是 HTTP/HTTPS 地址");
+        } catch (MalformedURLException e) {
+            return new MFChain("Selenium 配置错误：服务 URL 无效");
+        }
+
+        RemoteWebDriver driver = null;
+        String stage = "连接服务并创建浏览器会话";
+        try {
+            ChromeOptions options = new ChromeOptions();
+            // 等到 DOM 可用即可，避免图片、广告等资源拖住页面导航。
+            options.setPageLoadStrategy(PageLoadStrategy.EAGER);
+            options.setPageLoadTimeout(Duration.ofSeconds(30));
+            options.setScriptTimeout(Duration.ofSeconds(10));
+            driver = new RemoteWebDriver(endpoint, options, ClientConfig.defaultConfig()
+                    .connectionTimeout(Duration.ofSeconds(10))
+                    .readTimeout(Duration.ofSeconds(45)));
+            stage = "加载页面";
+            driver.get(url);
+            stage = "等待页面正文";
+            new WebDriverWait(driver, Duration.ofSeconds(20)).until(webDriver ->
+                    Boolean.TRUE.equals(((JavascriptExecutor) webDriver).executeScript("""
+                            return (document.readyState === 'interactive' || document.readyState === 'complete')
+                                && document.body !== null && document.body.innerText.trim().length > 0;
+                            """)));
+            stage = "读取页面正文";
+            Document document = Jsoup.parse(driver.getPageSource());
+            String text = document.body().text();
+            if (text.isBlank()) return new MFChain("Selenium 未获取到可读的页面正文");
+            return new MFChain(text.substring(0, Math.min(text.length(), 5000)));
+        } catch (TimeoutException e) {
+            logger.warn("Selenium 网页抓取超时（{}）：{}", stage, url, e);
+            return new MFChain("Selenium 网页抓取超时：" + stage + "，未读取到页面内容");
+        } catch (WebDriverException e) {
+            logger.warn("Selenium 网页抓取失败（{}）：{}", stage, url, e);
+            String detail = e.getRawMessage();
+            if (detail == null) detail = "";
+            detail = detail.split("\\R", 2)[0];
+            return new MFChain("Selenium 网页抓取失败：" + stage + "（" + e.getClass().getSimpleName()
+                    + "）：" + detail.substring(0, Math.min(detail.length(), 500)));
+        } finally {
+            if (driver != null) {
+                try {
+                    driver.quit();
+                } catch (WebDriverException e) {
+                    logger.warn("Selenium 浏览器会话释放失败：{}", url, e);
+                }
+            }
+        }
     }
 }
