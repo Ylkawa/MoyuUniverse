@@ -37,9 +37,12 @@ public final class GraphMatchService {
         Map<String, List<IconCandidate>> queries = new LinkedHashMap<>();
         for (GraphSpec.IconSlot slot : slots) queries.putIfAbsent(slot.query(), List.of());
         List<String> texts = List.copyOf(queries.keySet());
-        List<double[]> vectors = Vectors.batch(provider.embedTexts(texts), texts.size(), descriptor.space().dimension());
+        var vectors = provider.textResults(texts);
+        if (vectors.size() != texts.size()) throw new IOException("Embedding result count mismatch");
+        var unavailable = new java.util.HashSet<String>();
         for (int i = 0; i < texts.size(); i++) {
-            List<IconCandidate> found = index.search(vectors.get(i), candidateLimit);
+            if (!vectors.get(i).available()) { unavailable.add(texts.get(i)); continue; }
+            List<IconCandidate> found = index.search(vectors.get(i).vector(), candidateLimit);
             if (found == null) throw new IOException("Index returned null candidates");
             Map<String, IconCandidate> unique = new LinkedHashMap<>();
             for (IconCandidate candidate : found) {
@@ -52,7 +55,7 @@ public final class GraphMatchService {
                     .limit(candidateLimit).toList());
         }
         List<ResolvedGraph.IconMatch> matches = new ArrayList<>();
-        for (GraphSpec.IconSlot slot : slots) matches.add(new ResolvedGraph.IconMatch(slot.key(), slot.query(), queries.get(slot.query())));
+        for (GraphSpec.IconSlot slot : slots) matches.add(new ResolvedGraph.IconMatch(slot.key(), slot.query(), queries.get(slot.query()), unavailable.contains(slot.query())));
         return new ResolvedGraph(graph, matches);
     }
 }

@@ -1,6 +1,8 @@
 # AIChat 浮标协议
 
 图表解析、图标匹配及 Java2D PNG 渲染直接集成于 AIChat，见 [Graph 使用说明](GRAPH.md)。
+图标向量计算经注册的 LLMProvider + Embedding 调用，百炼原生协议由 [Java DashScopeAdapter](../DashScopeAdapter/README.md) 提供。
+实际部署目录、配置项与回滚步骤见 [部署操作文档](../docs/deployment-operations-2026-10-14.md)。
 内置 `graph` 成对浮标和同名按需技能，按 type 路由到六个渲染器，返回包含图片的 MFChain。
 
 **图表字体采用随 AIChat 工件打包的 HarmonyOS Sans SC（Regular、Bold）。**
@@ -47,7 +49,8 @@ registerMarkDecoupler("custom_block", MarkDecoupler.Form.PAIRED, element -> {
 ```
 
 AIChat 内置图表支持如下格式，主 agent 明确指定 type；仅 icon 属性用于语义匹配图标。
-配置图标库、Qdrant 和模型密钥后可使用 icon，未配置时省略 icon：
+JAR 内包含预建图标包，配置匹配的模型 endpoint 后可使用 icon；文字向量命中 data 缓存时无需密钥，
+未缓存且模型不可用时省略图标继续绘制。graph 不依赖 Qdrant，详见 Graph 使用说明：
 
 ```xml
 <graph type="compare">

@@ -32,7 +32,7 @@ public final class GraphRenderContext implements AutoCloseable {
     public static final Color BORDER = new Color(0xdce5ee);
     public static final int MARGIN = 40, TOP = 156, FOOTER = 56;
     private static final long ICON_CACHE_BYTES = 32L * 1024 * 1024;
-    private final LinkedHashMap<Path, BufferedImage> icons = new LinkedHashMap<>(16, .75f, true);
+    private final LinkedHashMap<IconResource, BufferedImage> icons = new LinkedHashMap<>(16, .75f, true);
     private long iconBytes;
     private final Font regular, bold;
     private Map<String, ResolvedGraph.IconMatch> bindings = Map.of();
@@ -105,7 +105,7 @@ public final class GraphRenderContext implements AutoCloseable {
         icon(graphics, bindings.getOrDefault(slot, fallback), x, y, size);
     }
     public void icon(Graphics2D graphics, ResolvedGraph.IconMatch match, float x, float y, int size) throws IOException {
-        if (match == null) return;
+        if (match == null || match.status() == ResolvedGraph.Status.UNAVAILABLE) return;
         if (match.preferred().isEmpty()) {
             graphics.setColor(MUTED); graphics.setStroke(new BasicStroke(2));
             graphics.drawRoundRect((int) x + 6, (int) y + 6, size - 12, size - 12, 10, 10);
@@ -113,11 +113,10 @@ public final class GraphRenderContext implements AutoCloseable {
             return;
         }
         IconResource resource = match.preferred().orElseThrow().resource();
-        Path path = resource.previewPath();
-        BufferedImage image = icons.get(path);
+        BufferedImage image = icons.get(resource);
         if (image == null) {
             // Read the dimensions before decoding; a corrupt/malicious thumbnail cannot allocate a huge raster.
-            try (var input = ImageIO.createImageInputStream(path.toFile())) {
+            try (var bytes = resource.openPreview(); var input = new javax.imageio.stream.MemoryCacheImageInputStream(bytes)) {
                 if (input == null) throw new IOException("Icon preview does not exist: " + resource.id());
                 var readers = ImageIO.getImageReaders(input);
                 if (!readers.hasNext()) throw new IOException("Invalid icon preview: " + resource.id());
@@ -139,7 +138,7 @@ public final class GraphRenderContext implements AutoCloseable {
                 iconBytes -= (long) old.getValue().getWidth() * old.getValue().getHeight() * 4;
                 old.getValue().flush(); entry.remove();
             }
-            icons.put(path, image); iconBytes += bytes;
+            icons.put(resource, image); iconBytes += bytes;
         }
         graphics.drawImage(image, (int) x, (int) y, size, size, null);
     }

@@ -12,11 +12,11 @@ public final class GraphSettings {
     public int maxPages = 32;
     public String fontFile;
     public String outputDirectory = "cache/graph";
-    public String catalogManifest;
-    public String embeddingApiKeyEnv = "DASHSCOPE_API_KEY";
-    public String embeddingEndpoint = Qwen3VlEmbeddingProvider.DEFAULT_ENDPOINT.toString();
-    public int embeddingDimension = 2560;
-    public String qdrantCollection;
+    public boolean iconsEnabled = true;
+    public String embeddingModel = "tongyi-embedding-vision-plus-2026-03-06";
+    public String embeddingSpaceVersion = "v1";
+    public String embeddingProvider = "DashScope";
+    public int embeddingDimension = 1152;
 
     public void validate() {
         if (width < 640 || width > 2048 || pageHeight < 800 || pageHeight > 4096

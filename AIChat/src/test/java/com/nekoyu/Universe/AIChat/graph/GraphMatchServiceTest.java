@@ -15,10 +15,9 @@ class GraphMatchServiceTest {
         IconCatalog catalog = GraphTestFixtures.catalog(directory);
         var provider = new GraphTestFixtures.Provider();
         var index = new GraphTestFixtures.MemoryIndex(IndexDescriptor.of(provider.space(), catalog));
-        var indexer = new IconIndexer(provider, index, 1);
-        assertEquals(2, indexer.index(catalog));
+        assertEquals(2, GraphTestFixtures.fill(provider, index, catalog));
         assertEquals(2, provider.imageCalls);
-        assertEquals(2, indexer.index(catalog));
+        assertEquals(2, GraphTestFixtures.fill(provider, index, catalog));
         assertEquals(2, index.points.size());
         GraphSpec graph = new GraphParser().parse("<graph type='compare' title='processor'>"
                 + "<line icon='laptop'>OverClocked for 400MHz frequency</line>"
@@ -67,7 +66,7 @@ class GraphMatchServiceTest {
         for (List<double[]> vectors : List.of(List.<double[]>of(), List.of(new double[]{1}),
                 List.of(new double[]{0, 0}), List.of(new double[]{Double.NaN, 1}), List.of(new double[]{Double.MAX_VALUE, 1}))) {
             provider.override = vectors;
-            assertThrows(IOException.class, () -> service.resolve(graph));
+            assertEquals(ResolvedGraph.Status.UNAVAILABLE, service.resolve(graph).matches().get(0).status());
         }
         assertEquals(0, index.searches);
         provider.identity = new IconEmbeddingProvider.Space("test-multimodal", "2", 2);
@@ -84,6 +83,6 @@ class GraphMatchServiceTest {
         assertThrows(IOException.class, () -> new GraphMatchService(provider, index, catalog)
                 .resolve(new GraphParser().parse("<graph type='list'><line icon='laptop'>x</line></graph>")));
         var other = new IconCatalog(catalog.library(), catalog.version(), "different", catalog.preprocessingVersion(), catalog.licensePath(), catalog.icons());
-        assertThrows(IOException.class, () -> new IconIndexer(provider, index).index(other));
+        assertThrows(IOException.class, () -> GraphTestFixtures.fill(provider, index, other));
     }
 }

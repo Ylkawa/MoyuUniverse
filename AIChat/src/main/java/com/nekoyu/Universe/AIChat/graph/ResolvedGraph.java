@@ -6,10 +6,11 @@ import java.util.Optional;
 
 public record ResolvedGraph(GraphSpec graph, List<IconMatch> matches) {
     public ResolvedGraph { Objects.requireNonNull(graph); matches = List.copyOf(matches); }
-    public enum Status { CANDIDATES, UNMATCHED }
-    public record IconMatch(String slot, String query, List<IconCandidate> candidates) {
+    public enum Status { CANDIDATES, UNMATCHED, UNAVAILABLE }
+    public record IconMatch(String slot, String query, List<IconCandidate> candidates, boolean unavailable) {
         public IconMatch { Objects.requireNonNull(slot); Objects.requireNonNull(query); candidates = List.copyOf(candidates); }
-        public Status status() { return candidates.isEmpty() ? Status.UNMATCHED : Status.CANDIDATES; }
+        public IconMatch(String slot, String query, List<IconCandidate> candidates) { this(slot, query, candidates, false); }
+        public Status status() { return unavailable ? Status.UNAVAILABLE : candidates.isEmpty() ? Status.UNMATCHED : Status.CANDIDATES; }
         public Optional<IconCandidate> preferred() { return candidates.stream().findFirst(); }
     }
 }

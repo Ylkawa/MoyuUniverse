@@ -1,58 +1,72 @@
 package com.nekoyu.Universe.AIChat.graph;
 
 import com.nekoyu.Universe.AIChat.Skill.Skill;
-import io.qdrant.client.QdrantClient;
 import java.io.IOException;
-import java.net.URI;
-import java.net.http.HttpClient;
 import java.nio.file.Path;
-import java.time.Duration;
 import java.util.List;
 
 /** AIChat-owned lifecycle; importing/indexing catalogs remains an explicit maintenance operation. */
 public final class GraphRuntime implements AutoCloseable {
-    @FunctionalInterface public interface ClientFactory { QdrantClient open() throws IOException; }
     private final GraphDecoupler decoupler;
-    private final QdrantClient client;
     private final Skill skill;
-    private GraphRuntime(GraphDecoupler decoupler, QdrantClient client, GraphSettings settings, boolean iconsEnabled) {
-        this.decoupler = decoupler; this.client = client; this.skill = graphSkill(settings, iconsEnabled);
+    private GraphRuntime(GraphDecoupler decoupler, GraphSettings settings, boolean iconsEnabled) {
+        this.decoupler = decoupler; this.skill = graphSkill(settings, iconsEnabled);
     }
     public GraphDecoupler decoupler() { return decoupler; }
     public Skill skill() { return skill; }
 
-    public static GraphRuntime open(GraphSettings settings, ClientFactory factory) throws IOException {
+    public static GraphRuntime open(GraphSettings settings) throws IOException {
+        return open(settings, IconAssetSource.classpath(GraphRuntime.class.getClassLoader(), IconBundle.PREFIX));
+    }
+    static GraphRuntime open(GraphSettings settings, IconAssetSource assets) throws IOException {
         settings.validate();
         GraphDecoupler.Resolver resolver = graph -> {
-            if (!graph.iconSlots().isEmpty()) throw new IOException("Graph icon matching requires catalogManifest, Qdrant and the embedding API key");
-            return new ResolvedGraph(graph, List.of());
+            return new ResolvedGraph(graph, graph.iconSlots().stream()
+                    .map(slot -> new ResolvedGraph.IconMatch(slot.key(), slot.query(), List.of(), true)).toList());
         };
-        QdrantClient client = null;
-        boolean iconsEnabled = settings.catalogManifest != null && !settings.catalogManifest.isBlank();
-        try {
-            if (iconsEnabled) {
-                IconCatalog catalog = new LucideCatalogImporter().loadManifest(Path.of(settings.catalogManifest));
-                String key = settings.embeddingApiKeyEnv == null ? null : System.getenv(settings.embeddingApiKeyEnv);
-                if (key == null || key.isBlank()) throw new IOException("Graph embedding API key environment variable is missing");
-                var provider = new Qwen3VlEmbeddingProvider(HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build(),
-                        URI.create(settings.embeddingEndpoint), key, settings.embeddingDimension, Duration.ofSeconds(60));
-                client = factory.open();
-                var descriptor = IndexDescriptor.of(provider.space(), catalog);
-                var index = new QdrantIconIndex(client, settings.qdrantCollection == null || settings.qdrantCollection.isBlank()
-                        ? descriptor.defaultCollection() : settings.qdrantCollection, descriptor, Duration.ofSeconds(10));
-                index.verify();
-                var matcher = new GraphMatchService(provider, index, catalog);
-                resolver = matcher::resolve;
+        boolean iconsEnabled = false;
+        if (settings.iconsEnabled) {
+            try {
+                var bundle = IconBundle.load(assets);
+                if (!settings.embeddingModel.equals(bundle.index().descriptor().space().model())
+                        || settings.embeddingDimension != bundle.index().descriptor().space().dimension()) throw new IOException("Embedding model differs from bundled vectors");
+                resolver = new ProviderResolver(settings, bundle);
+                iconsEnabled = true;
+            } catch (IOException | RuntimeException e) {
+                org.slf4j.LoggerFactory.getLogger(GraphRuntime.class).warn("图标预建包不可用，继续提供无图标绘图：{}", e.toString());
             }
-            return new GraphRuntime(new GraphDecoupler(settings, resolver), client, settings, iconsEnabled);
-        } catch (IOException | RuntimeException e) {
-            if (client != null) client.close();
-            throw e;
         }
+        return new GraphRuntime(new GraphDecoupler(settings, resolver), settings, iconsEnabled);
     }
     @Override public void close() {
         decoupler.close();
-        if (client != null) client.close();
+    }
+    /** 插件 prepare 顺序未固定，延迟到第一次真实绘图获取注册表；空间查询不需要 API Key。 */
+    private static final class ProviderResolver implements GraphDecoupler.Resolver {
+        private final GraphSettings settings;
+        private final IconBundle bundle;
+        private GraphMatchService matcher;
+        ProviderResolver(GraphSettings settings, IconBundle bundle) { this.settings = settings; this.bundle = bundle; }
+        private synchronized GraphMatchService matcher() {
+            if (matcher == null) {
+                try {
+                    var delegate = new ProviderIconEmbeddingProvider(settings.embeddingProvider, settings.embeddingModel, settings.embeddingDimension, settings.embeddingSpaceVersion);
+                    if (!delegate.space().equals(bundle.index().descriptor().space())) throw new IOException("Registered Provider space differs from bundled vectors");
+                    var cached = new CachedEmbeddingProvider(delegate.space(), Path.of("data/AIChat/graph-embeddings/text"), () -> delegate);
+                    matcher = new GraphMatchService(cached, bundle.index(), bundle.catalog());
+                } catch (IOException | RuntimeException e) {
+                    org.slf4j.LoggerFactory.getLogger(GraphRuntime.class).warn("图标 Provider 不可用，保留正文继续绘制：{}", e.toString());
+                    return null;
+                }
+            }
+            return matcher;
+        }
+        @Override public ResolvedGraph resolve(GraphSpec graph) throws IOException {
+            if (graph.iconSlots().isEmpty()) return new ResolvedGraph(graph, List.of());
+            var ready = matcher();
+            return ready == null ? new ResolvedGraph(graph, graph.iconSlots().stream()
+                    .map(s -> new ResolvedGraph.IconMatch(s.key(), s.query(), List.of(), true)).toList()) : ready.resolve(graph);
+        }
     }
     private static Skill graphSkill(GraphSettings settings, boolean iconsEnabled) {
         Skill skill = new Skill(); skill.id = "graph"; skill.name = "图表绘制";
@@ -69,7 +83,7 @@ public final class GraphRuntime implements AutoCloseable {
                 长图会分页返回多张图片。最多 %d 项/节点、%d 条边、%d 个字符、%d 页；
                 单个节点 label 不超过 400 字符、id 不超过 80 字符，edge label 不超过 200 字符。
                 """.formatted(settings.maxNodes, settings.maxEdges, settings.maxTextCharacters, settings.maxPages) + (iconsEnabled ? """
-                line/node 可使用 icon="图标语义描述"。程序仅将 icon 内容交给 qwen3-vl-embedding 匹配图标库，
+                line/node 可使用 icon="图标语义描述"。程序仅将 icon 内容向量化并在本地图标库匹配，
                 取相似度最高的图标填充占位；正文、节点关系和图表类型由你明确填写。
                 """ : "当前未配置图标匹配，省略所有 icon 属性。\n");
         return skill;

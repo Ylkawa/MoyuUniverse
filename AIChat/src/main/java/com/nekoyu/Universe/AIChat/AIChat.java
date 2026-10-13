@@ -165,7 +165,15 @@ public class AIChat extends Law {
 
         try (Reader reader = new InputStreamReader(
                 new FileInputStream("./config/AIChat/config.json"), StandardCharsets.UTF_8)) {
-            globalCfg = gson.fromJson(reader, Config.class);
+            var configJson = com.google.gson.JsonParser.parseReader(reader);
+            if (configJson.isJsonObject() && configJson.getAsJsonObject().has("Graph") && configJson.getAsJsonObject().get("Graph").isJsonObject()) {
+                var graphJson = configJson.getAsJsonObject().getAsJsonObject("Graph");
+                if (graphJson.has("catalogManifest") || graphJson.has("qdrantCollection"))
+                    logger.warn("Graph.catalogManifest/qdrantCollection 已失效，图标改用 JAR 内预建包；旧资源和集合不会自动删除");
+                if (graphJson.has("embeddingEndpoint") || graphJson.has("embeddingApiKeyEnv"))
+                    logger.warn("Graph.embeddingEndpoint/embeddingApiKeyEnv 已失效，请改用 embeddingProvider，并在对应 Adapter 配置 BaseUrl 和 APIKey 字符串");
+            }
+            globalCfg = gson.fromJson(configJson, Config.class);
             if (globalCfg.SQLConfig != null) {
                 HikariConfig config = new HikariConfig();
                 config.setDriverClassName("com.mysql.cj.jdbc.Driver");
@@ -483,13 +491,7 @@ public class AIChat extends Law {
                 ? new com.nekoyu.Universe.AIChat.graph.GraphSettings() : globalCfg.Graph;
         if (!settings.enabled) return;
         try {
-            graphRuntime = com.nekoyu.Universe.AIChat.graph.GraphRuntime.open(settings, () -> {
-                if (globalCfg == null || globalCfg.Qdrant == null) throw new IOException("Graph icon matching requires Qdrant configuration");
-                var config = globalCfg.Qdrant;
-                var builder = io.qdrant.client.QdrantGrpcClient.newBuilder(config.address, config.port, config.encryptedConnection);
-                if (config.secretKey != null && !config.secretKey.isBlank()) builder.withApiKey(config.secretKey);
-                return new io.qdrant.client.QdrantClient(builder.build());
-            });
+            graphRuntime = com.nekoyu.Universe.AIChat.graph.GraphRuntime.open(settings);
             registerMarkDecoupler("graph", graphRuntime.decoupler());
             SkillRegistry.register(graphRuntime.skill());
             logger.info("Graph decoupler ready: list, compare, timeline, tree, flow, relation");

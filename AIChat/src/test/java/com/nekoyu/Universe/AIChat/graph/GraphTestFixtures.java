@@ -9,6 +9,15 @@ import java.util.List;
 import java.util.Map;
 
 final class GraphTestFixtures {
+    record IndexedIcon(IconResource resource, double[] vector) {}
+    static int fill(IconEmbeddingProvider provider, MemoryIndex index, IconCatalog catalog) throws IOException {
+        if (!IndexDescriptor.of(provider.space(), catalog).equals(index.descriptor())) throw new IOException("Index identity differs");
+        for (IconResource icon : catalog.icons()) {
+            var vector = provider.embedImages(List.of(new IconEmbeddingProvider.Image(icon.id(), "image/png", Files.readAllBytes(icon.previewPath())))).get(0);
+            index.points.put(icon.id(), new IndexedIcon(icon, vector));
+        }
+        return catalog.icons().size();
+    }
     static final String SVG = "<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' "
             + "fill='none' stroke='currentColor' stroke-width='2'><rect x='4' y='4' width='16' height='12'/><path d='M2 20h20'/></svg>";
     static Path source(Path directory) throws IOException {
@@ -32,7 +41,7 @@ final class GraphTestFixtures {
             textCalls++; this.texts = List.copyOf(texts);
             return override != null ? override : texts.stream().map(t -> t.equals("laptop") ? new double[]{1, 0} : new double[]{0, 1}).toList();
         }
-        @Override public List<double[]> embedImages(List<Image> images) {
+        @Override public List<double[]> embedImages(List<Image> images) throws IOException {
             imageCalls++;
             return images.stream().map(i -> i.id().equals("lucide/laptop") ? new double[]{1, 0} : new double[]{0, 1}).toList();
         }
@@ -45,9 +54,7 @@ final class GraphTestFixtures {
         List<IconCandidate> override;
         MemoryIndex(IndexDescriptor descriptor) { this.descriptor = descriptor; }
         @Override public IndexDescriptor descriptor() { return descriptor; }
-        @Override public void initialize() throws IOException { verify(); }
         @Override public void verify() throws IOException { verifications++; if (failure != null) throw failure; }
-        @Override public void upsert(List<IndexedIcon> values) { for (IndexedIcon value : values) points.put(value.resource().id(), value); }
         @Override public List<IconCandidate> search(double[] vector, int limit) throws IOException {
             searches++; if (failure != null) throw failure;
             if (override != null) return override;

@@ -23,4 +23,13 @@ public interface IconEmbeddingProvider {
     Space space();
     List<double[]> embedTexts(List<String> texts) throws IOException;
     List<double[]> embedImages(List<Image> images) throws IOException;
+    record TextResult(double[] vector) { public boolean available() { return vector != null; } }
+    /** 缓存适配器可逐描述返回失败，避免一个新描述影响已缓存图标。 */
+    default List<TextResult> textResults(List<String> texts) throws IOException {
+        try { return Vectors.batch(embedTexts(texts), texts.size(), space().dimension()).stream().map(TextResult::new).toList(); }
+        catch (IOException e) {
+            org.slf4j.LoggerFactory.getLogger(IconEmbeddingProvider.class).warn("图标文字向量计算失败，省略图标：{}", e.toString());
+            return texts.stream().map(t -> new TextResult(null)).toList();
+        }
+    }
 }

@@ -23,8 +23,6 @@ public record IndexDescriptor(IconEmbeddingProvider.Space space, String library,
                 library, libraryVersion, catalogDigest, preprocessingVersion}) value.append(field.length()).append(':').append(field);
         return hash(value.toString().getBytes(StandardCharsets.UTF_8));
     }
-    public String vectorName() { return "icon_" + fingerprint(); }
-    public String defaultCollection() { return "moyu_universe_aic_graph_icons_" + fingerprint().substring(0, 16); }
     static String hash(byte[] bytes) {
         try { return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes)); }
         catch (NoSuchAlgorithmException e) { throw new IllegalStateException(e); }

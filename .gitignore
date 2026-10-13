@@ -1,4 +1,6 @@
 target/
+data/AIChat/graph-embeddings/
+data/AIChat/graph-icons/
 log/
 !.mvn/wrapper/maven-wrapper.jar
 !**/src/main/**/target/

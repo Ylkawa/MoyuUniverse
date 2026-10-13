@@ -53,7 +53,7 @@ class GraphRenderingTest {
     void sixTypesRouteToRealPngAndKeepSurroundingText(String type) throws Exception {
         var catalog = GraphTestFixtures.catalog(temp); var provider = new GraphTestFixtures.Provider();
         var index = new GraphTestFixtures.MemoryIndex(IndexDescriptor.of(provider.space(), catalog));
-        new IconIndexer(provider, index).index(catalog);
+        GraphTestFixtures.fill(provider, index, catalog);
         var matcher = new GraphMatchService(provider, index, catalog);
         try (var renderer = new GraphDecoupler(settings(), matcher::resolve)) {
             Map<String, MarkDecoupler> registry = registry(); var previous = registry.get("graph");
@@ -323,6 +323,8 @@ class GraphRenderingTest {
     @Test void runtimeRegistersPairedGraphAndSkillAndRemovesOwnedEntriesOnStop() throws Exception {
         var registry = registry(); var previous = registry.get("graph"); var priorSkill = SkillRegistry.get("graph"); AIChat agent = new AIChat();
         try {
+            var config = new com.google.gson.Gson().fromJson("{\"Graph\":{\"iconsEnabled\":false}}", com.nekoyu.Universe.AIChat.Config.class);
+            var configField = AIChat.class.getDeclaredField("globalCfg"); configField.setAccessible(true); configField.set(agent, config);
             var load = AIChat.class.getDeclaredMethod("loadInternalMarkDecoupler"); load.setAccessible(true); load.invoke(agent);
             assertEquals(MarkDecoupler.Form.PAIRED, registry.get("graph").form()); assertNotNull(SkillRegistry.get("graph"));
             assertTrue(SkillRegistry.get("graph").systemPrompt.contains("省略所有 icon"));

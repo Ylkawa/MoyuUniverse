@@ -17,6 +17,7 @@
         <maven.compiler.target>17</maven.compiler.target>
         <maven.compiler.release>17</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <graph.icons.required>true</graph.icons.required>
     </properties>
 
     <dependencies>
@@ -52,6 +53,14 @@
     <plugins>
         <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-compiler-plugin</artifactId><version>3.14.0</version></plugin>
         <plugin><groupId>org.apache.maven.plugins</groupId><artifactId>maven-surefire-plugin</artifactId><version>3.5.3</version></plugin>
+        <plugin>
+            <groupId>org.codehaus.mojo</groupId><artifactId>exec-maven-plugin</artifactId><version>3.5.0</version>
+            <executions><execution><id>verify-graph-icon-bundle</id><phase>prepare-package</phase><goals><goal>java</goal></goals>
+                <configuration><mainClass>com.nekoyu.Universe.AIChat.graph.GraphIconCli</mainClass>
+                    <arguments><argument>verify-classpath</argument><argument>--required</argument><argument>${graph.icons.required}</argument></arguments>
+                </configuration>
+            </execution></executions>
+        </plugin>
     </plugins></build>
 
 </project>

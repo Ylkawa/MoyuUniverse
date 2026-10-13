@@ -15,7 +15,7 @@
 `GraphExampleGenerator` 使用真实的 GraphDecoupler 与 ImageField 输出路径。
 所有示例默认使用工件中的 HarmonyOS Sans SC Regular、Bold，无需指定系统字体。
 演示图标是生成器内的本地 SVG 素材，按明确的 icon 键绑定；不调用真实 embedding 服务，不用来评估模型匹配质量。
-正式 AIChat 的图标解析仍使用 qwen3-vl-embedding，示例生成器不改变生产匹配逻辑。
+正式 AIChat 使用预建的本地图标向量和持久文字缓存，本次模型为 tongyi-embedding-vision-plus-2026-03-06；示例生成器不改变生产匹配逻辑。
 
 生成图片在 `AIChat/target/graph-render-preview/examples/`，每种类型按页码输出。
 flow 与 relation 的第二页是完整关系索引。目录中的 `index.md` 列出本次输出的图片和 XML。
