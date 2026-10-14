@@ -285,6 +285,66 @@ class UnifiedLeadingTest {
         }
     }
 
+    @Test void similarExistingMemoryIsActivatedInsteadOfInserted() {
+        try (Fixture f = new Fixture(false)) {
+            FakeMemory store = new FakeMemory();
+            Memory.Item existing = store.seed("用户的父亲拥有一个使用了十几年的美国Google老账号。");
+            existing.score = 0.97f;
+            store.queryHits = List.of(existing);
+            f.ai.memory = store;
+            f.ai.startReplyService();
+            f.annotator.output = messages -> withAddition(routedPlan(messages, false),
+                    "用户的父亲拥有一个十几年的美国Google老账号。");
+            send(f, "父亲的 Google 老账号");
+            f.time.advance(5_000);
+            check(store.items.size() == 1 && store.attempts.isEmpty(), "similar memory does not create a second point");
+            check(f.topic().activatingMemory.containsKey(existing.id), "existing point becomes active in the topic");
+            store.hideCandidates = true;
+            f.annotator.output = messages -> routedPlan(messages, false);
+            send(f, "下一条消息");
+            f.time.advance(5_000);
+            check(lastPrompt(f).contains(existing.content), "next leading receives the activated memory");
+        }
+    }
+
+    @Test void similarityCheckKeepsDifferentFactsAndDeduplicatesOneBatch() {
+        try (Fixture f = new Fixture(false)) {
+            FakeMemory store = new FakeMemory();
+            Memory.Item other = store.seed("不同的事实");
+            other.score = 0.80f;
+            store.queryHits = List.of(other);
+            store.embeddingVectors.put("同批事实甲", new double[]{1, 0});
+            store.embeddingVectors.put("同批事实乙", new double[]{1, 0});
+            f.ai.memory = store;
+            f.ai.startReplyService();
+            f.annotator.output = messages -> {
+                JsonObject result = plan(false);
+                result.getAsJsonArray("add").add(addition("同批事实甲"));
+                result.getAsJsonArray("add").add(addition("同批事实乙"));
+                return result.toString();
+            };
+            send(f, "两个候选事实");
+            f.time.advance(5_000);
+            check(store.items.size() == 2 && store.attempts.containsKey("同批事实甲")
+                            && !store.attempts.containsKey("同批事实乙"),
+                    "low-score existing point is retained and similar additions in one plan write once");
+        }
+    }
+
+    @Test void failedSimilarityLookupDoesNotWriteAnUncheckedMemory() {
+        try (Fixture f = new Fixture(false)) {
+            FakeMemory store = new FakeMemory();
+            store.queryFailure = true;
+            f.ai.memory = store;
+            f.ai.startReplyService();
+            f.annotator.output = messages -> withAddition(routedPlan(messages, false), "可能重复的事实");
+            send(f, "可能重复的事实");
+            f.time.advance(5_000);
+            check(store.items.isEmpty() && store.attempts.isEmpty(), "lookup failure cannot bypass duplicate check");
+            check(!f.topic().failedLeadingInputs.isEmpty(), "human evidence remains available for retry");
+        }
+    }
+
     @Test void arrivalsDuringLeadingBelongToNextBatch() {
         try (Fixture f = new Fixture(false)) {
             f.ai.startReplyService();
@@ -506,8 +566,19 @@ class UnifiedLeadingTest {
         final Map<String, Integer> failures = new HashMap<>();
         final Map<String, List<UUID>> attempts = new HashMap<>();
         final Map<UUID, Integer> deleteAttempts = new HashMap<>();
+        final Map<String, double[]> embeddingVectors = new HashMap<>();
         List<Memory.Item> queryHits = List.of();
         int queryCount;
+        boolean hideCandidates;
+        boolean queryFailure;
+        @Override public double[] embedding(String text) {
+            double[] specified = embeddingVectors.get(text);
+            if (specified != null) return specified;
+            Random random = new Random(text.hashCode());
+            double[] vector = new double[32];
+            for (int i = 0; i < vector.length; i++) vector[i] = random.nextDouble() * 2 - 1;
+            return vector;
+        }
         Memory.Item seed(String content) {
             Memory.Item item = new Memory.Item();
             item.id = UUID.randomUUID();
@@ -529,9 +600,12 @@ class UnifiedLeadingTest {
         }
         @Override public List<Memory.Item> query(List<Float> vector, List<String> locations) {
             queryCount++;
+            if (queryFailure) throw new IllegalStateException("fake query failure");
             return queryHits;
         }
-        @Override public List<Memory.Item> getLastMemoryItems(List<String> locations, int limit) { return new ArrayList<>(items.values()); }
+        @Override public List<Memory.Item> getLastMemoryItems(List<String> locations, int limit) {
+            return hideCandidates ? List.of() : new ArrayList<>(items.values());
+        }
         @Override public List<Memory.Item> getHighImportanceItems(List<String> locations, int limit, float importance) { return List.of(); }
         @Override public void insert(List<Memory.Item> additions) { additions.forEach(this::attempt); }
         @Override public void update(UUID id, float confidence, float importance, String content) {

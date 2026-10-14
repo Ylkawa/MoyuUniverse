@@ -51,6 +51,7 @@ import java.util.stream.Stream;
 import java.util.zip.ZipEntry;
 
 public class AIChat extends Law {
+    private static final float MEMORY_DUPLICATE_SCORE = 0.95f;
     public static final Gson gson = new Gson();
     public static final int TOPIC_TIMEOUT = 20;
     static final long TOPIC_IDLE_MILLIS = TimeUnit.MINUTES.toMillis(10);
@@ -1384,15 +1385,31 @@ public class AIChat extends Law {
     }
 
     private int applyMemoryPlan(Topic topic, LeadingPlan plan, Map<Integer, UUID> numberedIds,
-                                Map<UUID, Memory.Item> candidates, List<Topic.Input> evidence) {
+                                Map<UUID, Memory.Item> candidates, List<Topic.Input> evidence) throws IOException {
         if (memory == null || evidence.isEmpty()) return 0;
         Map<UUID, PendingMemoryWrite> writes = new LinkedHashMap<>();
+        Map<String, List<double[]>> newVectors = new HashMap<>();
         for (LeadingPlan.NewMemory addition : plan.additions()) {
-            boolean duplicate = Stream.concat(Stream.concat(candidates.values().stream(), topic.activatingMemory.values().stream()),
-                    topic.failedMemoryWrites.values().stream().filter(w -> w.kind() != PendingMemoryWrite.Kind.DELETE)
-                            .map(PendingMemoryWrite::item))
+            boolean duplicate = Stream.concat(Stream.concat(Stream.concat(candidates.values().stream(), topic.activatingMemory.values().stream()),
+                            topic.failedMemoryWrites.values().stream().filter(w -> w.kind() != PendingMemoryWrite.Kind.DELETE)
+                                    .map(PendingMemoryWrite::item)), writes.values().stream().map(PendingMemoryWrite::item))
                     .anyMatch(m -> Objects.equals(m.locationId, addition.locationId()) && Objects.equals(m.content, addition.content()));
             if (duplicate) continue;
+            double[] vector = memory.embedding(addition.content());
+            boolean sameBatch = newVectors.getOrDefault(addition.locationId(), List.of()).stream()
+                    .anyMatch(previous -> cosineSimilarity(previous, vector) >= MEMORY_DUPLICATE_SCORE);
+            if (sameBatch) continue;
+            List<Float> queryVector = new ArrayList<>(vector.length);
+            for (double value : vector) queryVector.add((float) value);
+            Memory.Item similar = memory.query(queryVector, List.of(addition.locationId())).stream()
+                    .filter(item -> Objects.equals(item.locationId, addition.locationId())
+                            && item.confidence >= 0 && item.score >= MEMORY_DUPLICATE_SCORE)
+                    .findFirst().orElse(null);
+            if (similar != null) {
+                topic.activatingMemory.put(similar.id, similar);
+                continue;
+            }
+            newVectors.computeIfAbsent(addition.locationId(), ignored -> new ArrayList<>()).add(vector);
             Memory.Item item = new Memory.Item();
             item.id = UUID.randomUUID();
             item.locationId = addition.locationId();
@@ -1430,6 +1447,17 @@ public class AIChat extends Law {
             if (tryMemoryWrite(topic, write)) changed++;
         }
         return changed;
+    }
+
+    private static double cosineSimilarity(double[] left, double[] right) {
+        if (left.length != right.length) return -1;
+        double dot = 0, leftLength = 0, rightLength = 0;
+        for (int i = 0; i < left.length; i++) {
+            dot += left[i] * right[i];
+            leftLength += left[i] * left[i];
+            rightLength += right[i] * right[i];
+        }
+        return leftLength == 0 || rightLength == 0 ? -1 : dot / Math.sqrt(leftLength * rightLength);
     }
 
     private boolean tryMemoryWrite(Topic topic, PendingMemoryWrite write) {
