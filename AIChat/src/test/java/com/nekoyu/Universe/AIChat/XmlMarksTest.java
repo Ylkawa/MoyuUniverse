@@ -69,18 +69,19 @@ public final class XmlMarksTest {
             received.add(element);
             return new MFChain("[graph:" + type + "]");
         });
-        String graph = "<graph type='compare'><line icon='laptop'>笔记本：A&amp;B</line>"
-                + "<line icon=\"desktop\"><![CDATA[台式机：<None>]]></line>"
+        String graph = "<graph type='compare'><object id='a' label='笔记本' icon='laptop'/><object id='b' label='台式机' icon='desktop'/>"
+                + "<row label='内容'><cell object='a'>笔记本：A&amp;B</cell><cell object='b'><![CDATA[台式机：<None>]]></cell></row>"
                 + "<!-- <xml_test value='comment'/> --><xml_test value='child'/></graph>";
         check(agent.decoupleMark("前" + graph + "后<xml_test value='outside'/>").toString()
                 .equals("前[graph:compare]后[outside]"), "paired element dispatch with surrounding prose");
         check(received.size() == 1, "dispatch outer element exactly once");
         Element element = received.get(0);
-        var lines = element.getElementsByTagName("line");
-        check(lines.getLength() == 2 && ((Element) lines.item(0)).getAttribute("icon").equals("laptop"),
+        var objects = element.getElementsByTagName("object");
+        var cells = element.getElementsByTagName("cell");
+        check(objects.getLength() == 2 && ((Element) objects.item(0)).getAttribute("icon").equals("laptop"),
                 "handler receives attributes and child elements");
-        check(lines.item(0).getTextContent().equals("笔记本：A&B")
-                && lines.item(1).getTextContent().equals("台式机：<None>"), "entities and CDATA text");
+        check(cells.item(0).getTextContent().equals("笔记本：A&B")
+                && cells.item(1).getTextContent().equals("台式机：<None>"), "entities and CDATA text");
         check(element.getElementsByTagName("xml_test").getLength() == 1, "nested markers remain handler-owned");
 
         String nested = "<graph type='nested'><graph type='inner'><line icon='laptop'>x</line></graph></graph>";
@@ -126,7 +127,7 @@ public final class XmlMarksTest {
         MFChain imageResult = agent.decoupleMark("前<graph_image type='compare'><line>x</line></graph_image>后");
         check(imageResult.size() == 3 && imageResult.get(1) == image, "paired decoupler returns real image field");
 
-        String answer = "前段\n\n<graph\n\n type='compare'><line icon='laptop'>笔记本\n\n400MHz</line>"
+        String answer = "前段\n\n<graph\n\n type='compare'><object id='a' label='笔记本' icon='laptop'/><object id='b' label='台式机'/><row label='内容'><cell object='a'>笔记本\n\n400MHz</cell><cell object='b'/></row>"
                 + "<!-- blank\n\n --><?example blank\n\n ?><line icon='desktop'><![CDATA[台式机\n\n]]></line>"
                 + "</graph><graph type='list'></graph>\n\n尾段";
         List<String> expected = List.of("前段", "[graph:compare][graph:list]", "尾段");

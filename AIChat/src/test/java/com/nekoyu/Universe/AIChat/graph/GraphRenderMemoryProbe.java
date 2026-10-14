@@ -38,7 +38,12 @@ public final class GraphRenderMemoryProbe {
         try (var renderer = new GraphDecoupler(settings, resolver)) {
             for (String type : List.of("list", "compare", "timeline", "tree", "flow", "relation")) {
                 String xml;
-                if (type.equals("list") || type.equals("compare") || type.equals("timeline")) {
+                if (type.equals("compare")) {
+                    StringBuilder items = new StringBuilder("<graph type='compare' title='内存压力验证'><object id='a' label='对象 A' icon='device'/><object id='b' label='对象 B' icon='device'/>");
+                    for (int i = 0; i < 66; i++) items.append("<row label='维度").append(i)
+                            .append("'><cell object='a'>中文与 English 混排，用于验证分页绘图的内存占用。</cell><cell object='b'>完整保留各对象的对应值。</cell></row>");
+                    xml = items.append("</graph>").toString();
+                } else if (type.equals("list") || type.equals("timeline")) {
                     StringBuilder items = new StringBuilder("<graph type='").append(type).append("' title='内存压力验证'>");
                     for (int i = 0; i < 200; i++) items.append("<line icon='device'").append(type.equals("timeline") ? " time='第" + i + "天'" : "")
                             .append(">中文与 English 混排，用于验证分页绘图的内存占用。</line>");

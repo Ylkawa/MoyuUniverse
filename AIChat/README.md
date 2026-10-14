@@ -54,10 +54,16 @@ JAR 内包含预建图标包，配置匹配的模型 endpoint 后可使用 icon�
 
 ```xml
 <graph type="compare">
-  <line icon="laptop">笔记本：OverClocked for 400MHz frequency</line>
-  <line icon="desktop">台式机：None OverClock</line>
+  <object id="laptop" label="笔记本" icon="laptop"/>
+  <object id="desktop" label="台式机" icon="desktop"/>
+  <row label="超频">
+    <cell object="laptop">OverClocked for 400MHz frequency</cell>
+    <cell object="desktop">None OverClock</cell>
+  </row>
 </graph>
 ```
+
+compare 的旧 line 格式已移除；对象固定为列、维度固定为行，每行必须覆盖所有对象，空 cell 显示 —。
 
 `Form.PAIRED` 只接受成对元素；`Form.BOTH` 同时接受成对元素和自闭合浮标。
 也可通过 `MarkDecoupler.withForm(form, handler)` 包装已有处理器。

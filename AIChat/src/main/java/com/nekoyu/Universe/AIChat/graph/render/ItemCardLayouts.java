@@ -10,14 +10,13 @@ import java.util.List;
 import java.util.Map;
 
 final class ItemCardLayouts {
-    enum Style { LIST, COMPARE, TIMELINE }
+    enum Style { LIST, TIMELINE }
     private record Card(List<GraphRenderContext.Line> heading, List<GraphRenderContext.Line> body,
                         List<GraphRenderContext.Line> time, String iconSlot, ResolvedGraph.IconMatch fallback, float height, boolean continuation) {}
     private record Placement(Card card, float x, float y, float width) {}
 
     static List<GraphPage> layout(ResolvedGraph graph, List<GraphSpec.Item> items, GraphRenderContext context, Style style) throws IOException {
-        boolean compare = style == Style.COMPARE;
-        float width = compare ? (context.bodyWidth() - 24) / 2f : style == Style.TIMELINE ? context.bodyWidth() - 200 : context.bodyWidth();
+        float width = style == Style.TIMELINE ? context.bodyWidth() - 200 : context.bodyWidth();
         Map<String, ResolvedGraph.IconMatch> matches = context.matches(graph);
         List<List<Card>> cards = new ArrayList<>();
         for (int i = 0; i < items.size(); i++) {
@@ -45,20 +44,16 @@ final class ItemCardLayouts {
         List<GraphPage> pages = new ArrayList<>();
         List<Placement> current = new ArrayList<>();
         float y = GraphRenderContext.TOP;
-        int step = compare ? 2 : 1;
-        for (int i = 0; i < cards.size(); i += step) {
+        for (int i = 0; i < cards.size(); i++) {
             List<Card> left = cards.get(i);
-            List<Card> right = compare && i + 1 < cards.size() ? cards.get(i + 1) : List.of();
-            for (int f = 0; f < Math.max(left.size(), right.size()); f++) {
-                Card a = f < left.size() ? left.get(f) : null;
-                Card b = f < right.size() ? right.get(f) : null;
-                float height = Math.max(a == null ? 0 : a.height(), b == null ? 0 : b.height());
+            for (int f = 0; f < left.size(); f++) {
+                Card a = left.get(f);
+                float height = a.height();
                 if (!current.isEmpty() && y + height > context.height() - GraphRenderContext.FOOTER) {
                     pages.add(page(graph, current, style)); current = new ArrayList<>(); y = GraphRenderContext.TOP;
                 }
                 float x = GraphRenderContext.MARGIN + (style == Style.TIMELINE ? 200 : 0);
-                if (a != null) current.add(new Placement(a, x, y, width));
-                if (b != null) current.add(new Placement(b, x + width + 24, y, width));
+                current.add(new Placement(a, x, y, width));
                 y += height + 20;
             }
         }
@@ -68,7 +63,7 @@ final class ItemCardLayouts {
     }
     private static GraphPage page(ResolvedGraph graph, List<Placement> placements, Style style) {
         List<Placement> snapshot = List.copyOf(placements);
-        String title = graph.graph().title().isEmpty() ? switch (style) { case LIST -> "信息列表"; case COMPARE -> "对比图"; case TIMELINE -> "时间线"; } : graph.graph().title();
+        String title = graph.graph().title().isEmpty() ? switch (style) { case LIST -> "信息列表"; case TIMELINE -> "时间线"; } : graph.graph().title();
         int bottom = (int) Math.ceil(snapshot.stream().mapToDouble(p -> p.y() + p.card().height()).max().orElse(GraphRenderContext.TOP));
         return new GraphPage(title, bottom, (graphics, context) -> {
             if (style == Style.TIMELINE) {

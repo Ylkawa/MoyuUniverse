@@ -101,6 +101,10 @@ public final class GraphRenderContext implements AutoCloseable {
     /** Bind only while painting under the global raster lock. Layout never depends on icon results. */
     public void bindIcons(ResolvedGraph graph) { bindings = matches(graph); }
     public void clearIcons() { bindings = Map.of(); }
+    public boolean visibleIcon(String slot) {
+        var match = bindings.get(slot);
+        return match != null && match.status() != ResolvedGraph.Status.UNAVAILABLE;
+    }
     public void slotIcon(Graphics2D graphics, String slot, ResolvedGraph.IconMatch fallback, float x, float y, int size) throws IOException {
         icon(graphics, bindings.getOrDefault(slot, fallback), x, y, size);
     }
@@ -147,11 +151,19 @@ public final class GraphRenderContext implements AutoCloseable {
         if (lines.size() > 2 || textHeight(lines) > TOP - 52) throw new IOException("Graph title is too long for the page header");
     }
     public void header(Graphics2D graphics, String title, String type, int page, int count, int canvasHeight) throws IOException {
+        header(graphics, title, type, page, count, canvasHeight, GraphPage.HeaderStyle.STANDARD);
+    }
+    public float compactBodyTop(String title) throws IOException {
+        validateHeader(title);
+        return 68 + textHeight(text(title, bodyWidth(), 32, true));
+    }
+    public void header(Graphics2D graphics, String title, String type, int page, int count, int canvasHeight, GraphPage.HeaderStyle style) throws IOException {
         graphics.setColor(BACKGROUND); graphics.fillRect(0, 0, width, canvasHeight);
         var heading = text(title, bodyWidth(), 32, true);
         if (heading.size() > 2) throw new IOException("Graph title is too long for the page header");
         drawText(graphics, heading, MARGIN, 24, INK);
-        graphics.setColor(ACCENT); graphics.fillRoundRect(MARGIN, 128, 64, 4, 4, 4);
+        int accentY = style == GraphPage.HeaderStyle.COMPACT ? (int) compactBodyTop(title) - 28 : 128;
+        graphics.setColor(ACCENT); graphics.fillRoundRect(MARGIN, accentY, 64, 4, 4, 4);
         graphics.setColor(MUTED); graphics.setFont(font(17, false));
         graphics.drawString(type + "  ·  " + page + " / " + count, MARGIN, canvasHeight - 24);
     }

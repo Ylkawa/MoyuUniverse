@@ -1,5 +1,7 @@
 package com.nekoyu.Universe.AIChat;
 
+import com.nekoyu.Universe.AIChat.leading.LeadingPlanTest;
+
 import com.nekoyu.Universe.API.MessageChannel.*;
 import com.nekoyu.Universe.API.MessageChannel.Features.SessionChat;
 import com.nekoyu.Universe.API.MessageChannel.MessageField.ImageField;
@@ -94,7 +96,9 @@ public class DriveMessageTest {
             f.ai.startReplyService();
             f.ai.handleSessionMessage(f.config, f.provider, f.user("ordinary"));
             f.time.drainWorkers();
-            check(f.provider.calls.size() == 1, "ordinary non-async user still replies immediately");
+            check(f.provider.calls.isEmpty(), "every activates but ordinary input waits five seconds");
+            f.time.advance(5_000);
+            check(f.provider.calls.size() == 1, "ordinary user routes through leading after debounce");
             f.ai.driveMessage(f.sessionId, new MFChain("driver"));
             f.time.advance(4_000);
             f.ai.handleSessionMessage(f.config, f.provider, f.user("merged"));
@@ -176,7 +180,7 @@ public class DriveMessageTest {
             f.time.advance(5_000);
             f.addPendingTool("background", 600_000);
             f.ai.driveMessage(f.sessionId, new MFChain("reply while background is running"));
-            f.topic().getChatContext().rearmDebounce(1_000);
+            f.time.schedule(() -> f.topic().replies.requestReply(), 1_000, java.util.concurrent.TimeUnit.MILLISECONDS);
             f.time.advance(1_000);
             check(f.provider.calls.size() == 1, "async wake does not shorten driver debounce");
             f.time.advance(4_000);
@@ -214,7 +218,7 @@ public class DriveMessageTest {
             f.ai.driveMessage(f.sessionId, new MFChain("create"));
             f.time.advance(5_000);
             f.addPendingTool("expired", 0);
-            f.topic().getChatContext().rearmDebounce(0);
+            f.ai.armAsyncWait(f.topic());
             f.time.advance(0);
             check(f.provider.calls.size() == 2 && !f.topic().hasPendingCalls(), "timeout still triggers fallback inference");
             check(f.provider.calls.get(1).stream().anyMatch(m -> m.toString().contains("已超时")), "fallback reaches model");
@@ -286,9 +290,10 @@ public class DriveMessageTest {
     }
 
     private static int fixtures;
-    private static final class Fixture implements AutoCloseable {
+    static final class Fixture implements AutoCloseable {
         final SessionReplyQueueTest.ManualTime time = new SessionReplyQueueTest.ManualTime();
         final FakeProvider provider = new FakeProvider();
+        final FakeLeadingProvider annotator = new FakeLeadingProvider();
         final FakeChannel channel = new FakeChannel("drive-test-" + fixtures++);
         final String sessionId = channel.ID + ":room";
         final String providerId = channel.ID + "-model";
@@ -297,6 +302,9 @@ public class DriveMessageTest {
 
         Fixture(boolean async) {
             ai.globalCfg = new Config();
+            ai.globalCfg.Annotator = new Config.Annotator();
+            ai.globalCfg.Annotator.provider = providerId + "-leading";
+            ai.globalCfg.Annotator.model = "fake-leading";
             config.SessionId = sessionId;
             config.Provider = providerId;
             config.Model = "fake-model";
@@ -305,6 +313,7 @@ public class DriveMessageTest {
             config.ToolLoop.EnableAsyncTools = async;
             ai.configs.add(config);
             Universe.Providers.put(providerId, provider);
+            Universe.Providers.put(providerId + "-leading", annotator);
             MessageChannelManager.registerChannel(channel.ID, channel);
         }
         Topic topic() { return ai.activatingTopics.get(sessionId); }
@@ -317,8 +326,10 @@ public class DriveMessageTest {
             message.receiver = channel.loginAccount;
             message.messageFields = new MFChain(content);
             message.messageString = content;
+            message.id = ++messageNumber;
             return message;
         }
+        long messageNumber;
         void addPendingTool(String id, long timeout) {
             Message assistant = new Message();
             Tool_call call = new Tool_call();
@@ -335,11 +346,12 @@ public class DriveMessageTest {
         @Override public void close() {
             ai.stop();
             Universe.Providers.remove(providerId);
+            Universe.Providers.remove(providerId + "-leading");
             MessageChannelManager.MessageChannels.remove(channel.ID);
         }
     }
 
-    private static final class FakeProvider extends LLMProvider {
+    static final class FakeProvider extends LLMProvider {
         final List<List<Message>> calls = new ArrayList<>();
         Consumer<List<Message>> onCall = ignored -> {};
         CompletionsRequest lastOptions;
@@ -364,7 +376,7 @@ public class DriveMessageTest {
         }
     }
 
-    private static final class FakeChannel extends MessageChannel implements SessionChat {
+    static final class FakeChannel extends MessageChannel implements SessionChat {
         final List<String> sent = new ArrayList<>();
         FakeChannel(String id) {
             super(id);
@@ -386,5 +398,40 @@ public class DriveMessageTest {
             sent.add(sessionId + ":" + message);
             return sent.size();
         }
+    }
+
+    static final class FakeLeadingProvider extends LLMProvider {
+        final List<List<Message>> calls = new ArrayList<>();
+        java.util.function.Function<List<Message>, String> output = messages -> routedPlan(messages, true);
+        Consumer<List<Message>> onCall = ignored -> {};
+        boolean fail;
+        @Override public CompletionsResponse completions(String model, List<Message> messages,
+                List<LLMFunction> tools, CompletionsRequest options, BufferCallback callback) throws IOException {
+            calls.add(new ArrayList<>(messages));
+            onCall.accept(messages);
+            if (fail) throw new IOException("fake leading failure");
+            CompletionsResponse response = new CompletionsResponse();
+            response.choices = new CompletionsResponse.Choice[]{new CompletionsResponse.Choice()};
+            response.choices[0].finish_reason = "stop";
+            response.choices[0].message.content = output.apply(messages);
+            return response;
+        }
+    }
+
+    static String routedPlan(List<Message> messages, boolean reply) {
+        var plan = com.google.gson.JsonParser.parseString(LeadingPlanTest.emptyPlan()).getAsJsonObject();
+        List<Long> ids = newHumanIds(messages);
+        plan.addProperty("should_reply", reply && !ids.isEmpty());
+        if (reply) ids.forEach(id -> plan.getAsJsonArray("addressed_message_ids").add(id));
+        return plan.toString();
+    }
+
+    static List<Long> newHumanIds(List<Message> messages) {
+        String directory = messages.get(messages.size() - 1).toString().split("本批新消息目录：\\n", 2)[1]
+                .split("\\n允许维护记忆", 2)[0];
+        java.util.regex.Matcher matcher = java.util.regex.Pattern.compile("编号=(\\d+)；来源=真人").matcher(directory);
+        List<Long> ids = new ArrayList<>();
+        while (matcher.find()) ids.add(Long.parseLong(matcher.group(1)));
+        return ids;
     }
 }

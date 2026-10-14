@@ -20,14 +20,21 @@ public final class EmbeddingCache {
     private final String identity;
     private final Path root;
     private final int memoryLimit;
+    private final EmbeddingCache legacy;
     private final LinkedHashMap<String, double[]> memory = new LinkedHashMap<>(16, .75f, true);
     public EmbeddingCache(Path directory, IconEmbeddingProvider.Space space) { this(directory, space, 1024); }
     public EmbeddingCache(Path directory, IconEmbeddingProvider.Space space, int memoryLimit) {
+        this(directory, space, memoryLimit, null);
+    }
+    EmbeddingCache(Path directory, IconEmbeddingProvider.Space space, int memoryLimit, IconEmbeddingProvider.Space legacySpace) {
         if (space.dimension() > 4096 || memoryLimit < 0) throw new IllegalArgumentException("Unsupported cache bounds");
         this.space = space; this.memoryLimit = memoryLimit;
         identity = IndexDescriptor.hash((space.model().length() + ":" + space.model() + space.revision().length()
                 + ":" + space.revision() + ":" + space.dimension() + ":float32-l2-v1:exact-text-v1").getBytes(StandardCharsets.UTF_8));
         root = directory.toAbsolutePath().normalize().resolve(identity);
+        if (legacySpace != null && !EmbeddingSpaces.canonical(legacySpace).equals(space))
+            throw new IllegalArgumentException("Legacy cache space is not equivalent");
+        legacy = legacySpace == null || legacySpace.equals(space) ? null : new EmbeddingCache(directory, legacySpace, 0);
     }
     public Path entryPath(String input) {
         String key = IndexDescriptor.hash(input.getBytes(StandardCharsets.UTF_8));
@@ -71,7 +78,17 @@ public final class EmbeddingCache {
     private double[] load(String input) {
         Path file = entryPath(input);
         try {
-            if (!Files.exists(file)) return null;
+            if (!Files.exists(file)) {
+                if (legacy == null) return null;
+                double[] value = legacy.find(input);
+                if (value == null) return null;
+                float[] original = new float[value.length];
+                for (int i = 0; i < value.length; i++) original[i] = (float) value[i];
+                try { save(input, original); }
+                catch (IOException e) { LoggerFactory.getLogger(EmbeddingCache.class).warn("旧图标缓存迁移写入失败，当前向量继续使用：{}", e.getClass().getSimpleName()); }
+                LoggerFactory.getLogger(EmbeddingCache.class).info("Graph 向量缓存：LEGACY_CACHE_HIT，已复用旧身份向量，无需模型请求");
+                return value;
+            }
             if (Files.size(file) > space.dimension() * 4L + 1024) throw new IOException("Oversized cache record");
             byte[] bytes = Files.readAllBytes(file);
             if (bytes.length < 32) throw new IOException("Truncated cache record");

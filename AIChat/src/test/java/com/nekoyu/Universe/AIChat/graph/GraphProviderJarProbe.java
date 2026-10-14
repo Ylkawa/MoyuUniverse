@@ -19,7 +19,7 @@ public final class GraphProviderJarProbe {
                 int pages = 0;
                 var examples = List.of(
                     "<graph type='list'><line icon='laptop'>完整正文</line><line icon='provider-jar-uncached-query'>未缓存描述仍保留</line></graph>",
-                    "<graph type='compare'><line label='笔记本' icon='laptop'>移动办公</line><line label='服务器' icon='服务器'>服务端</line></graph>",
+                    "<graph type='compare'><object id='a' label='笔记本' icon='laptop'/><object id='b' label='服务器' icon='服务器'/><row label='场景'><cell object='a'>移动办公</cell><cell object='b'>服务端</cell></row></graph>",
                     "<graph type='timeline'><line time='今天' icon='search'>开始检索</line><line time='明天' icon='云端'>完成部署</line></graph>",
                     "<graph type='tree'><node id='r' label='系统' icon='服务器'><node id='db' label='数据库' icon='数据库'/></node></graph>",
                     "<graph type='flow'><node id='a' label='请求' icon='laptop'/><node id='b' label='服务' icon='服务器'/><edge from='a' to='b' label='提交'/></graph>",

@@ -1,4 +1,4 @@
-package com.nekoyu.Universe.AIChat;
+package com.nekoyu.Universe.AIChat.leading;
 
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
@@ -11,30 +11,51 @@ import java.util.List;
 import java.util.Set;
 
 /** 前置模型调用经过校验且不产生副作用的结果。 */
-final class LeadingPlan {
+public final class LeadingPlan {
     static final int MAX_QUERIES_PER_STORE = 2;
-    private static final Set<String> FIELDS = Set.of("add", "update", "delete", "memory_queries", "knowledge_queries");
+    private static final Set<String> FIELDS = Set.of("add", "update", "delete", "memory_queries", "knowledge_queries",
+            "should_reply", "addressed_message_ids");
+    boolean shouldReply;
+    final Set<Long> addressedMessageIds = new java.util.LinkedHashSet<>();
     final List<NewMemory> additions = new ArrayList<>();
     final List<UpdatedMemory> updates = new ArrayList<>();
     final List<Integer> deletions = new ArrayList<>();
     final List<MemoryQuery> memoryQueries = new ArrayList<>();
     final List<String> knowledgeQueries = new ArrayList<>();
 
-    record NewMemory(String locationId, String content, float confidence, float importance) {}
-    record UpdatedMemory(int id, String content, float confidence, float importance) {}
-    record MemoryQuery(String question, String locationId) {}
+    public record NewMemory(String locationId, String content, float confidence, float importance) {}
+    public record UpdatedMemory(int id, String content, float confidence, float importance) {}
+    public record MemoryQuery(String question, String locationId) {}
 
-    static LeadingPlan parse(String output, Set<String> allowedLocations, Set<Integer> knownMemoryIds) {
+    public boolean shouldReply() { return shouldReply; }
+    public Set<Long> addressedMessageIds() { return java.util.Collections.unmodifiableSet(addressedMessageIds); }
+    public List<NewMemory> additions() { return java.util.Collections.unmodifiableList(additions); }
+    public List<UpdatedMemory> updates() { return java.util.Collections.unmodifiableList(updates); }
+    public List<Integer> deletions() { return java.util.Collections.unmodifiableList(deletions); }
+    public List<MemoryQuery> memoryQueries() { return java.util.Collections.unmodifiableList(memoryQueries); }
+    public List<String> knowledgeQueries() { return java.util.Collections.unmodifiableList(knowledgeQueries); }
+
+    public static LeadingPlan parse(String output, Set<String> allowedLocations, Set<Integer> knownMemoryIds,
+                             Set<Long> newHumanMessageIds) {
         JsonObject root = readRoot(output, FIELDS);
-        LeadingPlan plan = parseMemoryOperations(root, allowedLocations, knownMemoryIds, 3);
+        LeadingPlan plan = parseMemoryOperations(root, allowedLocations, knownMemoryIds);
+        JsonElement decision = root.get("should_reply");
+        if (!decision.isJsonPrimitive() || !decision.getAsJsonPrimitive().isBoolean())
+            throw new IllegalArgumentException("Expected boolean: should_reply");
+        plan.shouldReply = decision.getAsBoolean();
+        for (JsonElement element : array(root, "addressed_message_ids")) {
+            try {
+                if (!element.isJsonPrimitive() || !element.getAsJsonPrimitive().isNumber())
+                    throw new IllegalArgumentException("Expected message number");
+                long id = element.getAsBigDecimal().longValueExact();
+                if (!newHumanMessageIds.contains(id)) throw new IllegalArgumentException("Unknown new human message: " + id);
+                plan.addressedMessageIds.add(id);
+            } catch (ArithmeticException e) {
+                throw new IllegalArgumentException("Invalid message number", e);
+            }
+        }
         parseQueries(root, allowedLocations, plan);
         return plan;
-    }
-
-    /** 会话结束时复用相同记忆校验，但不施加 leading 每轮最多三条的限制。 */
-    static LeadingPlan parseMemory(String output, Set<String> allowedLocations, Set<Integer> knownMemoryIds) {
-        return parseMemoryOperations(readRoot(output, Set.of("add", "update", "delete")),
-                allowedLocations, knownMemoryIds, Integer.MAX_VALUE);
     }
 
     private static JsonObject readRoot(String output, Set<String> fields) {
@@ -45,6 +66,7 @@ final class LeadingPlan {
             root = parsed.getAsJsonObject();
             if (!root.keySet().equals(fields)) throw new IllegalArgumentException("Plan JSON fields do not match contract");
             for (String field : fields) {
+                if (field.equals("should_reply")) continue;
                 if (!root.get(field).isJsonArray()) throw new IllegalArgumentException("Expected array: " + field);
             }
         } catch (RuntimeException e) {
@@ -54,7 +76,7 @@ final class LeadingPlan {
     }
 
     private static LeadingPlan parseMemoryOperations(JsonObject root, Set<String> allowedLocations,
-                                                     Set<Integer> knownMemoryIds, int limit) {
+                                                     Set<Integer> knownMemoryIds) {
         LeadingPlan plan = new LeadingPlan();
         Set<Integer> touchedIds = new HashSet<>();
         Set<String> addedFacts = new HashSet<>();
@@ -66,8 +88,7 @@ final class LeadingPlan {
             Float confidence = fraction(value, "confidence");
             Float importance = fraction(value, "importance");
             if (allowedLocations.contains(location) && content != null && confidence != null && importance != null
-                    && addedFacts.add(location + "\n" + content)
-                    && plan.additions.size() < limit) {
+                    && addedFacts.add(location + "\n" + content)) {
                 plan.additions.add(new NewMemory(location, content, confidence, importance));
             }
         }
@@ -79,14 +100,14 @@ final class LeadingPlan {
             Float confidence = fraction(value, "confidence");
             Float importance = fraction(value, "importance");
             if (id != null && knownMemoryIds.contains(id) && !touchedIds.contains(id) && content != null
-                    && confidence != null && importance != null && plan.updates.size() < limit) {
+                    && confidence != null && importance != null) {
                 plan.updates.add(new UpdatedMemory(id, content, confidence, importance));
                 touchedIds.add(id);
             }
         }
         for (JsonElement element : array(root, "delete")) {
             Integer id = positiveInteger(element);
-            if (id != null && knownMemoryIds.contains(id) && touchedIds.add(id) && plan.deletions.size() < limit) {
+            if (id != null && knownMemoryIds.contains(id) && touchedIds.add(id)) {
                 plan.deletions.add(id);
             }
         }

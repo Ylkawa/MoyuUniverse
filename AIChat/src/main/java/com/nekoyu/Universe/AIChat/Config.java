@@ -69,7 +69,6 @@ public class Config {
         String provider = null;
         String model = null;
         List<String> tools;
-        String systemPrompt = "你是一个图书管理员，负责查找和整合知识。";
         boolean thinking = false;
         boolean enableAsyncUpdate = true;
     }

@@ -14,7 +14,7 @@ class GraphParserTest {
     static Stream<Arguments> forms() {
         return Stream.of(
                 Arguments.of("<graph type='list'><line icon='laptop'>笔记本</line></graph>", GraphSpec.Type.LIST),
-                Arguments.of("<graph type='compare'><line>笔记本</line><line>台式机</line></graph>", GraphSpec.Type.COMPARE),
+                Arguments.of("<graph type='compare'><object id='a' label='笔记本'/><object id='b' label='台式机'/><row label='场景'><cell object='a'>移动</cell><cell object='b'>固定</cell></row></graph>", GraphSpec.Type.COMPARE),
                 Arguments.of("<graph type='timeline'><line time='昨天'>第一天</line></graph>", GraphSpec.Type.TIMELINE),
                 Arguments.of("<graph type='tree'><node id='root' label='系统'><node id='client' label='客户端'/></node></graph>", GraphSpec.Type.TREE),
                 Arguments.of("<graph type='flow'><edge from='a' to='b'/><node id='a' label='开始'/><node id='b' label='处理'/><edge from='b' to='a'/></graph>", GraphSpec.Type.FLOW),
@@ -25,14 +25,14 @@ class GraphParserTest {
 
     @Test void preservesTextAttributesAndOrder() {
         var graph = (GraphSpec.CompareGraph) parser.parse("<graph type='compare' title='A&amp;B'>"
-                + "<line label='笔记本' icon='打开的笔记本电脑'> 400MHz\nA&amp;B </line>"
-                + "<line label='台式机'><![CDATA[<None>]]></line></graph>");
+                + "<object id='a' label='笔记本' icon='打开的笔记本电脑'/><object id='b' label='台式机'/>"
+                + "<row label='超频'><cell object='b'><![CDATA[<None>]]></cell><cell object='a'> 400MHz\nA&amp;B </cell></row></graph>");
         assertEquals("A&B", graph.title());
-        assertEquals(" 400MHz\nA&B ", graph.items().get(0).text());
-        assertEquals("<None>", graph.items().get(1).text());
-        assertEquals("台式机", graph.items().get(1).label());
-        assertEquals(java.util.List.of(new GraphSpec.IconSlot("line[1]", "打开的笔记本电脑")), graph.iconSlots());
-        assertThrows(UnsupportedOperationException.class, () -> graph.items().clear());
+        assertEquals(" 400MHz\nA&B ", graph.rows().get(0).cells().get(0).text());
+        assertEquals("<None>", graph.rows().get(0).cells().get(1).text());
+        assertEquals("台式机", graph.objects().get(1).label());
+        assertEquals(java.util.List.of(new GraphSpec.IconSlot("object:a", "打开的笔记本电脑")), graph.iconSlots());
+        assertThrows(UnsupportedOperationException.class, () -> graph.objects().clear());
     }
     @Test void timelineIsNotResortedAndTreeLabelsDoNotIncludeChildren() {
         var timeline = (GraphSpec.TimelineGraph) parser.parse("<graph type='timeline'><line time='明天'>B</line><line time='昨天'>A</line></graph>");
@@ -75,5 +75,27 @@ class GraphParserTest {
     @Test void errorLocatesTheSpecificReference() {
         var error = assertThrows(GraphParseException.class, () -> parser.parse("<graph type='flow'><node id='a' label='A'/><edge from='a' to='b'/></graph>"));
         assertEquals("/graph/edge[1]/@to", error.path());
+    }
+    @Test void compareReferencesAndEmptyCellsAreExplicit() {
+        String head = "<graph type='compare'><object id='a' label='A'/><object id='b' label='B'/>";
+        var graph = (GraphSpec.CompareGraph) parser.parse(head + "<row label='未知'><cell object='b'/><cell object='a'> </cell></row></graph>");
+        assertEquals("a", graph.rows().get(0).cells().get(0).object());
+        assertEquals(" ", graph.rows().get(0).cells().get(0).text());
+        assertEquals("", graph.rows().get(0).cells().get(1).text());
+        assertTrue(graph.iconSlots().isEmpty());
+        for (String row : java.util.List.of(
+                "<row label='x'><cell object='a'>1</cell></row>",
+                "<row label='x'><cell object='a'/><cell object='a'/><cell object='b'/></row>",
+                "<row label='x'><cell object='a'/><cell object='unknown'/></row>",
+                "<row label='x' icon='x'><cell object='a'/><cell object='b'/></row>",
+                "<row label='x'><cell object='a' icon='x'/><cell object='b'/></row>",
+                "<row label='x'><cell object='a'><node/></cell><cell object='b'/></row>"))
+            assertThrows(GraphParseException.class, () -> parser.parse(head + row + "</graph>"));
+        assertThrows(GraphParseException.class, () -> parser.parse(head + "</graph>"));
+        assertThrows(GraphParseException.class, () -> parser.parse(head + "<object id='a' label='duplicate'/></graph>"));
+        assertThrows(GraphParseException.class, () -> parser.parse("<graph type='compare'><object id='a' label='A'/><row label='x'><cell object='a'/></row></graph>"));
+        var legacy = assertThrows(GraphParseException.class, () -> parser.parse("<graph type='compare'><line>A</line><line>B</line></graph>"));
+        assertTrue(legacy.getMessage().contains("object")); assertTrue(legacy.getMessage().contains("旧 line"));
+        assertThrows(GraphParseException.class, () -> parser.parse(head + "<row label='" + "x".repeat(401) + "'><cell object='a'/><cell object='b'/></row></graph>"));
     }
 }

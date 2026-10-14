@@ -12,7 +12,7 @@ import java.util.Set;
 public class StructuredOutputsTest {
     public static void main(String[] args) {
         Gson gson = new Gson();
-        for (var format : List.of(StructuredOutputs.leading(), StructuredOutputs.memory(),
+        for (var format : List.of(StructuredOutputs.leading(),
                 StructuredOutputs.knowledge(), StructuredOutputs.research(), StructuredOutputs.conflict())) {
             JsonObject wire = gson.toJsonTree(format).getAsJsonObject();
             check(wire.get("type").getAsString().equals("json_schema"), "schema mode is explicit");

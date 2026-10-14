@@ -11,6 +11,7 @@ public class ToolLoopOptions {
     public int MaxToolRounds = DEFAULT_MAX_TOOL_ROUNDS;
     public boolean EnableAsyncTools = false;
     public long AsyncMaxWaitMillis = DEFAULT_ASYNC_MAX_WAIT_MILLIS;
+    /** 保留旧配置字段；AIChat topic 批次统一使用五秒静默计时。 */
     public long AsyncDebounceMillis = DEFAULT_ASYNC_DEBOUNCE_MILLIS;
 
     public ToolLoopOptions copy() {

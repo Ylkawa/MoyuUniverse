@@ -10,6 +10,9 @@ final class StructuredOutputs {
 
     static ResponseFormat leading() {
         JsonSchema schema = memoryOperations()
+                .property("should_reply", JsonSchema.booleanType().description("本批真人消息是否需要主助手回复"))
+                .property("addressed_message_ids", JsonSchema.array(JsonSchema.integer()
+                        .description("本批正在与主助手对话的真人消息编号；只能引用输入的新消息目录")))
                 .property("memory_queries", JsonSchema.array(object()
                         .property("question", JsonSchema.string().description("独立可理解的记忆检索问题"))
                         .property("location_id", JsonSchema.anyOf(JsonSchema.string(), JsonSchema.of("null"))
@@ -17,12 +20,8 @@ final class StructuredOutputs {
                         .required("question", "location_id")))
                 .property("knowledge_queries", JsonSchema.array(JsonSchema.string()
                         .description("独立可理解的本地知识库检索问题")))
-                .required("memory_queries", "knowledge_queries");
+                .required("should_reply", "addressed_message_ids", "memory_queries", "knowledge_queries");
         return ResponseFormat.jsonSchema("leading_plan", schema, true);
-    }
-
-    static ResponseFormat memory() {
-        return ResponseFormat.jsonSchema("memory_plan", memoryOperations(), true);
     }
 
     static ResponseFormat knowledge() {
@@ -43,7 +42,7 @@ final class StructuredOutputs {
                 .property("content", JsonSchema.string().description("该来源的核心内容摘要，可含多行"))
                 .required("url", "title", "content");
         return ResponseFormat.jsonSchema("research_result", object()
-                .property("answer", JsonSchema.string().description("完整的可读回答，开头明确主体与适用范围"))
+                .property("answer", JsonSchema.string().description("完整的可读回答或资料整理结果，开头说明主题与适用范围，多主题资料逐项保留范围"))
                 .property("sources", JsonSchema.array(source).description("被采纳的信息来源，没有来源时为空数组"))
                 .required("answer", "sources"), true);
     }

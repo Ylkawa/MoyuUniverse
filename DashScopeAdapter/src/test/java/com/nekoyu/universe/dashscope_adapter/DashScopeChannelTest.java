@@ -115,7 +115,7 @@ class DashScopeChannelTest {
         channel.apikey = null;
         assertTrue(channel.embedding(options()).data.isEmpty());
         var space = channel.embeddingSpace(options()); assertEquals(256, space.dimension());
-        assertTrue(space.revision().contains("dashscope-independent-v1@")); assertTrue(requests.isEmpty());
+        assertEquals("dashscope-independent-v1#space=v1#res=1", space.revision()); assertTrue(requests.isEmpty());
         assertThrows(IOException.class, () -> channel.embedding(texts(1)));
         var other = options(); other.spaceVersion = "v2"; assertThrows(IOException.class, () -> channel.embeddingSpace(other));
         channel.embeddingSpaceVersion = "v2"; assertNotEquals(space, channel.embeddingSpace(other)); channel.embeddingSpaceVersion = "v1";
@@ -132,6 +132,16 @@ class DashScopeChannelTest {
         request.inputs = List.of(List.of(new TextPiece("a"))); request.message.add(new MFChain("b"));
         assertThrows(IOException.class, () -> channel.embedding(request));
         request.dimension = 3; assertThrows(IOException.class, () -> channel.embeddingSpace(request)); assertTrue(requests.isEmpty());
+    }
+    @Test void workspaceRoutingDoesNotChangeTheModelSpace() throws Exception {
+        channel.baseurl = "https://llm-original.cn-beijing.maas.aliyuncs.com/api/v1";
+        var original = channel.embeddingSpace(options());
+        channel.baseurl = "https://ws-other.cn-beijing.maas.aliyuncs.com/api/v1";
+        assertEquals(original, channel.embeddingSpace(options()));
+        assertFalse(original.revision().contains("http"));
+        assertTrue(requests.isEmpty());
+        channel.baseurl = "https://ws-other.cn-beijing.maas.aliyuncs.com/compatible-mode/v1";
+        assertThrows(IOException.class, () -> channel.embeddingSpace(options()));
     }
     @Test void rejectsWrongIndicesTypesCountsDimensionsAndValues() {
         var failures = new ArrayList<Function<JsonObject, JsonObject>>();

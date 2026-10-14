@@ -61,9 +61,10 @@ EmbeddingResponse response = embedding.embedding(request);
 结果统一为 EmbeddingResponse：索引使用跨批次全局顺序，usage.input_tokens 映射到 prompt_tokens/total_tokens。
 缺项、重复/非法索引、类型错误、非数值、非有限值、零向量及维度错误均报错。
 整次 HTTP 调用超时 60 秒，响应上限 2 MiB；不会把厂商错误正文或密钥写入异常。
-embeddingSpace(request) 返回模型、实际原生 endpoint、维度、融合模式、分辨率和显式空间版本组成的身份，不发起网络请求。
+embeddingSpace(request) 返回模型、维度、融合模式、分辨率和显式空间版本组成的身份，不发起网络请求。
+原生 endpoint 仍校验 URL 合法性，但仅用于工作空间鉴权和请求路由，不参与向量空间身份。
 显式请求的 spaceVersion 必须与 Provider 配置一致；云端语义空间变化时同步更新 Adapter、Graph 和预建参数，避免用旧版本标签读取新空间。
-独立模式的身份与既有正式包和 data 缓存保持一致，迁移不需要重新付费计算。
+AIChat 会兼容旧包及缓存中带 endpoint 的历史身份，先校验原数据再迁移，迁移不需要重新付费计算。
 
 原 Kotlin 模块的聊天和文生图功能均未完成；Java 版保留类型与配置，调用这些入口会明确报错。
 当前插件适用于 Embedding 能力；聊天仍使用原有 OpenAIAdapter。

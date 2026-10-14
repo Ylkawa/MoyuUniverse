@@ -26,7 +26,7 @@ public final class GraphJarAcceptance {
         Path cache = Path.of("data/AIChat/graph-embeddings/text");
         var registered = new ProviderIconEmbeddingProvider(args[0], space.model(), space.dimension(), "v1");
         if (!registered.space().equals(space)) throw new IllegalStateException("Provider space differs from packaged index");
-        var provider = new CachedEmbeddingProvider(space, cache, () -> registered);
+        var provider = new CachedEmbeddingProvider(space, cache, () -> registered, bundle.storedSpace());
         var texts = List.of("笔记本电脑", "laptop", "服务器", "search", "数据库", "云端", "电池", "地图");
         var vectors = provider.embedTexts(texts);
         for (int i = 0; i < texts.size(); i++) {
@@ -37,13 +37,13 @@ public final class GraphJarAcceptance {
         start = System.nanoTime();
         for (int i = 0; i < 300; i++) bundle.index().search(vectors.get(i % vectors.size()), 5);
         System.out.println("SEARCH_MEAN_MS=" + (System.nanoTime() - start) / 1e6 / 300);
-        var offline = new CachedEmbeddingProvider(space, cache, () -> { throw new java.io.IOException("offline acceptance"); });
+        var offline = new CachedEmbeddingProvider(space, cache, () -> { throw new java.io.IOException("offline acceptance"); }, bundle.storedSpace());
         var service = new GraphMatchService(offline, bundle.index(), bundle.catalog());
         UniverseChannel.setOutboundHttpAddress("http://127.0.0.1:2577");
         var settings = new GraphSettings(); settings.outputDirectory = "target/graph-jar-acceptance";
         var examples = new ArrayList<>(List.of(
                 "<graph type='list'><line icon='laptop'>笔记本电脑与中文说明</line><line icon='never-cached-new-query'>未缓存描述保留正文</line></graph>",
-                "<graph type='compare'><line label='笔记本' icon='laptop'>移动办公</line><line label='服务端' icon='服务器'>固定运行</line></graph>",
+                "<graph type='compare'><object id='a' label='笔记本' icon='laptop'/><object id='b' label='服务端' icon='服务器'/><row label='场景'><cell object='a'>移动办公</cell><cell object='b'>固定运行</cell></row></graph>",
                 "<graph type='timeline'><line time='今天' icon='search'>测试检索</line><line time='明天' icon='云端'>完成部署</line></graph>",
                 "<graph type='tree'><node id='root' label='系统' icon='服务器'><node id='db' label='数据库' icon='数据库'/></node></graph>",
                 "<graph type='flow'><node id='a' label='接收请求' icon='laptop'/><node id='b' label='处理请求' icon='服务器'/><edge from='a' to='b' label='提交处理'/></graph>",

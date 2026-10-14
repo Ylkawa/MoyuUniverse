@@ -1,0 +1,45 @@
+<!-- 内容仅用于复现用户截图的布局，不作为模型参数或评测事实。 -->
+<graph type="compare" title="GPT-6 Astra vs GPT-6.1 Sol">
+  <object id="astra" label="GPT-6 Astra"/>
+  <object id="sol" label="GPT-6.1 Sol"/>
+  <row label="定位">
+    <cell object="astra">旗舰级，最智能最对齐</cell>
+    <cell object="sol">高性价比日常主力</cell>
+  </row>
+  <row label="发布时间">
+    <cell object="astra">2026年9月</cell>
+    <cell object="sol">2026年9月29日</cell>
+  </row>
+  <row label="输入价格 / 百万 Token">
+    <cell object="astra">$10</cell>
+    <cell object="sol">$2（约五分之一）</cell>
+  </row>
+  <row label="输出价格 / 百万 Token">
+    <cell object="astra">$50</cell>
+    <cell object="sol">$10（约五分之一）</cell>
+  </row>
+  <row label="科学推理上限">
+    <cell object="astra">Terminal-Bench Science 68.1%</cell>
+    <cell object="sol">57%，仍有明显差距</cell>
+  </row>
+  <row label="综合编程能力">
+    <cell object="astra">最强</cell>
+    <cell object="sol">高推理强度下接近 Astra</cell>
+  </row>
+  <row label="电脑操作 OSWorld">
+    <cell object="astra">最高分</cell>
+    <cell object="sol">低约2.1个百分点，单任务成本约七分之一</cell>
+  </row>
+  <row label="事实错误率">
+    <cell object="astra">基准</cell>
+    <cell object="sol">低推理强度下从11.4%降至7.7%</cell>
+  </row>
+  <row label="适用场景">
+    <cell object="astra">跨模块排错、复杂重构、强科学推理</cell>
+    <cell object="sol">代码编写、文档整理、重复迭代、长时智能体任务</cell>
+  </row>
+  <row label="Ultrafast 版本">
+    <cell object="astra">无</cell>
+    <cell object="sol">10月8日推出，$12/$60 每百万 Token，主打速度</cell>
+  </row>
+</graph>

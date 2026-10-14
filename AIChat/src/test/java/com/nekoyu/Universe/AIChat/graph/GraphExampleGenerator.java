@@ -34,7 +34,7 @@ public final class GraphExampleGenerator {
             }
             return new ResolvedGraph(graph, matches);
         })) {
-            for (String type : List.of("list", "compare", "timeline", "tree", "wide-tree", "flow", "relation")) {
+            for (String type : List.of("list", "compare", "compare-models", "timeline", "tree", "wide-tree", "flow", "relation")) {
                 String xml = Files.readString(sources.resolve(type + ".xml"));
                 Files.writeString(output.resolve(type + ".xml"), xml);
                 var pages = renderer.process(XmlMarks.parse(xml));

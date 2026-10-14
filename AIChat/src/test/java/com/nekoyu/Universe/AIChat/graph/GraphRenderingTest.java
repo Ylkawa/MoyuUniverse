@@ -41,7 +41,7 @@ class GraphRenderingTest {
     static String example(String type) {
         return switch (type) {
             case "list" -> "<graph type='list' title='设备信息'><line icon='laptop'>笔记本：OverClocked for 400MHz frequency</line><line icon='desktop'>台式机：None OverClock</line></graph>";
-            case "compare" -> "<graph type='compare' title='超频情况对比'><line label='笔记本' icon='laptop'>OverClocked for 400MHz frequency\n适合移动办公</line><line label='台式机' icon='desktop'>None OverClock\n适合固定工作站</line></graph>";
+            case "compare" -> "<graph type='compare' title='超频情况对比'><object id='a' label='笔记本' icon='laptop'/><object id='b' label='台式机' icon='desktop'/><row label='超频'><cell object='a'>OverClocked for 400MHz frequency</cell><cell object='b'>None OverClock</cell></row><row label='场景'><cell object='a'>适合移动办公</cell><cell object='b'>适合固定工作站</cell></row></graph>";
             case "timeline" -> "<graph type='timeline' title='开发时间线'><line time='第一天' icon='laptop'>收集需求与设计</line><line time='第二天' icon='desktop'>实现解析、图标匹配与图片输出</line></graph>";
             case "tree" -> "<graph type='tree' title='系统层级'><node id='system' label='系统' icon='desktop'><node id='client' label='客户端' icon='laptop'/><node id='server' label='服务端' icon='desktop'><node id='database' label='数据存储'/></node></node></graph>";
             case "flow" -> "<graph type='flow' title='请求处理流程'><node id='receive' label='收到请求' icon='laptop'/><node id='process' label='处理请求' icon='desktop'/><node id='done' label='返回结果'/><edge from='receive' to='process' label='提交'/><edge from='process' to='done' label='成功'/><edge from='process' to='receive' label='重试'/></graph>";
@@ -223,7 +223,6 @@ class GraphRenderingTest {
                 "<graph type='flow'><node id='n' label='节点' icon='device'/><edge from='n' to='n' label='" + "字".repeat(201) + "'/></graph>",
                 "<graph type='list' title='" + "标题".repeat(100) + "'><line icon='device'>正文</line></graph>",
                 "<graph type='list'><line icon='device'>" + "中文 English paragraph ".repeat(500) + "</line></graph>",
-                "<graph type='compare'><line label='" + "标题".repeat(250) + "' icon='device'>正文</line><line>对照</line></graph>",
                 "<graph type='timeline'><line time='" + "时间".repeat(300) + "' icon='device'>正文</line></graph>");
         try (var renderer = new GraphDecoupler(settings, graph -> { calls.incrementAndGet(); return new ResolvedGraph(graph, List.of()); })) {
             for (String xml : invalid) assertThrows(java.io.UncheckedIOException.class, () -> renderer.process(XmlMarks.parse(xml)));

@@ -8,7 +8,8 @@ import java.security.DigestInputStream;
 import java.security.MessageDigest;
 
 /** 预建包的内容和向量共同校验，加载完成后才交给运行时。 */
-public record IconBundle(IconCatalog catalog, LocalIconIndex index) {
+public record IconBundle(IconCatalog catalog, LocalIconIndex index, IconEmbeddingProvider.Space storedSpace) {
+    public IconBundle(IconCatalog catalog, LocalIconIndex index) { this(catalog, index, index.descriptor().space()); }
     static final int MAGIC = 0x47495631;
     public static final String PREFIX = "graph/icons/";
     public static IconBundle load(IconAssetSource root) throws IOException {
@@ -35,7 +36,9 @@ public record IconBundle(IconCatalog catalog, LocalIconIndex index) {
                 if (stream.read() != -1) throw new IOException("Unexpected vector data");
             }
             if (!java.util.HexFormat.of().formatHex(digest.digest()).equals(manifest.get("vectorsSha256").getAsString())) throw new IOException("Vector digest differs");
-            return new IconBundle(catalog, LocalIconIndex.owned(descriptor, catalog.icons(), matrix));
+            // 先按原始身份验证二进制头和摘要，再迁移内存身份；矩阵字节及磁盘包不修改。
+            var canonical = EmbeddingSpaces.canonical(descriptor.space());
+            return new IconBundle(catalog, LocalIconIndex.owned(IndexDescriptor.of(canonical, catalog), catalog.icons(), matrix), descriptor.space());
         } catch (IOException e) { throw e; }
         catch (Exception e) { throw new IOException("Invalid prebuilt icon bundle", e); }
     }

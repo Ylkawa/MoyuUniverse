@@ -13,7 +13,10 @@ public final class CachedEmbeddingProvider implements IconEmbeddingProvider {
     private final EmbeddingCache cache;
     private volatile IconEmbeddingProvider delegate;
     public CachedEmbeddingProvider(Space space, Path directory, Factory factory) {
-        this.space = space; this.factory = factory; cache = new EmbeddingCache(directory, space);
+        this(space, directory, factory, null);
+    }
+    public CachedEmbeddingProvider(Space space, Path directory, Factory factory, Space legacySpace) {
+        this.space = space; this.factory = factory; cache = new EmbeddingCache(directory, space, 1024, legacySpace);
     }
     @Override public Space space() { return space; }
     private synchronized IconEmbeddingProvider delegate() throws IOException {
@@ -25,10 +28,17 @@ public final class CachedEmbeddingProvider implements IconEmbeddingProvider {
         return delegate;
     }
     private double[] text(String value) throws IOException {
-        return cache.get(value, () -> {
+        var logger = org.slf4j.LoggerFactory.getLogger(CachedEmbeddingProvider.class);
+        var called = new java.util.concurrent.atomic.AtomicBoolean();
+        var result = cache.get(value, () -> {
             var provider = delegate();
+            called.set(true);
+            logger.info("Graph 向量缓存：CACHE_MISS，调用文字向量 Provider，queryHash={}", IndexDescriptor.hash(value.getBytes(java.nio.charset.StandardCharsets.UTF_8)).substring(0, 12));
             return Vectors.batch(provider.embedTexts(List.of(value)), 1, space.dimension()).get(0);
         });
+        logger.info("Graph 向量缓存：{}，queryHash={}", called.get() ? "PROVIDER_RESULT" : "CACHE_OR_SHARED_RESULT",
+                IndexDescriptor.hash(value.getBytes(java.nio.charset.StandardCharsets.UTF_8)).substring(0, 12));
+        return result;
     }
     @Override public List<double[]> embedTexts(List<String> texts) throws IOException {
         var result = new ArrayList<double[]>();

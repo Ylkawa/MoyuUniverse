@@ -1,5 +1,7 @@
 package com.nekoyu.Universe.AIChat;
 
+import com.nekoyu.Universe.AIChat.leading.MemoryStore;
+
 import com.nekoyu.Universe.API.MessageChannel.MFChain;
 import com.nekoyu.Universe.API.MessageChannel.MessageField.TextField;
 import com.nekoyu.Universe.API.Providers.LLMProvider.Embedding;
@@ -24,7 +26,7 @@ import static com.nekoyu.Universe.Utils.Time.formatTimestamp;
 import static io.qdrant.client.VectorFactory.vector;
 import static io.qdrant.client.VectorsFactory.namedVectors;
 
-public class Memory {
+public class Memory implements MemoryStore {
     private final Embedding provider;
     private final String collection;
     private final Logger logger = LoggerFactory.getLogger(Memory.class);
@@ -212,7 +214,7 @@ public class Memory {
                 if (item.id == null) {
                     item.id = UUID.randomUUID();
                 }
-                item.createAt = System.currentTimeMillis();
+                if (item.createAt == 0) item.createAt = System.currentTimeMillis();
                 item.updateAt = System.currentTimeMillis();
                 // embedding
                 double[] embedding = embedding(item.content);

@@ -20,7 +20,7 @@ public final class ProviderIconEmbeddingProvider implements IconEmbeddingProvide
         var identity = provider().embeddingSpace(options());
         if (identity.dimension() != dimension || (model != null && !model.equals(identity.model())))
             throw new IOException("Embedding Provider does not honor requested model/dimension");
-        space = new Space(identity.model(), identity.revision(), identity.dimension());
+        space = EmbeddingSpaces.canonical(new Space(identity.model(), identity.revision(), identity.dimension()));
     }
     private Embedding provider() throws IOException {
         var candidate = providerId == null ? null : Universe.Providers.get(providerId);
@@ -49,7 +49,7 @@ public final class ProviderIconEmbeddingProvider implements IconEmbeddingProvide
         if (request.inputs.isEmpty()) return List.of();
         var provider = provider();
         var identity = provider.embeddingSpace(options());
-        if (!space.equals(new Space(identity.model(), identity.revision(), identity.dimension()))) throw new IOException("Embedding Provider space changed");
+        if (!space.equals(EmbeddingSpaces.canonical(new Space(identity.model(), identity.revision(), identity.dimension())))) throw new IOException("Embedding Provider space changed");
         var response = provider.embedding(request);
         if (response == null || response.data == null || response.data.size() != request.inputs.size()) throw new IOException("Embedding response count mismatch");
         double[][] ordered = new double[request.inputs.size()][];

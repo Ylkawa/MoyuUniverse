@@ -22,8 +22,7 @@ final class SessionReplyQueue {
     private final LongSupplier clock;
     private final Timer timer;
     private final Executor worker;
-    private final Predicate<Boolean> prepare;
-    private final Runnable reply;
+    private final Consumer<Boolean> processRound;
     private final Consumer<RuntimeException> onFailure;
     private final Deque<Runnable> inputs = new ArrayDeque<>();
     private boolean pending;
@@ -39,17 +38,40 @@ final class SessionReplyQueue {
         this.clock = clock;
         this.timer = timer;
         this.worker = worker;
-        this.prepare = prepare;
-        this.reply = reply;
+        this.processRound = driven -> {
+            if (prepare.test(driven) && !isClosed()) reply.run();
+        };
+        this.onFailure = onFailure;
+    }
+
+    SessionReplyQueue(LongSupplier clock, Timer timer, Executor worker,
+                      Consumer<Boolean> processRound, Consumer<RuntimeException> onFailure) {
+        this.clock = clock;
+        this.timer = timer;
+        this.worker = worker;
+        this.processRound = processRound;
         this.onFailure = onFailure;
     }
 
     synchronized void drive(Runnable appendInput) {
+        submit(appendInput, false, true);
+    }
+
+    /** 所有输入共用队列；立即触发仍等待当前推理释放执行权。 */
+    synchronized void submit(Runnable appendInput, boolean immediate, boolean forceReply) {
         if (closed) throw new IllegalStateException("会话已关闭");
         inputs.addLast(appendInput);
         pending = true;
-        driven = true;
-        deadline = clock.getAsLong() + DRIVE_DEBOUNCE_MILLIS;
+        driven |= forceReply;
+        deadline = clock.getAsLong() + (immediate ? 0 : DRIVE_DEBOUNCE_MILLIS);
+        wake();
+    }
+
+    /** 生命周期检查不得被连续旁聊无限推迟，也不强制主助手回复。 */
+    synchronized void requestCheck() {
+        if (closed) return;
+        pending = true;
+        deadline = clock.getAsLong();
         wake();
     }
 
@@ -70,6 +92,10 @@ final class SessionReplyQueue {
 
     synchronized boolean hasWork() {
         return !closed && (pending || active || !inputs.isEmpty());
+    }
+
+    synchronized boolean hasQueuedInputs() {
+        return !inputs.isEmpty() || pending;
     }
 
     synchronized boolean isClosed() {
@@ -141,7 +167,7 @@ final class SessionReplyQueue {
                     }
                 }
             }
-            if (!isClosed() && prepare.test(drivenRound) && !isClosed()) reply.run();
+            if (!isClosed()) processRound.accept(drivenRound);
         } catch (RuntimeException e) {
             onFailure.accept(e);
         } finally {

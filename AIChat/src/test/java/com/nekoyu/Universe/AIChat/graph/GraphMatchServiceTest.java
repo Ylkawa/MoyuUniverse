@@ -20,8 +20,8 @@ class GraphMatchServiceTest {
         assertEquals(2, GraphTestFixtures.fill(provider, index, catalog));
         assertEquals(2, index.points.size());
         GraphSpec graph = new GraphParser().parse("<graph type='compare' title='processor'>"
-                + "<line icon='laptop'>OverClocked for 400MHz frequency</line>"
-                + "<line icon='desktop'>None OverClock</line><line icon='laptop'>server</line></graph>");
+                + "<object id='a' label='笔记本' icon='laptop'/><object id='b' label='台式机' icon='desktop'/><object id='c' label='备用' icon='laptop'/>"
+                + "<row label='超频'><cell object='a'>400MHz</cell><cell object='b'>None</cell><cell object='c'>server</cell></row></graph>");
         ResolvedGraph result = new GraphMatchService(provider, index, catalog).resolve(graph);
         assertSame(graph, result.graph());
         assertEquals(List.of("laptop", "desktop"), provider.texts);

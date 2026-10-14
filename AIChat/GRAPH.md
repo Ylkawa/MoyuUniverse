@@ -40,7 +40,10 @@ Adapter 的 BaseUrl 指定 endpoint，APIKey 直接读取 JSON 配置文件中�
 插件注册顺序未固定，Graph 延迟到首次实际绘图获取 Provider。
 
 DashScopeAdapter 支持本次指定 plus 快照、同日期 flash 快照及 `qwen3-vl-embedding`；切换模型或维度必须重新预建。
-模型、endpoint、维度、独立向量模式、res_level 或显式空间版本不符时拒绝混用向量。
+模型、维度、独立/融合向量模式、res_level 或显式空间版本不符时拒绝混用向量。
+endpoint 是工作空间鉴权与请求路由，不属于模型向量空间身份，同一模型及编码参数可跨工作空间复用。
+旧包先按原始身份验证二进制头、摘要及素材，再在内存中移除历史身份中的 endpoint；不改写矩阵或重算图片。
+旧文字缓存按旧身份校验后迁入新身份目录，原文件保留，不需要再次调用模型。
 服务模型实际更新时应提高 `embeddingSpaceVersion` 并重新预建；维度相同不能证明语义空间相同。
 
 ## 语义检索与融合向量
@@ -115,7 +118,7 @@ IDEA artifact 同步包含 Batik 及传递依赖；资源来自模块资源输�
 | type | 内容 | 规则 |
 | --- | --- | --- |
 | list | line | 至少一项，保持输入顺序 |
-| compare | line | 至少两项，label 可选 |
+| compare | object、row/cell | 至少两个对象、一行维度；每行按 object 引用覆盖所有对象 |
 | timeline | line | time 必填，保持输入顺序 |
 | tree | 嵌套 node | 一个根，id/label 必填且 ID 唯一 |
 | flow | 平铺 node、edge | 有向，支持分支、汇合与循环 |
@@ -123,21 +126,43 @@ IDEA artifact 同步包含 Batik 及传递依赖；资源来自模块资源输�
 
 ```xml
 <graph type="compare" title="设备对比">
-  <line label="笔记本" icon="笔记本电脑">移动办公</line>
-  <line label="服务端" icon="服务器">固定运行</line>
+  <object id="laptop" label="笔记本" icon="笔记本电脑"/>
+  <object id="server" label="服务端" icon="服务器"/>
+  <row label="场景">
+    <cell object="laptop">移动办公</cell>
+    <cell object="server">固定运行</cell>
+  </row>
 </graph>
 ```
+
+compare 的 object 的 id/label 必填，id 唯一；row 的 label 必填；cell 的 object 必须引用已有对象，每行不可重复或遗漏。
+空 cell 显示 —，列按 object 顺序、行按 row 顺序呈现；只有 object 支持 icon，row/cell 不参与图标检索。
+旧 compare/line 格式拒绝解析并提示新协议；对象、维度和单元格均计入 maxNodes 预算。
+对象最多四列且每列至少 180px，更多对象按组分页；长表重复表头，超长行同步拆分所有单元格并标明续。
 
 edge 的 from/to 必须引用现有 node，label 可选。非法类型、属性、结构及引用保留原 XML，禁用 DTD 与外部实体。
 XML 协议与其他浮标的迁移说明见 [AIChat README](README.md)。
 
 HarmonyOS Sans SC Regular/Bold 原始字体随 JAR 分发，无需安装系统字体；许可与摘要见字体目录。
-六类绘图保持现有排版：长文字分页；宽树/深树层级展开，保留父节点、层级及跨页关系；流程/关系图附完整关系索引。
+compare 使用紧凑页眉、固定维度列和共享行高；无图标时对象标题居中。其他五类保持现有排版：
+长文字分页；宽树/深树层级展开，保留父节点、层级及跨页关系；流程/关系图附完整关系索引。
 连线文字放在线路旁，避让节点、线路和箭头；任一页失败清理未发布图片并保留整段原 XML。
 
 全局串行绘图、最多 8 个处理中请求、绘图锁等待最多 30 秒。
 画布宽 640–2048、高 800–4096、单页最多 800 万像素；最多 200 节点、400 边、20000 字符、64 页，默认 32 页。
 这些绘图限制不包含新增常驻图标向量矩阵，也不是整个 JVM 的内存保证。
+
+## 无图标诊断
+
+每次绘图在 INFO 记录 type、iconSlots 及 matched/unmatched/unavailable 数量，图表成功也会有诊断摘要。
+NO_ICON_ATTRIBUTES 表示 XML 没有显式 icon，ICONS_DISABLED 表示配置关闭，BUNDLE_UNAVAILABLE 表示包加载失败，
+PROVIDER_UNAVAILABLE 表示注册或空间校验失败；这些路径均不会调用向量模型。
+匹配器就绪时记录 ProviderId 和实际空间，真正的空间不一致包含 expected/actual，工作空间域名变化不再触发误拒绝。
+CACHE_MISS 表示开始调用文字向量 Provider，PROVIDER_RESULT 表示取得返回向量，
+CACHE_OR_SHARED_RESULT 表示缓存或并发任务复用，LEGACY_CACHE_HIT 表示复用并迁移旧身份缓存。
+因此阿里云没有新请求不等于没有匹配；正常索引无相似度过滤阈值，返回 Top 5 并绘制首选结果。
+向量模型错误仍省略对应图标并保留正文。查询日志用内容摘要标识，不输出 APIKey；
+需要排查 LLM 原始输入时将 GraphDecoupler logger 调至 DEBUG，该级别会记录 graph XML（含正文）。
 
 ## 验证
 

@@ -61,6 +61,19 @@ public final class GraphDecoupler implements MarkDecoupler, AutoCloseable {
         try {
             validateBudget(element);
             GraphSpec spec = parser.parse(element);
+            var logger = org.slf4j.LoggerFactory.getLogger(GraphDecoupler.class);
+            logger.info("Graph 绘图输入：type={}，iconSlots={}，明确指定 icon 才会触发匹配", spec.type(), spec.iconSlots().size());
+            if (logger.isDebugEnabled()) {
+                try {
+                    var factory = javax.xml.transform.TransformerFactory.newInstance();
+                    factory.setFeature(javax.xml.XMLConstants.FEATURE_SECURE_PROCESSING, true);
+                    var transformer = factory.newTransformer();
+                    transformer.setOutputProperty(javax.xml.transform.OutputKeys.OMIT_XML_DECLARATION, "yes");
+                    var xml = new java.io.StringWriter();
+                    transformer.transform(new javax.xml.transform.dom.DOMSource(element), new javax.xml.transform.stream.StreamResult(xml));
+                    logger.debug("Graph 原始 XML：{}", xml);
+                } catch (javax.xml.transform.TransformerException e) { logger.debug("Graph XML 日志序列化失败", e); }
+            }
             // Build the full page plan before any potentially paid icon request.
             acquireRenderSlot();
             List<GraphPage> pages;
@@ -73,6 +86,10 @@ public final class GraphDecoupler implements MarkDecoupler, AutoCloseable {
             } finally { RENDER_SLOT.release(); }
             ResolvedGraph resolved = resolver.resolve(spec);
             if (resolved == null || !spec.equals(resolved.graph())) throw new IOException("Icon resolver changed the graph specification");
+            logger.info("Graph 图标匹配结果：iconSlots={}，matched={}，unmatched={}，unavailable={}", spec.iconSlots().size(),
+                    resolved.matches().stream().filter(m -> m.status() == ResolvedGraph.Status.CANDIDATES).count(),
+                    resolved.matches().stream().filter(m -> m.status() == ResolvedGraph.Status.UNMATCHED).count(),
+                    resolved.matches().stream().filter(m -> m.status() == ResolvedGraph.Status.UNAVAILABLE).count());
             acquireRenderSlot();
             try {
                 if (closed) throw new IOException("Graph renderer is closed");
@@ -109,7 +126,7 @@ public final class GraphDecoupler implements MarkDecoupler, AutoCloseable {
                     var graphics = raster.createGraphics();
                     try {
                         GraphRenderContext.quality(graphics);
-                        context.header(graphics, pages.get(i).heading(), spec.type().name().toLowerCase(java.util.Locale.ROOT), i + 1, pages.size(), canvasHeight);
+                        context.header(graphics, pages.get(i).heading(), spec.type().name().toLowerCase(java.util.Locale.ROOT), i + 1, pages.size(), canvasHeight, pages.get(i).headerStyle());
                         pages.get(i).painter().paint(graphics, context);
                     } finally { graphics.dispose(); }
                     if (!ImageIO.write(raster, "png", file.toFile())) throw new IOException("PNG encoder is unavailable");
@@ -146,7 +163,7 @@ public final class GraphDecoupler implements MarkDecoupler, AutoCloseable {
             Node node = pending.removeLast();
             if (node instanceof Element element) {
                 if (++elements > maxNodes + maxEdges + 1) throw new IOException("Graph contains too many elements");
-                if ((element.getTagName().equals("line") || element.getTagName().equals("node")) && ++nodes > maxNodes)
+                if (java.util.Set.of("line", "node", "object", "row", "cell").contains(element.getTagName()) && ++nodes > maxNodes)
                     throw new IOException("Graph contains too many items/nodes");
                 if (element.getTagName().equals("edge") && ++edges > maxEdges) throw new IOException("Graph contains too many edges");
                 for (int i = 0; i < element.getAttributes().getLength(); i++) characters += element.getAttributes().item(i).getNodeValue().length();

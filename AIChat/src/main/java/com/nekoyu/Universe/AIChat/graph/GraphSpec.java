@@ -29,10 +29,22 @@ public sealed interface GraphSpec permits GraphSpec.ListGraph, GraphSpec.Compare
         public Type type() { return Type.LIST; }
         public List<IconSlot> iconSlots() { return itemSlots(items); }
     }
-    record CompareGraph(String title, List<Item> items) implements GraphSpec {
-        public CompareGraph { Objects.requireNonNull(title); items = List.copyOf(items); }
+    record CompareObject(String id, String label, String icon) {
+        public CompareObject { Objects.requireNonNull(id); Objects.requireNonNull(label); Objects.requireNonNull(icon); }
+    }
+    record CompareCell(String object, String text) {
+        public CompareCell { Objects.requireNonNull(object); Objects.requireNonNull(text); }
+    }
+    record CompareRow(String label, List<CompareCell> cells) {
+        public CompareRow { Objects.requireNonNull(label); cells = List.copyOf(cells); }
+    }
+    record CompareGraph(String title, List<CompareObject> objects, List<CompareRow> rows) implements GraphSpec {
+        public CompareGraph { Objects.requireNonNull(title); objects = List.copyOf(objects); rows = List.copyOf(rows); }
         public Type type() { return Type.COMPARE; }
-        public List<IconSlot> iconSlots() { return itemSlots(items); }
+        public List<IconSlot> iconSlots() {
+            return objects.stream().filter(o -> !o.icon().isEmpty())
+                    .map(o -> new IconSlot("object:" + o.id(), o.icon())).toList();
+        }
     }
     record TimelineGraph(String title, List<Item> items) implements GraphSpec {
         public TimelineGraph { Objects.requireNonNull(title); items = List.copyOf(items); }

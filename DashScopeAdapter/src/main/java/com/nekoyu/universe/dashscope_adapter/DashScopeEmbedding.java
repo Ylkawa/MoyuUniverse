@@ -50,8 +50,10 @@ final class DashScopeEmbedding {
         String version = request.spaceVersion == null ? channel.embeddingSpaceVersion : request.spaceVersion;
         if (version == null || version.isBlank()) throw new IOException("Embedding space version is required");
         if (!version.equals(channel.embeddingSpaceVersion)) throw new IOException("Requested space version differs from Provider configuration");
-        String revision = (request.enableFusion ? "dashscope-fused-v1@" : "dashscope-independent-v1@")
-                + endpoint() + "#space=" + version + "#res=" + resolution;
+        // endpoint 是鉴权与路由配置，不改变模型向量含义；仍单独校验 URL 的合法性。
+        endpoint();
+        String revision = (request.enableFusion ? "dashscope-fused-v1" : "dashscope-independent-v1")
+                + "#space=" + version + "#res=" + resolution;
         return new Embedding.Space(model, revision, dimension);
     }
     private int resolution(EmbeddingRequest request) throws IOException {
@@ -96,6 +98,7 @@ final class DashScopeEmbedding {
             body.add("parameters", parameters);
             var http = new Request.Builder().url(endpoint().toString()).header("Authorization", "Bearer " + key)
                     .post(RequestBody.create(body.toString(), MediaType.get("application/json; charset=utf-8"))).build();
+            if (channel.logger != null) channel.logger.info("Embedding HTTP 请求开始：model={}，inputs={}，host={}", space.model(), batch.size(), endpoint().getHost());
             try (var response = channel.client.newCall(http).execute()) {
                 if (!response.isSuccessful()) throw new IOException("Embedding HTTP " + response.code());
                 if (response.body() == null || response.body().contentLength() > RESPONSE_LIMIT) throw new IOException("Invalid embedding response size");

@@ -1,6 +1,8 @@
 package com.nekoyu.Universe.AIChat;
 
 import com.nekoyu.Universe.AIChat.Skill.SkillManager;
+import com.nekoyu.Universe.AIChat.leading.LeadingResult;
+import com.nekoyu.Universe.AIChat.leading.PendingMemoryWrite;
 import com.nekoyu.Universe.API.MessageChannel.Account;
 import com.nekoyu.Universe.API.MessageChannel.MCMessage;
 import com.nekoyu.Universe.API.MessageChannel.MFChain;
@@ -11,6 +13,8 @@ import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.Tool_call;
 
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ScheduledFuture;
+import java.util.function.LongSupplier;
 
 import static com.nekoyu.Universe.AIChat.AIChat.formatTimestamp;
 
@@ -29,12 +33,28 @@ public class Topic {
     LLMProvider provider;
     /** 最近一条触发回复的用户消息；发送目标单独保存在 replyTarget。 */
     volatile MCMessage lastTrigger;
+    record Input(long number, MCMessage message, long receivedAt, boolean human, boolean explicit) {}
+    private long nextInputNumber;
+    private final List<Input> newInputs = new ArrayList<>();
+    final List<Input> failedLeadingInputs = new ArrayList<>();
+    final Map<UUID, PendingMemoryWrite> failedMemoryWrites = new LinkedHashMap<>();
+    volatile long lastAddressedAt;
+    volatile int unaddressedMessages;
+    boolean managedLifecycle;
+    boolean continuationPending;
+    LeadingResult replyLeading;
+    final List<MCMessage> replyInputs = new ArrayList<>();
+    ScheduledFuture<?> idleTask;
+    ScheduledFuture<?> toolWaitTask;
+    long idleGeneration;
+    long toolWaitGeneration;
 
     /** 异步未决的工具调用：tool_call_id -> 未决记录 */
     public static class PendingCall {
-        public final long deadline;            // 到期时间戳（毫秒）
+        public final long deadline;            // 与会话时钟一致的截止值（毫秒）
         public final String toolName;
         public volatile boolean responded = false;
+        boolean deliveryQueued;
 
         public PendingCall(long deadline, String toolName) {
             this.deadline = deadline;
@@ -47,8 +67,14 @@ public class Topic {
     private int promptFirstCount = 0;
     private int promptLastCount = 0;
     private boolean hasDriverMessages;
+    private final LongSupplier clock;
 
     public Topic(SessionConfig sessionCfg) {
+        this(sessionCfg, System::currentTimeMillis);
+    }
+
+    Topic(SessionConfig sessionCfg, LongSupplier clock) {
+        this.clock = clock;
         this.sessionCfg = sessionCfg;
         this.toolLoopOptions = sessionCfg.ToolLoop == null ? new ToolLoopOptions() : sessionCfg.ToolLoop;
     }
@@ -106,6 +132,10 @@ public class Topic {
     }
 
     public synchronized void addMsg(MCMessage mcm) {
+        appendMessage(mcm);
+    }
+
+    private MCMessage appendMessage(MCMessage mcm) {
         MCMessage oaiM = new MCMessage();
 
         if (!Objects.equals(mcm.sender.getLocationId(), mcm.receiver.getLocationId())) {
@@ -120,20 +150,59 @@ public class Topic {
         appendFields(oaiM, mcm.messageFields);
 
         oaiM.sender = mcm.sender;
+        oaiM.receiver = mcm.receiver;
+        oaiM.session = mcm.session;
         oaiM.sessionId = mcm.sessionId;
+        oaiM.id = mcm.id;
+        oaiM.time = mcm.time;
+        oaiM.level = mcm.level;
+        oaiM.metainfo.putAll(mcm.metainfo);
+        oaiM.putMetainfo("at_targets", mcm.messageFields.stream().filter(f -> f instanceof AtField)
+                .map(f -> ((AtField) f).target.getLocationId()).toList());
+        oaiM.putMetainfo("reply_targets", mcm.messageFields.stream().filter(f -> f instanceof ReplyField)
+                .map(f -> ((ReplyField) f).reply).toList());
+        oaiM.retainedFiles.addAll(mcm.retainedFiles);
+        oaiM.putMetainfo("role", Objects.equals(mcm.sender.getLocationId(), mcm.receiver.getLocationId())
+                ? "assistant" : "user");
+        oaiM.messageString = oaiM.solveAll();
         chatContext.getBase().add(oaiM);
 
         trimMessagesSafely();
+        return oaiM;
+    }
+
+    synchronized void addUserInput(MCMessage message, long receivedAt, boolean explicit, boolean append) {
+        MCMessage normalized = append ? appendMessage(message) : chatContext.getBase().stream()
+                .filter(m -> m.id == message.id && m.sender == message.sender).findFirst()
+                .orElseGet(() -> appendMessage(message));
+        newInputs.add(new Input(++nextInputNumber, normalized, receivedAt, true, explicit));
+    }
+
+    synchronized List<Input> drainInputs() {
+        List<Input> batch = new ArrayList<>(newInputs);
+        newInputs.clear();
+        return batch;
+    }
+
+    synchronized List<Input> peekInputs() { return new ArrayList<>(newInputs); }
+
+    synchronized boolean hasNewInputs() { return !newInputs.isEmpty(); }
+
+    synchronized int waitingHumanCount() {
+        return (int) newInputs.stream().filter(Input::human).count();
     }
 
     /** 内部输入只标注来源，不套用用户昵称、消息 ID 或机器人账号。 */
-    synchronized void addDriverMessage(MFChain fields) {
+    synchronized void addDriverMessage(MFChain fields, long receivedAt) {
         MCMessage input = new MCMessage();
         input.putMetainfo("role", "user");
         input.putMetainfo("driver", true);
+        if (replyTarget != null) input.sessionId = replyTarget.sessionId;
+        input.time = System.currentTimeMillis() / 1000;
         input.messageFields.add(new TextField("[驱动消息]\n"));
         appendFields(input, fields);
         chatContext.getBase().add(input);
+        newInputs.add(new Input(++nextInputNumber, input, receivedAt, false, false));
         hasDriverMessages = true;
         trimMessagesSafely();
     }
@@ -163,9 +232,12 @@ public class Topic {
     }
 
     public synchronized List<String> getLocationIds() {
-        List<String> ids = chatContext.getBase().getLocationIds();
-        ids.removeIf(Objects::isNull);
-        return ids;
+        Set<String> ids = new LinkedHashSet<>();
+        for (MCMessage message : chatContext.getBase()) {
+            if (!"user".equals(message.getMetainfo("role")) || Boolean.TRUE.equals(message.getMetainfo("driver"))) continue;
+            if (message.sender != null && message.sender.getLocationId() != null) ids.add(message.sender.getLocationId());
+        }
+        return new ArrayList<>(ids);
     }
 
     public synchronized int getMessageCount() {
@@ -215,7 +287,7 @@ public class Topic {
      * @param timeoutMillis 该调用允许等待的最大时长（毫秒）
      */
     public synchronized void registerPendingCall(String toolCallId, long timeoutMillis) {
-        pendingCalls.put(toolCallId, new PendingCall(System.currentTimeMillis() + timeoutMillis, null));
+        pendingCalls.put(toolCallId, new PendingCall(clock.getAsLong() + timeoutMillis, null));
     }
 
     public boolean hasPendingCalls() {
@@ -223,18 +295,40 @@ public class Topic {
     }
 
     /**
-     * 提交异步工具结果：追加一条 tool 消息到会话上下文，并标记该 tool_call 已回应。
+     * 接收时预留结果，防止重复投递；实际消息转换和写入由会话队列完成。
      *
-     * @return 是否成功追加（该 tool_call 存在且未超时丢弃）
+     * @return 是否成功预留（该调用存在且尚未接收结果）
      */
+    synchronized boolean reserveAsyncResult(String toolCallId) {
+        PendingCall call = pendingCalls.get(toolCallId);
+        if (call == null || call.responded || call.deliveryQueued) return false;
+        call.deliveryQueued = true;
+        return true;
+    }
+
+    /** 将已接收的工具结果写入对应调用块；由会话队列持有执行权时调用。 */
     public synchronized boolean submitAsyncResult(String toolCallId, String text) {
         PendingCall call = pendingCalls.get(toolCallId);
         if (call == null || call.responded) return false;
         MCMessage toolMsg = appendToolMessage(toolCallId, text);
         call.responded = true;
         trimMessagesSafely();
-        chatContext.enqueuePendingMessage(toolMsg);
+        continuationPending = true;
         return true;
+    }
+
+    synchronized void addAsyncInput(String toolCallId, String text, long receivedAt) {
+        if (submitAsyncResult(toolCallId, text)) {
+            MCMessage message = chatContext.getBase().stream()
+                    .filter(m -> toolCallId.equals(m.getMetainfo("tool_call_id"))).reduce((a, b) -> b).orElseThrow();
+            newInputs.add(new Input(++nextInputNumber, message, receivedAt, false, false));
+        }
+    }
+
+    synchronized void addTimeoutInput(String toolCallId, long receivedAt) {
+        MCMessage message = appendToolMessage(toolCallId, "该次工具调用已超时，未能在期限内返回结果，请基于当前已有信息直接回答。");
+        newInputs.add(new Input(++nextInputNumber, message, receivedAt, false, false));
+        continuationPending = true;
     }
 
     /**
@@ -258,6 +352,8 @@ public class Topic {
         MCMessage toolMsg = new MCMessage();
         toolMsg.putMetainfo("role", "tool");
         toolMsg.putMetainfo("tool_call_id", toolCallId);
+        if (replyTarget != null) toolMsg.sessionId = replyTarget.sessionId;
+        toolMsg.time = System.currentTimeMillis() / 1000;
         toolMsg.messageFields.add(new TextField(text));
         chatContext.getBase().add(insertPos, toolMsg);
         return toolMsg;
@@ -299,10 +395,10 @@ public class Topic {
 
     /** 移除并返回已超时且仍未回应的未决 tool_call_id 列表 */
     public synchronized List<String> expireOverduePendings() {
-        long now = System.currentTimeMillis();
+        long now = clock.getAsLong();
         List<String> overdue = new ArrayList<>();
         for (Map.Entry<String, PendingCall> e : pendingCalls.entrySet()) {
-            if (!e.getValue().responded && e.getValue().deadline <= now) overdue.add(e.getKey());
+            if (!e.getValue().responded && !e.getValue().deliveryQueued && e.getValue().deadline <= now) overdue.add(e.getKey());
         }
         overdue.forEach(pendingCalls::remove);
         return overdue;
