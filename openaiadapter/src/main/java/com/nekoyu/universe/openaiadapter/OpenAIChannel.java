@@ -18,6 +18,7 @@ import okio.BufferedSource;
 import org.slf4j.Logger;
 
 import java.io.IOException;
+import java.math.BigInteger;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
@@ -31,6 +32,15 @@ import java.util.regex.Pattern;
  * Only supports streamed outputting and function calling models
  */
 public class OpenAIChannel extends LLMProvider implements Embedding {
+    private static final Set<String> OPENAI_SCHEMA_MODELS = Set.of(
+            "gpt-4o-mini", "gpt-4o-mini-2024-07-18", "gpt-4o-2024-08-06");
+    private static final Pattern QWEN_SCHEMA_MODEL = Pattern.compile(
+            "^qwen([1-9]\\d*)(?:\\.(\\d+))?(?:\\.\\d+)*-(?:plus|flash|max)"
+                    + "(?:-(?:latest|preview))?(?:-(?:\\d{4}-\\d{2}-\\d{2}|\\d{4}))?$");
+    private static final String JSON_OUTPUT_PROMPT = """
+            最终回答只输出一个合法的 JSON 对象，对象外不得添加解释文字或 Markdown 代码围栏。
+            字符串中的换行、双引号和反斜杠必须按 JSON 规则转义。
+            """;
     private static final Pattern BAILIAN_BASE_URL = Pattern.compile(
             "^https://(?:[^/]+\\.aliyuncs\\.com|maas\\.qianwenaiapi\\.com)(/.*)?$");
     private static final String SEARCH_SNAPSHOT_SUFFIX = "(?:-(?:\\d{4}-\\d{2}-\\d{2}|\\d{4}))?";
@@ -70,7 +80,7 @@ public class OpenAIChannel extends LLMProvider implements Embedding {
     @Override
     public CompletionsResponse completions(String model, List<Message> messages, List<LLMFunction> llmFunctions, CompletionsRequest completionsRequest, BufferCallback bufferCallback) throws IOException {
         OpenAICompletionsRequest cr = buildRequest(model, llmFunctions, completionsRequest);
-        cr.messages = messages;
+        cr.messages = outputMessages(cr.model, completionsRequest == null ? null : completionsRequest.responseFormat, messages);
         cr.stream = true;
         logger.debug(gson.toJson(cr));
         Request req = new Request.Builder()
@@ -184,13 +194,54 @@ public class OpenAIChannel extends LLMProvider implements Embedding {
             default -> cr = new OpenAICompletionsRequest();
         }
         cr.model = effectiveModel;
-        if (completionsRequest != null) cr.response_format = completionsRequest.responseFormat;
+        if (completionsRequest != null) cr.response_format = outputFormat(effectiveModel, completionsRequest.responseFormat);
         if (llmFunctions != null) cr.tools.addAll(llmFunctions);
         if (cr.tools.isEmpty()) cr.tools = null;
         // 仅在确实携带 tools 时下发 tool_choice，避免无 tools 时设置 tool_choice 触发部分 Provider 报错
         if (cr.tools != null && completionsRequest != null && completionsRequest.toolChoice != null)
             cr.tool_choice = completionsRequest.toolChoice;
         return cr;
+    }
+
+    /** 在首次发送前选择格式，不修改调用方的输出契约，也不在接口报错后重试降级。 */
+    private ResponseFormat outputFormat(String model, ResponseFormat requested) {
+        if (requested == null || !"json_schema".equals(requested.type)
+                || OPENAI_SCHEMA_MODELS.contains(model == null ? "" : model) || supportsQwenSchema(model)) {
+            return requested;
+        }
+        logger.info("模型 {} 未命中 JSON Schema 白名单，使用 json_object 并通过系统提示词传递 Schema", model);
+        return ResponseFormat.jsonObject();
+    }
+
+    private static boolean supportsQwenSchema(String model) {
+        if (model == null) return false;
+        var match = QWEN_SCHEMA_MODEL.matcher(model);
+        if (!match.matches()) return false;
+        int major = new BigInteger(match.group(1)).compareTo(BigInteger.valueOf(3));
+        return major > 0 || major == 0 && match.group(2) != null
+                && new BigInteger(match.group(2)).compareTo(BigInteger.valueOf(7)) >= 0;
+    }
+
+    /** 可能回退的模型从首轮固定携带 Schema，不因图片或工具续轮变化而改变提示词前缀。 */
+    private List<Message> outputMessages(String model, ResponseFormat requested, List<Message> messages) {
+        List<Message> prepared = new ArrayList<>();
+        if (requested != null && ("json_object".equals(requested.type)
+                || "json_schema".equals(requested.type)
+                && !OPENAI_SCHEMA_MODELS.contains(model == null ? "" : model))) {
+            String prompt = JSON_OUTPUT_PROMPT;
+            if ("json_schema".equals(requested.type)) {
+                prompt += """
+                        最终回答遵循以下 JSON Schema，字段、类型、必填项、枚举及 null 的使用均以定义为准。
+                        必填字段不得省略，布尔值和数值按定义的类型输出，不得改写为字符串。
+                        字段定义：
+                        """ + gson.toJson(requested.jsonSchema.schema) + "\n";
+            }
+            Message instruction = new Message(prompt);
+            instruction.role = "system";
+            prepared.add(instruction);
+        }
+        prepared.addAll(messages);
+        return prepared;
     }
 
     private static boolean supportsBailianSearch(String model) {

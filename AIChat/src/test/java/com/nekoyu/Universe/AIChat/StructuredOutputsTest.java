@@ -42,11 +42,13 @@ public class StructuredOutputsTest {
         check(LibrarianResult.parseConflict("{\"conflict\":true}"), "parse true conflict");
         check(!LibrarianResult.parseConflict("{\"conflict\":false}"), "parse false conflict");
         rejects(() -> LibrarianResult.parseConflict("{\"conflict\":\"YES\"}"));
+        rejects(() -> LibrarianResult.parseConflict("{\"conflict\":\"true\"}"));
         rejects(() -> LibrarianResult.parseConflict("YES"));
         rejects(() -> LibrarianResult.parseConflict("{\"conflict\":false,\"explanation\":\"YES appears here\"}"));
         rejects(() -> LibrarianResult.parse("{\"answer\":\"答案\",\"sources\":[{\"url\":\"x\"}]}"));
         rejects(() -> LibrarianResult.parse("答案\n===SOURCES===\nURL: https://example.com\n===END==="));
         rejects(() -> LibrarianResult.parse("{\"answer\":\"答案\",\"sources\":null}"));
+        rejects(() -> LibrarianResult.parse("{\"answer\":\"答案\",\"sources\":[],\"extra\":1}"));
 
         CompletionsResponse response = new CompletionsResponse();
         response.choices = new CompletionsResponse.Choice[]{new CompletionsResponse.Choice()};

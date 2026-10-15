@@ -445,11 +445,7 @@ public class KnowledgeStore {
         CompletionsRequest request = new CompletionsRequest();
         request.responseFormat = StructuredOutputs.knowledge();
         assistant.setCompletionsRequest(request);
-        ChatContext chatContext = new ChatContext();
-        chatContext.setSystemPromptFirst(Prompt.queryGenerator.formatted(queryCount));
-        chatContext.userMsg(new Message(content));
-
-        assistant.setChatContext(chatContext);
+        assistant.setChatContext(queryContext(content, queryCount));
         CompletionsResponse resp = assistant.completions(null);
         try {
             List<KnowledgeQueryParser.Entry> results = KnowledgeQueryParser.parse(StructuredOutputs.content(resp), queryCount);
@@ -459,6 +455,14 @@ public class KnowledgeStore {
             logger.warn("Invalid knowledge query JSON for content length {}", content.length(), e);
             return List.of();
         }
+    }
+
+    /** 构造知识提取的业务上下文，输出格式由请求参数交给 Provider 处理。 */
+    static ChatContext queryContext(String content, int queryCount) {
+        ChatContext context = new ChatContext();
+        context.setSystemPromptFirst(Prompt.queryGenerator.formatted(queryCount));
+        context.userMsg(new Message(content));
+        return context;
     }
 
     private List<String> chunkContent(String content) {
@@ -573,7 +577,19 @@ public class KnowledgeStore {
                 优先保留具体名称、数值、日期、变化和使用方法。相同事实只生成一条，不为凑数改写问法；本块最多 %d 条。
                 confidence 仅表示原文对结论的支持程度，不表示来源可靠性或事实仍然有效；范围 0.8 到 1，支持不足时不生成。ttl_days 只能取 7、30、90、180、365、730、3650，表示入库后的复查期限，不代表事实的实际有效期。价格、库存、实时状态和短期活动等动态信息，无法确定有效时间时不生成当前事实；能够作为历史事实保存时，问题与结论都必须保留发生时间。版本相关事实必须保留版本，不能因仍在 TTL 内就描述为当前版本。相对时间没有可用日期依据时，不转换为绝对时间，也不生成依赖其当前有效性的结论。
 
-                按提供的输出 Schema 返回提取结果；没有合格事实时 items 为空数组。
+                最终输出一个 JSON 对象，顶层只包含 items 字段，items 必须是数组。
+
+                items 中每个条目必须且只能包含以下四个字段：
+                - question：非空字符串，最多 300 字，填写独立可理解的问题。
+                - conclusion：非空字符串，最多 1000 字，填写原文明确支持、直接回答该问题的结论。
+                - confidence：0.8 到 1 之间的数值，不得写成字符串。
+                - ttl_days：整数，只能取 7、30、90、180、365、730、3650。
+
+                结构示例：
+                {"items":[{"question":"依据原文提出的问题","conclusion":"原文明确支持的结论","confidence":0.9,"ttl_days":365}]}
+
+                没有合格事实时，必须返回 {"items":[]}。
+                不得返回裸数组、单独的条目对象，或使用其他字段名代替上述字段。
                 """;
     }
 }

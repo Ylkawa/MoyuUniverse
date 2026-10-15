@@ -20,6 +20,19 @@ public class KnowledgeQueryParserTest {
         check(entries.get(0).question().contains("|"), "preserve pipes inside JSON strings");
         check(entries.get(0).conclusion().contains("|"), "preserve conclusion punctuation");
         check(KnowledgeQueryParser.parse("{\"items\":[]}", 2).isEmpty(), "accept empty result");
+        for (String invalid : List.of("{}", "{\"items\":null}", "{\"items\":false}", "{\"items\":[],\"extra\":1}")) {
+            try {
+                KnowledgeQueryParser.parse(invalid, 2);
+                throw new AssertionError("invalid items structure was accepted: " + invalid);
+            } catch (IllegalArgumentException expected) {
+                // 顶层结构缺失、类型错误或多余字段不能进入索引流程。
+            }
+        }
+        check(KnowledgeQueryParser.parse("""
+                {"items":[{"question":"缺少结论","confidence":0.9,"ttl_days":365},
+                          {"question":"多余字段","conclusion":"结论","confidence":0.9,"ttl_days":365,"extra":1},
+                          {"question":"字符串数值","conclusion":"结论","confidence":"0.9","ttl_days":365}]}
+                """, 3).isEmpty(), "reject missing, extra and mistyped entry fields");
         try {
             KnowledgeQueryParser.parse("问题|结论|0.9|30", 2);
             throw new AssertionError("old delimited output was accepted");

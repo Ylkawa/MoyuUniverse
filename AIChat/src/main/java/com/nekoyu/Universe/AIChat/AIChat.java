@@ -1238,7 +1238,29 @@ public class AIChat extends Law {
                 优先记录明确长期偏好、稳定事实及持续任务约束。临时任务仅在对后续有价值且能保留日期或期限时记录；保留主体、版本、平台、数值及配置限定条件。confidence 仅表示聊天证据的支持程度，不代表外部世界已核实。
                 已有待落盘写入属于已处理的记忆意图，不要重复 add；新证据更正它时使用编号 update/delete。无需回复的旁聊不查询外部知识。
                 location_id 只能逐字使用输入提供的 LocationId；不能确定归属时不写入记忆。仅针对特定用户的 memory_query 才填写其 location_id，否则填 null。
-                按提供的输出 Schema 返回计划；无需操作或查询的数组置空。confidence 和 importance 均为 0 到 1 的数字；update/delete 的 id 只能使用候选记忆的编号。
+                最终输出一个 JSON 对象，必须且只能包含以下七个顶层字段：
+                add、update、delete、should_reply、addressed_message_ids、memory_queries、knowledge_queries。
+
+                字段结构：
+                - add：数组，每个元素包含 location_id、content、confidence、importance。
+                - update：数组，每个元素包含 id、content、confidence、importance。
+                - delete：整数数组，元素是候选记忆的编号。
+                - should_reply：布尔值 true 或 false。
+                - addressed_message_ids：整数数组，只能填写本批新消息目录中真人消息的原始消息 ID。
+                - memory_queries：数组，每个元素包含 question 和 location_id；location_id 必须出现，非特定用户查询时使用 null。
+                - knowledge_queries：字符串数组，每项是一个独立可理解的问题。
+
+                上述对象中的字段均须填写。confidence 和 importance 是 0 到 1 之间的数值；
+                content 是非空字符串，最多 500 字；检索问题是非空字符串，每个最多 200 字；
+                location_id 是输入提供的 LocationId，最多 160 字。两类检索数组各最多 2 项。
+
+                update/delete 使用候选记忆编号；addressed_message_ids 使用原始消息 ID，允许负数。
+                不得用目录顺序、候选记忆编号或其他标识替代原始消息 ID。
+
+                完整空操作结构示例：
+                {"add":[],"update":[],"delete":[],"should_reply":false,"addressed_message_ids":[],"memory_queries":[],"knowledge_queries":[]}
+
+                各字段的实际取值依据前述业务规则决定；无需操作或查询时，对应数组使用 []。
                 """);
         Map<UUID, Integer> memoryIdMap = new HashMap<>();
         Map<UUID, Memory.Item> candidateItems = new LinkedHashMap<>();

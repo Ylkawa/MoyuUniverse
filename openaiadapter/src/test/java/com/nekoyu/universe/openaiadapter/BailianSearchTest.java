@@ -109,7 +109,7 @@ public class BailianSearchTest {
         String richSse = "data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"reasoning\"}}]}\n\n"
                 + SSE.replace("data: [DONE]", "data: {\"usage\":{\"prompt_tokens\":3,"
                 + "\"completion_tokens\":2,\"total_tokens\":5}}\n\ndata: [DONE]");
-        JsonObject body = invoke(channel, "qwen3-max", request, tools, richSse);
+        JsonObject body = invoke(channel, "qwen3.8-max", request, tools, richSse);
         assertSearch(body, true, "Search combines with existing options");
         check(body.get("enable_thinking").getAsBoolean(), "thinking remains enabled");
         check(body.getAsJsonObject("stream_options").get("include_usage").getAsBoolean(),
