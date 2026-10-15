@@ -182,7 +182,7 @@ class UnifiedLeadingTest {
             f.ai.startReplyService();
             send(f, "question");
             f.time.advance(5_000);
-            f.time.advance(500_000);
+            f.time.advance(AIChat.TOPIC_IDLE_MILLIS - 100_000);
             f.annotator.output = messages -> {
                 JsonObject plan = plan(false);
                 newHumanIds(messages).forEach(id -> plan.getAsJsonArray("addressed_message_ids").add(id));
@@ -192,8 +192,8 @@ class UnifiedLeadingTest {
             f.time.drainWorkers();
             f.time.advance(95_000);
             check(f.topic() != null && f.provider.calls.size() == 1, "thanks resets lifetime but does not reply");
-            f.time.advance(505_000);
-            check(f.ai.activatingTopics.isEmpty(), "new ten-minute deadline is enforced");
+            f.time.advance(AIChat.TOPIC_IDLE_MILLIS - 95_000);
+            check(f.ai.activatingTopics.isEmpty(), "reset idle deadline is enforced");
         }
     }
 
@@ -422,7 +422,7 @@ class UnifiedLeadingTest {
             String driverDirectory = newInputDirectory(f.annotator.calls.get(0));
             check(driverDirectory.startsWith("来源=driver；时间=") && !driverDirectory.contains("消息ID="),
                     "driver has provenance without a fabricated message ID");
-            f.addPendingTool("work", 700_000);
+            f.addPendingTool("work", AIChat.TOPIC_IDLE_MILLIS + 100_000);
             f.ai.armAsyncWait(f.topic());
             send(f, "side conversation while working");
             f.time.advance(5_000);

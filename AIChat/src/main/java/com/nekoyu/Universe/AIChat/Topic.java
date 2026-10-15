@@ -117,9 +117,14 @@ public class Topic {
 
     /** 从底层会话记录恢复历史消息 */
     public synchronized void addHistory(MessageList history) {
+        addHistory(history, System.currentTimeMillis() / 1000);
+    }
+
+    synchronized void addHistory(MessageList history, long nowEpochSeconds) {
         if (history == null) return;
         for (MCMessage m : history) {
-            addMsg(m);
+            if (m.time > 0 && m.time <= nowEpochSeconds
+                    && nowEpochSeconds - m.time < AIChat.TOPIC_IDLE_MILLIS / 1000) addMsg(m);
         }
     }
 

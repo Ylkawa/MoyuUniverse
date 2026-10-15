@@ -54,7 +54,7 @@ public class AIChat extends Law {
     private static final float MEMORY_DUPLICATE_SCORE = 0.95f;
     public static final Gson gson = new Gson();
     public static final int TOPIC_TIMEOUT = 20;
-    static final long TOPIC_IDLE_MILLIS = TimeUnit.MINUTES.toMillis(10);
+    static final long TOPIC_IDLE_MILLIS = TimeUnit.MINUTES.toMillis(30);
     static Logger logger = LoggerFactory.getLogger(AIChat.class);
     static Multimap<String, LLMFunction> llmFunctions = ArrayListMultimap.create();
     static Map<String, MarkDecoupler> markDecouplers = new ConcurrentHashMap<>();

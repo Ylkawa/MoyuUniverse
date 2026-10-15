@@ -5,6 +5,7 @@ import com.nekoyu.Universe.AIChat.leading.LeadingPlanTest;
 import com.nekoyu.Universe.API.MessageChannel.*;
 import com.nekoyu.Universe.API.MessageChannel.Features.SessionChat;
 import com.nekoyu.Universe.API.MessageChannel.MessageField.ImageField;
+import com.nekoyu.Universe.API.MessageChannel.MessageField.TextField;
 import com.nekoyu.Universe.API.Providers.LLMProvider.LLMProvider;
 import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.*;
 import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.ContentPiece.ImageUrlPiece;
@@ -23,6 +24,7 @@ public class DriveMessageTest {
     public static void main(String[] args) throws Exception {
         validationAndCreation();
         roleImagesAndCopy();
+        expiredHistoryDoesNotRestoreImages();
         xmlStreaming();
         ordinaryUserAndMerge();
         duringInference(false);
@@ -89,6 +91,49 @@ public class DriveMessageTest {
             check(!driver.toString().contains("bot("), "do not add a fake human nickname");
             check(!f.topic().getLocationIds().contains(null), "internal input does not add a null user location");
         }
+    }
+
+    private static void expiredHistoryDoesNotRestoreImages() throws Exception {
+        SessionConfig config = new SessionConfig();
+        config.nativeImage = true;
+        Topic topic = new Topic(config);
+        Account bot = new Account();
+        bot.setLocationId("Test:bot");
+        bot.setName("bot");
+        Account user = new Account();
+        user.setLocationId("Test:user");
+        user.setName("human");
+        long now = 1_800_000_000L;
+        int[] translated = {0};
+        ImageField image = new ImageField(new URL("https://example.invalid/old.png")) {
+            @Override public String solveMetadata() {
+                translated[0]++;
+                return "old image metadata";
+            }
+        };
+        MessageList history = new MessageList();
+        MCMessage oldAssistant = new MCMessage();
+        oldAssistant.sender = bot;
+        oldAssistant.receiver = bot;
+        oldAssistant.time = now - AIChat.TOPIC_IDLE_MILLIS / 1000;
+        oldAssistant.messageFields.add(image);
+        history.add(oldAssistant);
+        MCMessage unknownTime = new MCMessage();
+        unknownTime.sender = bot;
+        unknownTime.receiver = bot;
+        unknownTime.messageFields.add(image);
+        history.add(unknownTime);
+        MCMessage recentUser = new MCMessage();
+        recentUser.sender = user;
+        recentUser.receiver = bot;
+        recentUser.time = now - AIChat.TOPIC_IDLE_MILLIS / 1000 + 1;
+        recentUser.messageFields.add(new TextField("recent question"));
+        history.add(recentUser);
+
+        topic.addHistory(history, now);
+        check(topic.getMessageCount() == 1, "restore only messages within the Topic idle window");
+        check(translated[0] == 0, "expired assistant image must not be translated");
+        check(topic.getMessage(0).solveAll().contains("recent question"), "keep fresh history");
     }
 
     private static void ordinaryUserAndMerge() {
