@@ -13,7 +13,7 @@ public class StructuredOutputsTest {
     public static void main(String[] args) {
         Gson gson = new Gson();
         for (var format : List.of(StructuredOutputs.leading(),
-                StructuredOutputs.knowledge(), StructuredOutputs.research(), StructuredOutputs.conflict())) {
+                StructuredOutputs.knowledge(), StructuredOutputs.ingestion(), StructuredOutputs.conflict())) {
             JsonObject wire = gson.toJsonTree(format).getAsJsonObject();
             check(wire.get("type").getAsString().equals("json_schema"), "schema mode is explicit");
             check(wire.getAsJsonObject("json_schema").get("strict").getAsBoolean(), "strict mode is explicit");
@@ -31,24 +31,23 @@ public class StructuredOutputsTest {
                 "routing schema asks for original integer message IDs");
 
         String research = """
-                {"answer":"产品 A 的答案\\n第二段", "sources":[
+                {"sources":[
                   {"url":"https://example.com/a","title":"资料 A","content":"第一行\\n\\nURL: 这只是摘要正文\\n最后一行"}]}
                 """;
-        LibrarianResult result = LibrarianResult.parse(research);
-        check(result.answer().contains("\n第二段") && result.sources().get(0).content().endsWith("最后一行"),
-                "keep multiline answer and full source summary");
-        check(LibrarianResult.parse(result.toJson()).equals(result), "preserve sources between research and merge");
-        check(LibrarianResult.parse("{\"answer\":\"无来源\",\"sources\":[]}").sources().isEmpty(), "allow no sources");
-        check(LibrarianResult.parseConflict("{\"conflict\":true}"), "parse true conflict");
-        check(!LibrarianResult.parseConflict("{\"conflict\":false}"), "parse false conflict");
-        rejects(() -> LibrarianResult.parseConflict("{\"conflict\":\"YES\"}"));
-        rejects(() -> LibrarianResult.parseConflict("{\"conflict\":\"true\"}"));
-        rejects(() -> LibrarianResult.parseConflict("YES"));
-        rejects(() -> LibrarianResult.parseConflict("{\"conflict\":false,\"explanation\":\"YES appears here\"}"));
-        rejects(() -> LibrarianResult.parse("{\"answer\":\"答案\",\"sources\":[{\"url\":\"x\"}]}"));
-        rejects(() -> LibrarianResult.parse("答案\n===SOURCES===\nURL: https://example.com\n===END==="));
-        rejects(() -> LibrarianResult.parse("{\"answer\":\"答案\",\"sources\":null}"));
-        rejects(() -> LibrarianResult.parse("{\"answer\":\"答案\",\"sources\":[],\"extra\":1}"));
+        KnowledgeSources result = KnowledgeSources.parse(research);
+        check(result.sources().get(0).content().endsWith("最后一行"), "keep full source summary");
+        check(KnowledgeSources.parse(result.toJson()).equals(result), "preserve ingestion sources");
+        check(KnowledgeSources.parse("{\"sources\":[]}").sources().isEmpty(), "allow no sources");
+        check(KnowledgeSources.parseConflict("{\"conflict\":true}"), "parse true conflict");
+        check(!KnowledgeSources.parseConflict("{\"conflict\":false}"), "parse false conflict");
+        rejects(() -> KnowledgeSources.parseConflict("{\"conflict\":\"YES\"}"));
+        rejects(() -> KnowledgeSources.parseConflict("{\"conflict\":\"true\"}"));
+        rejects(() -> KnowledgeSources.parseConflict("YES"));
+        rejects(() -> KnowledgeSources.parseConflict("{\"conflict\":false,\"explanation\":\"YES appears here\"}"));
+        rejects(() -> KnowledgeSources.parse("{\"sources\":[{\"url\":\"x\"}]}"));
+        rejects(() -> KnowledgeSources.parse("答案\n===SOURCES===\nURL: https://example.com\n===END==="));
+        rejects(() -> KnowledgeSources.parse("{\"sources\":null}"));
+        rejects(() -> KnowledgeSources.parse("{\"sources\":[],\"extra\":1}"));
 
         CompletionsResponse response = new CompletionsResponse();
         response.choices = new CompletionsResponse.Choice[]{new CompletionsResponse.Choice()};

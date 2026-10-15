@@ -280,7 +280,14 @@ public class ChatContext implements Context {
             List<String> structuredChunks = new ArrayList<>();
             LLMProvider.BufferCallback roundCallback = structuredOutput && bufferCallback != null
                     ? structuredChunks::add : bufferCallback;
-            CompletionsResponse round = provider.completions(model, roundMessages, roundTools, request, roundCallback);
+            long modelStart = System.nanoTime();
+            CompletionsResponse round;
+            try {
+                round = provider.completions(model, roundMessages, roundTools, request, roundCallback);
+            } finally {
+                LOGGER.info("LLM request: model={}, thinking={}, elapsed={}ms", model, request.enable_thinking,
+                        java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - modelStart));
+            }
             if (round == null) {
                 LOGGER.error("{} Provider 返回 null，结束本回合", model);
                 return responding;
@@ -403,7 +410,32 @@ public class ChatContext implements Context {
                             request.placeholders.forEach(args.getAsJsonObject()::addProperty);
                             args.getAsJsonObject().addProperty("_ToolCallId", toolCall.id); // 供异步工具补投结果时使用
                         }
-                        toolResponse = llmFunction.callback.callSync(args);
+                        long toolStart = System.nanoTime();
+                        try {
+                            if (llmFunction.type == LLMFunction.Type.asynchronous && request.asyncToolSink != null
+                                    && request.asyncToolSink.acceptsCallbacks()) {
+                                var callbackArgs = args;
+                                var sink = request.asyncToolSink;
+                                var callbackId = toolCall.id;
+                                var function = llmFunction;
+                                java.util.concurrent.CompletableFuture.runAsync(() -> {
+                                    try {
+                                        function.callback.callAsync(callbackArgs, message -> {
+                                            if (message != null) sink.onCallback(callbackId, message);
+                                        });
+                                    } catch (Exception error) {
+                                        LOGGER.error("异步工具执行失败: {}", function.name, error);
+                                        sink.onCallback(callbackId, new Message("调用工具失败: " + error.getMessage()));
+                                    }
+                                });
+                                toolResponse = new Message("工具 " + toolName + " 已在后台启动，进度和最终结果会分段返回，请勿重复启动同一任务。");
+                            } else {
+                                toolResponse = llmFunction.callback.callSync(args);
+                            }
+                        } finally {
+                            LOGGER.info("Tool execution: model={}, tool={}, elapsed={}ms", model, toolName,
+                                    java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - toolStart));
+                        }
                     } catch (Exception e) {
                         toolResponse = new Message();
                         toolResponse.content.add(new TextPiece("调用工具失败: " + e.getMessage()));

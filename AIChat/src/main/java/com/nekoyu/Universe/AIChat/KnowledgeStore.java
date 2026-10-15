@@ -133,6 +133,14 @@ public class KnowledgeStore {
         indexQueue.offer(new IndexTask(url, title, content));
     }
 
+    /** 研究结束后使用知识库自己的模型编排，研究模型不负责结构化提取。 */
+    void ingestResearch(String question, String report, Map<String, String> evidence) {
+        new KnowledgeIngestion(llmProvider, llmModel, url -> {
+            Long id = getDocumentIdByUrl(url);
+            return id == null ? null : getDocumentContent(id);
+        }, source -> indexDocument(source.url(), source.title(), source.content())).ingest(question, report, evidence);
+    }
+
     public void indexDocumentSync(String url, String title, String content) throws IOException {
         indexDocumentInternal(url, title, content);
     }

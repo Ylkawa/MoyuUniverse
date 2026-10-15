@@ -12,4 +12,10 @@ public interface AsyncToolSink {
      * @param toolTimeoutMillis  工具声明覆盖的超时（毫秒），0 表示使用通道默认值
      */
     void onPendingResult(String toolCallId, long toolTimeoutMillis);
+
+    /** 会话是否能接收异步工具的分段回调；旧的一次性补投实现保持原行为。 */
+    default boolean acceptsCallbacks() { return false; }
+
+    /** 分段回调仍交给会话原有队列处理，不在工具线程中直接生成或发送回复。 */
+    default void onCallback(String toolCallId, Message message) {}
 }

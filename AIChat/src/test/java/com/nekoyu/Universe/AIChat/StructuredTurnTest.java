@@ -13,14 +13,14 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 /** 模拟工具调用轮次和最终回复，无需模型或数据库。 */
 public class StructuredTurnTest {
-    private static final String INTERMEDIATE = "{\"answer\":\"checking\",\"sources\":[]}";
-    private static final String FINAL = "{\"answer\":\"hello world\",\"sources\":[]}";
+    private static final String INTERMEDIATE = "{\"sources\":[]}";
+    private static final String FINAL = "{\"sources\":[{\"url\":\"https://example.com\",\"title\":\"hello world\",\"content\":\"summary\"}]}";
 
     public static void main(String[] args) throws Exception {
-        run(StructuredOutputs.research(), false);
+        run(StructuredOutputs.ingestion(), false);
         run(ResponseFormat.jsonObject(), false);
         run(null, false);
-        run(StructuredOutputs.research(), true);
+        run(StructuredOutputs.ingestion(), true);
         System.out.println("StructuredTurnTest passed");
     }
 
@@ -68,9 +68,9 @@ public class StructuredTurnTest {
                     choice.message.content = FINAL;
                     choice.finish_reason = truncate ? "length" : "stop";
                     if (callback != null) {
-                        callback.onCompletion("{\"answer\":\"hello");
+                        callback.onCompletion("{\"sources\":[{\"url\":\"https://example.com\",\"title\":\"hello");
                         callback.onCompletion(" ");
-                        callback.onCompletion("world\",\"sources\":[]}");
+                        callback.onCompletion("world\",\"content\":\"summary\"}]}");
                     }
                 }
                 return response;
@@ -94,8 +94,8 @@ public class StructuredTurnTest {
                     // 即使字符串可以解析，finish_reason=length 的响应也不能用于业务写入。
                 }
             } else {
-                check(LibrarianResult.parse(StructuredOutputs.content(response)).answer().equals("hello world"),
-                        "the final research result is parseable");
+                check(KnowledgeSources.parse(StructuredOutputs.content(response)).sources().get(0).title().equals("hello world"),
+                        "the final ingestion result is parseable");
             }
         }
     }

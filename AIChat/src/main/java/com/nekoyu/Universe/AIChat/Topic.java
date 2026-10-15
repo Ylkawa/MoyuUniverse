@@ -329,6 +329,14 @@ public class Topic {
         }
     }
 
+    /** 分次回调的每段都是新工具输入，沿用会话队列和工具续答，不占用一次性补投名额。 */
+    synchronized void addToolCallback(String toolCallId, String text, long receivedAt) {
+        MCMessage message = appendToolMessage(toolCallId, text);
+        newInputs.add(new Input(message, receivedAt, false, false));
+        continuationPending = true;
+        trimMessagesSafely();
+    }
+
     synchronized void addTimeoutInput(String toolCallId, long receivedAt) {
         MCMessage message = appendToolMessage(toolCallId, "该次工具调用已超时，未能在期限内返回结果，请基于当前已有信息直接回答。");
         newInputs.add(new Input(message, receivedAt, false, false));

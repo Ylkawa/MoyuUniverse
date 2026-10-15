@@ -29,7 +29,8 @@ public class LLMFunction {
         }
     }
 
-    public interface AsyncCallback extends SyncCallback {
+    @FunctionalInterface
+    public interface AsyncCallback extends Callback {
         @Override
         default Message callSync(JsonElement args) {
             AtomicReference<Message> result = new AtomicReference<>();

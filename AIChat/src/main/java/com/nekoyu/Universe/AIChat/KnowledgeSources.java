@@ -8,30 +8,25 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 
-/** 调用方解析研究与合并结果，避免正文和多行摘要依赖分隔符。 */
-record LibrarianResult(String answer, List<LibrarianResult.Source> sources) {
+/** 后台入库使用的来源与 JSON 校验；自然语言研究不调用这些解析器。 */
+record KnowledgeSources(List<KnowledgeSources.Source> sources) {
     private static final Gson GSON = new Gson();
 
-    LibrarianResult {
+    KnowledgeSources {
         sources = List.copyOf(sources);
     }
 
     record Source(String url, String title, String content) {}
 
-    static LibrarianResult withoutSources(String answer) {
-        return new LibrarianResult(answer, List.of());
-    }
-
     String toJson() {
         return GSON.toJson(this);
     }
 
-    static LibrarianResult parse(String output) {
+    static KnowledgeSources parse(String output) {
         try {
-            JsonObject root = object(output, Set.of("answer", "sources"));
-            String answer = string(root, "answer");
-            if (answer.isBlank() || !root.get("sources").isJsonArray())
-                throw new IllegalArgumentException("Expected an answer and sources array");
+            JsonObject root = object(output, Set.of("sources"));
+            if (!root.get("sources").isJsonArray())
+                throw new IllegalArgumentException("Expected sources array");
             List<Source> sources = new ArrayList<>();
             for (var element : root.getAsJsonArray("sources")) {
                 if (!element.isJsonObject()) throw new IllegalArgumentException("Expected source object");
@@ -42,9 +37,9 @@ record LibrarianResult(String answer, List<LibrarianResult.Source> sources) {
                 if (url.isEmpty()) throw new IllegalArgumentException("Source URL is empty");
                 sources.add(new Source(url, string(source, "title"), string(source, "content")));
             }
-            return new LibrarianResult(answer, sources);
+            return new KnowledgeSources(sources);
         } catch (RuntimeException e) {
-            throw new IllegalArgumentException("Invalid research result JSON", e);
+            throw new IllegalArgumentException("Invalid knowledge sources JSON", e);
         }
     }
 
@@ -58,6 +53,10 @@ record LibrarianResult(String answer, List<LibrarianResult.Source> sources) {
         } catch (RuntimeException e) {
             throw new IllegalArgumentException("Invalid conflict JSON", e);
         }
+    }
+
+    static List<Source> parseSources(String output) {
+        return parse(output).sources();
     }
 
     private static JsonObject object(String output, Set<String> fields) {

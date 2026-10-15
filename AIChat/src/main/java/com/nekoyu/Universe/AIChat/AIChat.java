@@ -260,18 +260,19 @@ public class AIChat extends Law {
                                                 图书管理员，结合本地知识库与联网工具，研究一个问题，或核查、补充并整理输入资料。
                                                 适用：概念原理、教程、技术文档、明确版本的攻略和使用方法；也可整理新闻、文章和搜索结果，核查关键事实，补充用户可能关心的实际影响、使用条件与限制，归并重复报道，区分事实、观点和待确认信息。
                                                 调用时明确“研究问题”或“整理资料”以及目标、关注点；整理资料尽量提供标题、内容、来源链接和发布时间。已有足够资料可直接回答，无需重复研究。
+                                                研究在后台执行，阶段进度和最终完整报告会分次作为工具消息返回；已启动同一任务时不要重复调用。阶段反馈可能仍待核查，最终报告会完整重述结论、来源与限制。
                                                 内容筛选：排除政治导向、娱乐八卦和饭圈内容，以及无实质信息的广告、引流和情绪煽动；技术相关的监管事实、娱乐行业的技术或产品信息保留必要事实，不扩写立场。整理结果不得包含无关隐私、凭据或危险操作细节。
                                                 新闻和时效性资料必须保留日期与适用范围，不能把历史知识当作当前状态。当前天气、实时价格、库存等需要即时数据的查询，优先使用专用实时查询工具。
                                                 """)
                                         .parameters(JsonSchema.object()
                                                 .property("question", JsonSchema.string().description("需要研究的问题，或需要核查和整理的资料及整理要求。请明确任务类型、目标和关注点；研究问题尽量注明主体、版本或平台，整理资料尽量附标题、内容、来源链接和发布时间。"))
                                                 .required("question"))
-                                        .syncCallback(args -> {
+                                        .asyncCallback((args, calling) -> {
                                             try {
-                                                return new Message(librarian.search(args.getAsJsonObject().get("question").getAsString()));
+                                                librarian.search(args.getAsJsonObject().get("question").getAsString(), calling);
                                             } catch (Exception e) {
                                                 logger.error("Librarian调用出错", e);
-                                                return new Message("调用失败: " + e.getMessage());
+                                                calling.calling(new Message("调用失败: " + e.getMessage()));
                                             }
                                         })
                                         .build()
@@ -964,12 +965,23 @@ public class AIChat extends Law {
             completionsRequest.placeholders.put("_LocationID", mcm.getLocationId());
             completionsRequest.placeholders.put("_SessionId", mcm.sessionId);
             boolean asyncEnabled = asyncEnabledFor(topic);
-            if (asyncEnabled) {
-                completionsRequest.asyncToolSink = (toolCallId, timeout) -> {
-                    topic.registerPendingCall(toolCallId, timeout > 0 ? timeout : topic.getToolLoopOptions().AsyncMaxWaitMillis);
-                    armAsyncWait(topic);
-                };
-            }
+            completionsRequest.asyncToolSink = new com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.AsyncToolSink() {
+                @Override public void onPendingResult(String toolCallId, long timeout) {
+                    if (asyncEnabled) {
+                        topic.registerPendingCall(toolCallId, timeout > 0 ? timeout : topic.getToolLoopOptions().AsyncMaxWaitMillis);
+                        armAsyncWait(topic);
+                    }
+                }
+                @Override public boolean acceptsCallbacks() { return true; }
+                @Override public void onCallback(String toolCallId, Message message) {
+                    synchronized (topicLifecycleLock) {
+                        if (!isActive(topic)) return;
+                        long receivedAt = replyClock.getAsLong();
+                        String text = message.toString();
+                        topic.replies.submit(() -> topic.addToolCallback(toolCallId, text, receivedAt), false, false);
+                    }
+                }
+            };
             assistant.setThinking(sessionCfg.enable_thinking);
             assistant.setCompletionsRequest(completionsRequest);
             assistant.setToolLoopOptions(topic.getToolLoopOptions());

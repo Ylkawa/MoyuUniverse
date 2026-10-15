@@ -11,7 +11,6 @@ import com.nekoyu.Universe.API.Providers.LLMProvider.RespBodies.CompletionsRespo
 import com.nekoyu.Universe.Universe;
 import org.junit.jupiter.api.Test;
 
-import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -55,7 +54,7 @@ class StructuredPromptTest {
         assertTrue(KnowledgeQueryParser.parse(StructuredOutputs.content(response), 3).isEmpty());
     }
 
-    @Test void librarianSendsContractsThroughToolResearchMergeAndConflict() throws Exception {
+    @Test void librarianResearchUsesPlainTextAcrossTools() throws Exception {
         String providerId = "structured-prompt-" + UUID.randomUUID();
         String toolGroup = providerId + "-tools";
         CapturingProvider provider = new CapturingProvider();
@@ -73,35 +72,25 @@ class StructuredPromptTest {
             config.model = "offline";
             config.tools = List.of(toolGroup);
             Librarian librarian = new Librarian(null, config);
-            LibrarianResult expected = new LibrarianResult("结论\n\"引号\"与\\路径", List.of(
-                    new LibrarianResult.Source("https://example.invalid/source", "来源标题", "摘要\n第二行")));
-            provider.output = expected.toJson();
+            String expected = "完整研究报告：结论、依据和限制。https://example.invalid/source";
+            config.enableAsyncUpdate = false;
+            provider.output = expected;
             provider.useTool = true;
-            Method research = Librarian.class.getDeclaredMethod("webSearch", String.class);
-            research.setAccessible(true);
-            assertEquals(expected, research.invoke(librarian, "离线研究问题"));
+            assertEquals(expected, librarian.search("离线研究问题"));
             assertEquals(1, toolCalls.get());
             assertEquals(2, provider.calls.size());
             for (int i = 0; i < provider.calls.size(); i++) {
-                String prompt = assertPrompt(provider.calls.get(i), provider.options.get(i).responseFormat);
-                assertTrue(prompt.contains("三个字段均为字符串，url 不得为空"));
-                assertTrue(prompt.contains("网址只来自输入明确提供的网址或本轮工具实际返回的网址"));
+                assertNull(provider.options.get(i).responseFormat);
+                String prompt = provider.calls.get(i).get(0).toString();
+                assertTrue(prompt.contains("自然语言") && prompt.contains("完整重述"));
+                assertFalse(prompt.contains("顶层必须且只能包含 answer 和 sources"));
             }
             assertTrue(provider.calls.get(1).stream().anyMatch(message -> "tool".equals(message.role)));
 
             provider.clear();
-            Method merge = Librarian.class.getDeclaredMethod("mergeResults", String.class, String.class, LibrarianResult.class);
-            merge.setAccessible(true);
-            assertEquals(expected, merge.invoke(librarian, "离线研究问题", "本地资料", expected));
-            String mergePrompt = assertPrompt(provider.calls.get(0), provider.options.get(0).responseFormat);
-            assertTrue(mergePrompt.contains("sources 使用 []，不得省略或使用 null"));
-            assertTrue(mergePrompt.contains("本地资料可补充概念、背景与历史沿革"));
-
-            provider.clear();
             provider.output = "{\"conflict\":false}";
-            Method conflict = Librarian.class.getDeclaredMethod("isConflicting", String.class, String.class);
-            conflict.setAccessible(true);
-            assertEquals(false, conflict.invoke(librarian, "旧资料", "新资料"));
+            assertFalse(new KnowledgeIngestion(provider, "offline", url -> null, source -> {})
+                    .isConflicting("旧资料", "新资料"));
             String conflictPrompt = assertPrompt(provider.calls.get(0), provider.options.get(0).responseFormat);
             assertTrue(conflictPrompt.contains("{\"conflict\":true}") && conflictPrompt.contains("{\"conflict\":false}"));
             assertTrue(conflictPrompt.contains("范围不同或无法确定范围相同，不据此判定冲突"));
@@ -138,7 +127,7 @@ class StructuredPromptTest {
             choice.message.content = output;
             choice.finish_reason = "stop";
             if (useTool && calls.size() == 1 && tools != null && !tools.isEmpty()) {
-                choice.message.content = "{\"answer\":\"正在核查\",\"sources\":[]}";
+                choice.message.content = "正在核查，接下来检索原始来源。";
                 choice.finish_reason = "tool_calls";
                 Tool_call call = new Tool_call();
                 call.id = "prompt-call";

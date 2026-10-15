@@ -277,7 +277,13 @@ OneBot 文件路径是 `config/Onebot/*.json`，**不是 config/OnebotAdapter/**
 | `Annotator` | provider、embeddingProvider、model、dimension、enable_thinking；沿用辅助模型/文字向量配置 |
 | `Memory` | collection、vectorName、dimension；不重建或清空现有集合 |
 | `KnowledgeStore` | collection、vectorName、documentsTable、embeddingProvider、embeddingModel、dimension、llmProvider、llmModel、queryCount、candidateLimit、chunkTokenThreshold、embeddingBatchSize、defaultTtlDays |
-| `Librarian` | provider、model、tools、systemPrompt、thinking、enableAsyncUpdate |
+| `Librarian` | provider、model、tools、thinking、enableAsyncUpdate |
+
+搜索研究改进（2026-10-15）：`Librarian` 使用异步分段回调。研究模型使用自然语言，在每轮工具调用前返回阶段发现、待查证点和下一步目标；最后单独返回一条完整报告，即使前面已提过也重新说明结论、依据、来源、适用条件和未确认事项。进度按完整段落回调，最终报告不拆段。回调沿用会话队列和工具续答，不依赖一次性补投的 `EnableAsyncTools` 开关。非会话调用者仍可通过同步 `search(question)` 获取最终报告。
+
+本地知识检索与联网研究并行，完成后在研究下一轮请求前作为材料加入，不再额外调用合并模型。`mergeThinking` 已移除，旧配置残留字段可删除。研究和后台入库分别沿用 `Librarian.provider/model` 与 `KnowledgeStore.llmProvider/llmModel`，无需新增模型配置。只有研究正常结束后才异步启动结构化入库编排；研究与入库失败分别处理，入库失败不改变已返回的报告。研究总期限为十分钟，超时或模型输出截断会明确报错，不自动入库。
+
+耗时排查查看 `Librarian search complete`、每轮 `LLM request` 与 `Tool execution`。异步工具的分发耗时不代表后台研究总耗时。日志的 `thinking` 是请求意图，是否真正生效取决于 Provider 适配。比较模型时使用相同任务、工具、部署网络与思考模式，同时记录首次有效进度、首次用户回复、研究结束时间、模型请求次数和来源质量。
 
 Graph 不再连接 Qdrant，**知识库和记忆继续连接**，不能因此停掉 Qdrant。已有库的 embedding 模型/维度必须保持一致。没有启用数据库的实例无需为了 Graph 新建 SQLConfig/Memory/KnowledgeStore；已启用的实例不要套用只包含 Graph 的最小片段覆盖全局配置。
 

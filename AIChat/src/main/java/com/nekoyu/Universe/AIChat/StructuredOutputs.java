@@ -35,22 +35,18 @@ final class StructuredOutputs {
                 .property("items", JsonSchema.array(item)).required("items"), true);
     }
 
-    static ResponseFormat research() {
-        JsonSchema source = object()
-                .property("url", JsonSchema.string().description("实际参考的信息来源网址"))
-                .property("title", JsonSchema.string().description("来源页面标题"))
-                .property("content", JsonSchema.string().description("该来源的核心内容摘要，可含多行"))
-                .required("url", "title", "content");
-        return ResponseFormat.jsonSchema("research_result", object()
-                .property("answer", JsonSchema.string().description("完整的可读回答或资料整理结果，开头说明主题与适用范围，多主题资料逐项保留范围"))
-                .property("sources", JsonSchema.array(source).description("被采纳的信息来源，没有来源时为空数组"))
-                .required("answer", "sources"), true);
-    }
-
     static ResponseFormat conflict() {
         return ResponseFormat.jsonSchema("knowledge_conflict", object()
                 .property("conflict", JsonSchema.booleanType().description("是否存在事实性冲突"))
                 .required("conflict"), true);
+    }
+
+    static ResponseFormat ingestion() {
+        JsonSchema source = object().property("url", JsonSchema.string())
+                .property("title", JsonSchema.string()).property("content", JsonSchema.string())
+                .required("url", "title", "content");
+        return ResponseFormat.jsonSchema("knowledge_sources", object()
+                .property("sources", JsonSchema.array(source)).required("sources"), true);
     }
 
     /** 仅完整结束的最终回答可以进入业务解析和持久化流程。 */
