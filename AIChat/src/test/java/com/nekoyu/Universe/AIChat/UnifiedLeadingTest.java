@@ -68,6 +68,7 @@ class UnifiedLeadingTest {
     @Test void atAndReplyAreImmediateAndMetadataSurvives() {
         try (Fixture f = new Fixture(false)) {
             f.config.Trigger = "keyword";
+            f.config.nativeImage = true;
             f.ai.startReplyService();
             MCMessage at = f.user("question");
             at.time = 123456;
@@ -78,13 +79,22 @@ class UnifiedLeadingTest {
             MCMessage normalized = f.topic().getMessage(0);
             check(normalized.id == at.id && normalized.time == at.time && normalized.receiver == at.receiver,
                     "retain real message identity, timestamp and receiver");
+            check(at.id == 160742629L && f.topic().replyLeading.addressedMessageIds().equals(Set.of(at.id)),
+                    "route the reproduced original message ID instead of ordinal 1");
             String directory = lastPrompt(f);
             check(directory.contains("@目标=[Test:bot]") && directory.contains("主助手：bot(Test:bot)"), "leading receives bot and at identity");
+            check(directory.contains("来源=真人；消息ID=" + at.id + "；")
+                            && normalized.solveAll().contains("[" + at.id + "]")
+                            && !newInputDirectory(f.annotator.calls.get(0)).contains("编号="),
+                    "body and both directories use only the original message ID");
             MCMessage reply = f.user("follow up");
             reply.messageFields.add(new ReplyField("1"));
+            reply.messageFields.add(new ReplyField(Long.toString(at.id)));
             f.ai.handleSessionMessage(f.config, f.provider, reply);
             f.time.drainWorkers();
-            check(f.provider.calls.size() == 2 && lastPrompt(f).contains("回复目标=[1]"), "reply to bot also skips waiting");
+            check(f.provider.calls.size() == 2 && lastPrompt(f).contains("回复目标=[1, " + at.id + "]"),
+                    "reply to bot also skips waiting and retains original reference IDs");
+            check(lastPrompt(f).contains("<reply to=\"" + at.id + "\"/>"), "reply marker shares the original ID");
             check(f.annotator.calls.get(1).stream().anyMatch(m -> "assistant".equals(m.role) && m.toString().contains("answer 1")),
                     "leading sees prior bot output as assistant");
         }
@@ -95,16 +105,22 @@ class UnifiedLeadingTest {
             f.ai.startReplyService();
             f.annotator.output = messages -> {
                 JsonObject plan = plan(false);
-                plan.getAsJsonArray("addressed_message_ids").add(newHumanIds(messages).get(0));
+                plan.getAsJsonArray("addressed_message_ids").add(newHumanIds(messages).get(1));
                 return plan.toString();
             };
             f.time.advance(100);
-            send(f, "thanks to bot");
-            f.time.advance(100);
             send(f, "talking to Alice");
+            f.time.advance(100);
+            f.messageNumber = -987654322L;
+            send(f, "thanks to bot");
+            f.messageNumber = 4294967295L;
             send(f, "still talking to Alice");
             f.time.advance(5_000);
-            check(f.topic().lastAddressedAt == 100 && f.topic().unaddressedMessages == 2, "use per-message order and arrival times");
+            check(newHumanIds(f.annotator.calls.get(0)).equals(List.of(160742629L, -987654321L, 4294967296L)),
+                    "retain original signed long IDs in input order");
+            check(f.topic().replyLeading.addressedMessageIds().equals(Set.of(-987654321L))
+                            && f.topic().lastAddressedAt == 200 && f.topic().unaddressedMessages == 1,
+                    "match a negative original ID while counting by input order and arrival time");
             check(f.provider.calls.isEmpty(), "addressed thanks may reset lifetime without a reply");
         }
     }
@@ -191,6 +207,9 @@ class UnifiedLeadingTest {
             send(f, "unused direct request");
             f.time.drainWorkers();
             check(f.provider.calls.size() == 1 && f.topic().failedLeadingInputs.size() == 2, "explicit call falls back and preserves facts");
+            check(f.topic().replyLeading.addressedMessageIds().equals(Set.of(160742630L))
+                            && f.topic().unaddressedMessages == 0 && f.topic().lastAddressedAt == 5_000,
+                    "direct-call fallback uses the original message ID to update lifetime");
             f.annotator.fail = false;
             f.annotator.output = messages -> routedPlan(messages, false);
             send(f, "recover");
@@ -198,6 +217,37 @@ class UnifiedLeadingTest {
             check(f.topic().failedLeadingInputs.isEmpty(), "successful next batch consumes failed evidence");
             check(lastPrompt(f).contains("ordinary failed evidence") && newHumanIds(f.annotator.calls.get(2)).size() == 1,
                     "old failed facts do not become new routing messages");
+        }
+    }
+
+    @Test void shortOrdinalAndOldEvidenceCannotRouteNewMessages() {
+        try (Fixture f = new Fixture(false)) {
+            f.ai.startReplyService();
+            f.annotator.output = ignored -> {
+                JsonObject result = plan(true);
+                result.getAsJsonArray("addressed_message_ids").add(1);
+                return result.toString();
+            };
+            send(f, "first message");
+            f.time.advance(5_000);
+            check(f.provider.calls.isEmpty() && f.topic().failedLeadingInputs.size() == 1,
+                    "short ordinal cannot route an original message ID");
+            f.annotator.output = ignored -> {
+                JsonObject result = plan(true);
+                result.getAsJsonArray("addressed_message_ids").add(160742629L);
+                return result.toString();
+            };
+            send(f, "second message");
+            f.time.advance(5_000);
+            check(f.provider.calls.isEmpty() && f.topic().failedLeadingInputs.size() == 2
+                            && newHumanIds(f.annotator.calls.get(1)).equals(List.of(160742630L)),
+                    "old history and retained evidence cannot route a later batch");
+            f.annotator.output = messages -> routedPlan(messages, true);
+            send(f, "recover");
+            f.time.advance(5_000);
+            check(f.provider.calls.size() == 1 && f.topic().failedLeadingInputs.isEmpty()
+                            && f.topic().replyLeading.addressedMessageIds().equals(Set.of(160742631L)),
+                    "a valid current original ID recovers and consumes retained evidence");
         }
     }
 
@@ -369,6 +419,9 @@ class UnifiedLeadingTest {
             f.time.advance(5_000);
             check(f.provider.calls.size() == 1 && f.topic().unaddressedMessages == 0 && f.topic().lastAddressedAt == 0,
                     "driver must reply but does not reset human lifetime");
+            String driverDirectory = newInputDirectory(f.annotator.calls.get(0));
+            check(driverDirectory.startsWith("来源=driver；时间=") && !driverDirectory.contains("消息ID="),
+                    "driver has provenance without a fabricated message ID");
             f.addPendingTool("work", 700_000);
             f.ai.armAsyncWait(f.topic());
             send(f, "side conversation while working");
@@ -380,6 +433,9 @@ class UnifiedLeadingTest {
             f.time.advance(5_000);
             check(f.provider.calls.size() == 2 && f.ai.activatingTopics.isEmpty(), "tool continuation replies then completes overdue closure");
             check(newHumanIds(f.annotator.calls.get(2)).isEmpty(), "tool result cannot be classified as human evidence");
+            String toolDirectory = newInputDirectory(f.annotator.calls.get(2));
+            check(toolDirectory.contains("来源=tool；工具调用ID=work；时间=") && !toolDirectory.contains("消息ID="),
+                    "tool result has a call ID without a fabricated message ID");
         }
     }
 

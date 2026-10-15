@@ -46,12 +46,12 @@ public final class LeadingPlan {
         for (JsonElement element : array(root, "addressed_message_ids")) {
             try {
                 if (!element.isJsonPrimitive() || !element.getAsJsonPrimitive().isNumber())
-                    throw new IllegalArgumentException("Expected message number");
+                    throw new IllegalArgumentException("原始消息 ID 必须为整数");
                 long id = element.getAsBigDecimal().longValueExact();
-                if (!newHumanMessageIds.contains(id)) throw new IllegalArgumentException("Unknown new human message: " + id);
+                if (!newHumanMessageIds.contains(id)) throw new IllegalArgumentException("非本批真人消息 ID: " + id);
                 plan.addressedMessageIds.add(id);
             } catch (ArithmeticException e) {
-                throw new IllegalArgumentException("Invalid message number", e);
+                throw new IllegalArgumentException("原始消息 ID 必须为 long 范围内的整数", e);
             }
         }
         parseQueries(root, allowedLocations, plan);

@@ -57,15 +57,30 @@ public class LeadingPlanTest {
         }
         var routed = com.google.gson.JsonParser.parseString(emptyPlan()).getAsJsonObject();
         routed.addProperty("should_reply", true);
-        routed.getAsJsonArray("addressed_message_ids").add(7);
-        check(LeadingPlan.parse(routed.toString(), Set.of(), Set.of(), Set.of(7L)).addressedMessageIds.contains(7L),
-                "accept only supplied new human message numbers");
+        routed.getAsJsonArray("addressed_message_ids").add(160742629L);
+        check(LeadingPlan.parse(routed.toString(), Set.of(), Set.of(), Set.of(160742629L))
+                        .addressedMessageIds.contains(160742629L), "accept the supplied original message ID");
         rejects(() -> LeadingPlan.parse(routed.toString(), Set.of(), Set.of(), Set.of(8L)));
+        routed.getAsJsonArray("addressed_message_ids").set(0, new com.google.gson.JsonPrimitive(1));
+        try {
+            LeadingPlan.parse(routed.toString(), Set.of(), Set.of(), Set.of(160742629L));
+            throw new AssertionError("short input ordinal was accepted as a message ID");
+        } catch (IllegalArgumentException expected) {
+            check(expected.getMessage().equals("非本批真人消息 ID: 1"), "identify an out-of-batch message ID");
+        }
+        routed.getAsJsonArray("addressed_message_ids").set(0, new com.google.gson.JsonPrimitive(Long.MIN_VALUE));
+        routed.getAsJsonArray("addressed_message_ids").add(Long.MAX_VALUE);
+        Set<Long> signedIds = Set.of(Long.MIN_VALUE, Long.MAX_VALUE);
+        check(LeadingPlan.parse(routed.toString(), Set.of(), Set.of(), signedIds).addressedMessageIds.equals(signedIds),
+                "preserve signed long message IDs exactly");
         routed.addProperty("should_reply", "true");
-        rejects(() -> LeadingPlan.parse(routed.toString(), Set.of(), Set.of(), Set.of(7L)));
+        rejects(() -> LeadingPlan.parse(routed.toString(), Set.of(), Set.of(), signedIds));
         routed.addProperty("should_reply", true);
         routed.getAsJsonArray("addressed_message_ids").add(7.5);
-        rejects(() -> LeadingPlan.parse(routed.toString(), Set.of(), Set.of(), Set.of(7L)));
+        rejects(() -> LeadingPlan.parse(routed.toString(), Set.of(), Set.of(), signedIds));
+        routed.getAsJsonArray("addressed_message_ids").set(2,
+                new com.google.gson.JsonPrimitive(new java.math.BigInteger("9223372036854775808")));
+        rejects(() -> LeadingPlan.parse(routed.toString(), Set.of(), Set.of(), signedIds));
         System.out.println("LeadingPlanTest passed");
     }
 

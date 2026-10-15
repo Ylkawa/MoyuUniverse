@@ -26,6 +26,9 @@ public class StructuredOutputsTest {
         check(location.getAsJsonArray("anyOf").size() == 2
                 && location.getAsJsonArray("anyOf").get(1).getAsJsonObject().get("type").getAsString().equals("null"),
                 "nullable location is declared in the wire schema");
+        var addressedId = StructuredOutputs.leading().jsonSchema.schema.properties.get("addressed_message_ids").items;
+        check("integer".equals(addressedId.type) && addressedId.description.contains("原始消息 ID"),
+                "routing schema asks for original integer message IDs");
 
         String research = """
                 {"answer":"产品 A 的答案\\n第二段", "sources":[

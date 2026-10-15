@@ -222,6 +222,9 @@ public class DriveMessageTest {
             f.time.advance(0);
             check(f.provider.calls.size() == 2 && !f.topic().hasPendingCalls(), "timeout still triggers fallback inference");
             check(f.provider.calls.get(1).stream().anyMatch(m -> m.toString().contains("已超时")), "fallback reaches model");
+            String directory = newInputDirectory(f.annotator.calls.get(1));
+            check(directory.contains("来源=tool；工具调用ID=expired；时间=") && !directory.contains("消息ID="),
+                    "timeout input has tool provenance without a fabricated message ID");
         }
     }
 
@@ -329,7 +332,7 @@ public class DriveMessageTest {
             message.id = ++messageNumber;
             return message;
         }
-        long messageNumber;
+        long messageNumber = 160742628;
         void addPendingTool(String id, long timeout) {
             Message assistant = new Message();
             Tool_call call = new Tool_call();
@@ -427,11 +430,15 @@ public class DriveMessageTest {
     }
 
     static List<Long> newHumanIds(List<Message> messages) {
-        String directory = messages.get(messages.size() - 1).toString().split("本批新消息目录：\\n", 2)[1]
-                .split("\\n允许维护记忆", 2)[0];
-        java.util.regex.Matcher matcher = java.util.regex.Pattern.compile("编号=(\\d+)；来源=真人").matcher(directory);
+        String directory = newInputDirectory(messages);
+        java.util.regex.Matcher matcher = java.util.regex.Pattern.compile("(?m)^来源=真人；消息ID=(-?\\d+)；").matcher(directory);
         List<Long> ids = new ArrayList<>();
         while (matcher.find()) ids.add(Long.parseLong(matcher.group(1)));
         return ids;
+    }
+
+    static String newInputDirectory(List<Message> messages) {
+        return messages.get(messages.size() - 1).toString().split("本批新消息目录：\\n", 2)[1]
+                .split("\\n允许维护记忆", 2)[0];
     }
 }

@@ -12,7 +12,7 @@ final class StructuredOutputs {
         JsonSchema schema = memoryOperations()
                 .property("should_reply", JsonSchema.booleanType().description("本批真人消息是否需要主助手回复"))
                 .property("addressed_message_ids", JsonSchema.array(JsonSchema.integer()
-                        .description("本批正在与主助手对话的真人消息编号；只能引用输入的新消息目录")))
+                        .description("本批正在与主助手对话的真人消息的原始消息 ID；只能使用本批新消息目录中的消息ID")))
                 .property("memory_queries", JsonSchema.array(object()
                         .property("question", JsonSchema.string().description("独立可理解的记忆检索问题"))
                         .property("location_id", JsonSchema.anyOf(JsonSchema.string(), JsonSchema.of("null"))

@@ -33,8 +33,7 @@ public class Topic {
     LLMProvider provider;
     /** 最近一条触发回复的用户消息；发送目标单独保存在 replyTarget。 */
     volatile MCMessage lastTrigger;
-    record Input(long number, MCMessage message, long receivedAt, boolean human, boolean explicit) {}
-    private long nextInputNumber;
+    record Input(MCMessage message, long receivedAt, boolean human, boolean explicit) {}
     private final List<Input> newInputs = new ArrayList<>();
     final List<Input> failedLeadingInputs = new ArrayList<>();
     final Map<UUID, PendingMemoryWrite> failedMemoryWrites = new LinkedHashMap<>();
@@ -175,7 +174,7 @@ public class Topic {
         MCMessage normalized = append ? appendMessage(message) : chatContext.getBase().stream()
                 .filter(m -> m.id == message.id && m.sender == message.sender).findFirst()
                 .orElseGet(() -> appendMessage(message));
-        newInputs.add(new Input(++nextInputNumber, normalized, receivedAt, true, explicit));
+        newInputs.add(new Input(normalized, receivedAt, true, explicit));
     }
 
     synchronized List<Input> drainInputs() {
@@ -202,7 +201,7 @@ public class Topic {
         input.messageFields.add(new TextField("[驱动消息]\n"));
         appendFields(input, fields);
         chatContext.getBase().add(input);
-        newInputs.add(new Input(++nextInputNumber, input, receivedAt, false, false));
+        newInputs.add(new Input(input, receivedAt, false, false));
         hasDriverMessages = true;
         trimMessagesSafely();
     }
@@ -321,13 +320,13 @@ public class Topic {
         if (submitAsyncResult(toolCallId, text)) {
             MCMessage message = chatContext.getBase().stream()
                     .filter(m -> toolCallId.equals(m.getMetainfo("tool_call_id"))).reduce((a, b) -> b).orElseThrow();
-            newInputs.add(new Input(++nextInputNumber, message, receivedAt, false, false));
+            newInputs.add(new Input(message, receivedAt, false, false));
         }
     }
 
     synchronized void addTimeoutInput(String toolCallId, long receivedAt) {
         MCMessage message = appendToolMessage(toolCallId, "该次工具调用已超时，未能在期限内返回结果，请基于当前已有信息直接回答。");
-        newInputs.add(new Input(++nextInputNumber, message, receivedAt, false, false));
+        newInputs.add(new Input(message, receivedAt, false, false));
         continuationPending = true;
     }
 
