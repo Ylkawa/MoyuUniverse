@@ -65,7 +65,7 @@ public class Librarian {
             localResult = "（本地知识库查询超时）";
         }
         try {
-            webResult = webFuture.get(120, java.util.concurrent.TimeUnit.SECONDS);
+            webResult = webFuture.get(10, java.util.concurrent.TimeUnit.MINUTES);
         } catch (Exception e) {
             logger.error("Web search timeout", e);
             webResult = LibrarianResult.withoutSources("（联网搜索超时）");
