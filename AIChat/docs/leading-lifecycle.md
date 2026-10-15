@@ -12,15 +12,15 @@
 
 ## 输出与证据
 
-leading 输出包含 `add`、`update`、`delete`、`memory_queries`、`knowledge_queries`、`should_reply`、`addressed_message_ids`。后者只能引用本批真人消息的内部编号，与通道原始消息 ID 分开；同批消息顺序用于精确更新退出计数。
+leading 输出包含 `add`、`update`、`delete`、`memory_queries`、`knowledge_queries`、`should_reply`、`addressed_message_ids`。后者只能引用本批真人消息的原始消息 ID，与正文和回复目标一致；同批消息顺序用于精确更新退出计数。仅回应本批工具输入时允许 `should_reply=true` 且 `addressed_message_ids=[]`。
 
 相关类型位于 `com.nekoyu.Universe.AIChat.leading` 子包：`LeadingPlan` 负责解析校验，`LeadingResult` 表达推理结果，`MemoryStore` 定义持久化边界，`PendingMemoryWrite` 保存失败重试意图。解析测试在对应的 `leading` 测试目录，会话集成测试留在 AIChat 根测试包。
 
-`LeadingResult` 返回回复决策、消息归属及已完成的双库检索注解。普通旁聊也维护记忆，但不进行 RAG；驱动输入、工具完成及超时续答保留主助手任务处理入口。助手、driver、tool 内容不能作为真人记忆证据，也不重置真人对话的退出计数。
+`LeadingResult` 返回回复决策、消息归属及已完成的双库检索注解。普通旁聊也维护记忆，但不进行 RAG；驱动输入保留强制处理语义。工具进度、最终结果及超时均作为新工具输入交给 leading 决定是否发言，不在入队时强制续答。后台启动、检索或整理状态、重复进度和待核查猜测通常保持静默；能解决尚未完成请求的完整结果、关键失败或需要用户介入的反馈才考虑回复，无关、过时或已取消任务的结果可以忽略。静默处理的已完成调用也释放未决保护。助手、driver、tool 内容不能作为真人记忆证据，也不重置真人对话的退出计数。
 
 待处理证据有独立引用，不受实时上下文 token 裁剪影响。旧上下文只供解释与去重；持久化失败保留已校验操作，新增重试复用 UUID，成功操作不重复执行。后续新证据更正同一条记忆时替换未确认的旧意图。
 
-leading 失败或 JSON 无效时，明确呼叫兜底回复，普通消息静默并保留证据。退出最多补处理一次，仍失败则记录未完成状态并关闭，不无限重试。运行中关闭 topic 后返回的 leading 结果不再执行写入或回复；已经提交给存储的请求不保证能撤销。
+leading 失败或 JSON 无效时，明确呼叫兜底回复，普通消息静默并保留证据；单纯工具反馈不兜底播报。此前已批准且正在等待工具的回复意图继续保留。退出最多补处理一次，仍失败则记录未完成状态并关闭，不无限重试。运行中关闭 topic 后返回的 leading 结果不再执行写入或回复；已经提交给存储的请求不保证能撤销。
 
 动态帖文保留原触发、Memory 启用条件和点赞行为，复用同一 leading 核心；不建立活跃聊天、不执行检索、不自动回复。
 

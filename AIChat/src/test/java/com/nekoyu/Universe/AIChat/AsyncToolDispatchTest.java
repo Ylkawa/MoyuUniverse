@@ -12,7 +12,15 @@ import static org.junit.jupiter.api.Assertions.*;
 import static com.nekoyu.Universe.AIChat.LibrarianResearchTest.*;
 
 class AsyncToolDispatchTest {
-    @Test void existingSessionProcessesProgressWhileToolContinuesAndThenReceivesFullReport() throws Exception {
+    @Test void leadingCanSuppressProgressAndStillDeliverFullReport() throws Exception {
+        runStreamingResearch(false);
+    }
+
+    @Test void leadingCanPublishUsefulProgressBeforeFullReport() throws Exception {
+        runStreamingResearch(true);
+    }
+
+    private void runStreamingResearch(boolean publishProgress) throws Exception {
         CountDownLatch progressSent = new CountDownLatch(1), release = new CountDownLatch(1), finished = new CountDownLatch(1);
         AtomicReference<Calling> toolCallback = new AtomicReference<>();
         AtomicInteger rounds = new AtomicInteger();
@@ -30,6 +38,8 @@ class AsyncToolDispatchTest {
         AIChat.registerFunction(group, tool);
         try (DriveMessageTest.Fixture fixture = new DriveMessageTest.Fixture(false)) {
             fixture.config.Tools = new String[]{group};
+            fixture.annotator.output = messages -> DriveMessageTest.routedPlan(messages,
+                    publishProgress || DriveMessageTest.newInputDirectory(messages).contains("完整最终报告"));
             fixture.ai.startReplyService();
             fixture.ai.driveMessage(fixture.sessionId, new MFChain("研究问题"));
             fixture.topic().provider = new LLMProvider() {
@@ -51,25 +61,26 @@ class AsyncToolDispatchTest {
             assertTrue(progressSent.await(5, TimeUnit.SECONDS));
             fixture.time.advance(5_000);
             assertEquals(1, finished.getCount(), "研究仍在运行");
-            assertEquals(3, rounds.get(), "受理回执之后，阶段消息已经触发一轮主助手回复");
-            assertEquals(2, fixture.channel.sent.size());
-            var stage = requests.get(2).stream().filter(m -> "tool".equals(m.role)
+            int afterProgress = publishProgress ? 3 : 2;
+            assertEquals(afterProgress, rounds.get(), "阶段反馈是否发言由 leading 决定");
+            assertEquals(publishProgress ? 2 : 1, fixture.channel.sent.size());
+            var stage = fixture.annotator.calls.get(1).stream().filter(m -> "tool".equals(m.role)
                     && m.toString().contains("阶段结论")).findFirst().orElseThrow();
             assertEquals("lookup-1", stage.tool_call_id);
             release.countDown();
             assertTrue(finished.await(5, TimeUnit.SECONDS));
             fixture.time.advance(5_000);
-            assertEquals(4, rounds.get());
+            assertEquals(afterProgress + 1, rounds.get());
             assertEquals(3, fixture.annotator.calls.size(), "阶段和最终消息都经过现有 leading");
-            List<Message> finalRequest = requests.get(3);
+            List<Message> finalRequest = requests.get(afterProgress);
             int stageIndex = index(finalRequest, "阶段结论");
             int finalIndex = index(finalRequest, "完整最终报告");
             assertTrue(stageIndex >= 0 && finalIndex > stageIndex);
-            assertEquals(3, fixture.channel.sent.size());
+            assertEquals(publishProgress ? 3 : 2, fixture.channel.sent.size());
             fixture.ai.closeTopic(fixture.sessionId);
             toolCallback.get().calling(new Message("会话关闭后的迟到消息"));
             fixture.time.advance(5_000);
-            assertEquals(4, rounds.get());
+            assertEquals(afterProgress + 1, rounds.get());
         } finally {
             release.countDown();
             AIChat.llmFunctions.removeAll(group);

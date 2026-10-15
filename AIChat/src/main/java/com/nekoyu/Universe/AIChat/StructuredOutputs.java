@@ -10,7 +10,7 @@ final class StructuredOutputs {
 
     static ResponseFormat leading() {
         JsonSchema schema = memoryOperations()
-                .property("should_reply", JsonSchema.booleanType().description("本批真人消息是否需要主助手回复"))
+                .property("should_reply", JsonSchema.booleanType().description("本批真人请求或工具反馈是否值得主助手现在发言；普通进度及无关结果无需回复"))
                 .property("addressed_message_ids", JsonSchema.array(JsonSchema.integer()
                         .description("本批正在与主助手对话的真人消息的原始消息 ID；只能使用本批新消息目录中的消息ID")))
                 .property("memory_queries", JsonSchema.array(object()

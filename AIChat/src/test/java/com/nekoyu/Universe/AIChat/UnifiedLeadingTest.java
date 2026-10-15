@@ -429,6 +429,7 @@ class UnifiedLeadingTest {
             check(f.annotator.calls.size() == 2 && f.provider.calls.size() == 1, "leading is not blocked by pending tools");
             f.time.advance(AIChat.TOPIC_IDLE_MILLIS - 10_000);
             check(f.topic() != null, "expiry protects unfinished tool work");
+            f.annotator.output = messages -> routedPlan(messages, true);
             check(f.ai.deliverAsyncToolResult(f.sessionId, "work", "done"), "accept pending result");
             f.time.advance(5_000);
             check(f.provider.calls.size() == 2 && f.ai.activatingTopics.isEmpty(), "tool continuation replies then completes overdue closure");
@@ -436,6 +437,99 @@ class UnifiedLeadingTest {
             String toolDirectory = newInputDirectory(f.annotator.calls.get(2));
             check(toolDirectory.contains("来源=tool；工具调用ID=work；时间=") && !toolDirectory.contains("消息ID="),
                     "tool result has a call ID without a fabricated message ID");
+        }
+    }
+
+    @Test void declinedToolResultReleasesPendingProtectionWithoutSpeaking() {
+        try (Fixture f = new Fixture(true)) {
+            f.ai.startReplyService();
+            f.ai.driveMessage(f.sessionId, new MFChain("create"));
+            f.time.advance(5_000);
+            f.addPendingTool("irrelevant", AIChat.TOPIC_IDLE_MILLIS + 100_000);
+            f.ai.armAsyncWait(f.topic());
+            f.annotator.output = messages -> routedPlan(messages, false);
+            f.time.advance(AIChat.TOPIC_IDLE_MILLIS - 5_000);
+            check(f.ai.deliverAsyncToolResult(f.sessionId, "irrelevant", "obsolete result"), "accept result");
+            f.time.advance(5_000);
+            check(f.annotator.calls.size() == 2 && f.provider.calls.size() == 1 && f.channel.sent.size() == 1,
+                    "leading may decline a final result without a main reply");
+            check(f.ai.activatingTopics.isEmpty(), "silent completion must release pending lifetime protection");
+        }
+    }
+
+    @Test void toolLeadingFailureDoesNotFallbackToProgressBroadcast() {
+        try (Fixture f = new Fixture(false)) {
+            f.ai.startReplyService();
+            f.ai.driveMessage(f.sessionId, new MFChain("create"));
+            f.time.advance(5_000);
+            f.annotator.fail = true;
+            f.topic().replies.submit(() -> f.topic().addToolCallback("callback", "still searching", 5_000), false, false);
+            f.time.advance(5_000);
+            check(f.provider.calls.size() == 1 && !f.topic().continuationPending,
+                    "failed leading does not force a tool callback reply");
+            f.annotator.fail = false;
+            f.annotator.output = messages -> routedPlan(messages, true);
+            f.topic().replies.submit(() -> f.topic().addToolCallback("callback", "complete answer", 10_000), false, false);
+            f.time.advance(5_000);
+            check(f.provider.calls.size() == 2 && f.topic().replyLeading.addressedMessageIds().isEmpty(),
+                    "new useful tool result can reply without inventing human IDs");
+        }
+    }
+
+    @Test void mixedToolAndSideConversationCanStaySilent() {
+        try (Fixture f = new Fixture(false)) {
+            f.ai.startReplyService();
+            f.ai.driveMessage(f.sessionId, new MFChain("create"));
+            f.time.advance(5_000);
+            f.annotator.output = messages -> routedPlan(messages, false);
+            f.topic().replies.submit(() -> f.topic().addToolCallback("callback", "checking a version guess", 5_000), false, false);
+            send(f, "side conversation");
+            f.time.advance(5_000);
+            check(f.annotator.calls.size() == 2 && f.provider.calls.size() == 1,
+                    "a mixed batch does not turn progress and chatter into a forced reply");
+            check(f.topic().unaddressedMessages == 1, "only human chatter contributes to expiry");
+        }
+    }
+
+    @Test void approvedHumanReplySurvivesWaitingForToolWithoutForcingLeading() {
+        try (Fixture f = new Fixture(true)) {
+            f.ai.startReplyService();
+            f.ai.driveMessage(f.sessionId, new MFChain("create"));
+            f.time.advance(5_000);
+            f.addPendingTool("work", 600_000);
+            send(f, "question while waiting");
+            f.time.advance(5_000);
+            check(f.topic().continuationPending && f.provider.calls.size() == 1,
+                    "approved human request waits for the pending tool");
+            f.annotator.output = messages -> routedPlan(messages, false);
+            check(f.ai.deliverAsyncToolResult(f.sessionId, "work", "done"), "accept result");
+            f.time.advance(5_000);
+            check(f.provider.calls.size() == 2 && !f.topic().hasPendingCalls(),
+                    "previously approved request still gets its reply");
+            check(lastPrompt(f).contains("程序要求续答：false"), "waiting reply does not force new leading decisions");
+            check(f.provider.calls.get(1).stream().anyMatch(m -> m.toString().contains("question while waiting")),
+                    "preserve the original request in the eventual reply context");
+        }
+    }
+
+    @Test void declinedTimeoutStaysSilentAndFailedMainReplyKeepsPendingResult() {
+        try (Fixture f = new Fixture(true)) {
+            f.ai.startReplyService();
+            f.ai.driveMessage(f.sessionId, new MFChain("create"));
+            f.time.advance(5_000);
+            f.annotator.output = messages -> routedPlan(messages, false);
+            f.addPendingTool("expired", 0);
+            f.ai.armAsyncWait(f.topic());
+            f.time.advance(0);
+            check(f.provider.calls.size() == 1 && !f.topic().hasPendingCalls(),
+                    "timeout also follows leading's silence decision");
+            f.annotator.output = messages -> routedPlan(messages, true);
+            f.provider.fail = true;
+            f.addPendingTool("failed-reply", 600_000);
+            check(f.ai.deliverAsyncToolResult(f.sessionId, "failed-reply", "complete"), "accept result");
+            f.time.advance(5_000);
+            check(f.provider.calls.size() == 2 && f.topic().hasPendingCalls(),
+                    "a failed main reply must not be cleaned up as a deliberately silent result");
         }
     }
 

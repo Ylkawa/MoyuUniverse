@@ -469,7 +469,7 @@ public class DriveMessageTest {
     static String routedPlan(List<Message> messages, boolean reply) {
         var plan = com.google.gson.JsonParser.parseString(LeadingPlanTest.emptyPlan()).getAsJsonObject();
         List<Long> ids = newHumanIds(messages);
-        plan.addProperty("should_reply", reply && !ids.isEmpty());
+        plan.addProperty("should_reply", reply && (!ids.isEmpty() || newInputDirectory(messages).contains("来源=tool；")));
         if (reply) ids.forEach(id -> plan.getAsJsonArray("addressed_message_ids").add(id));
         return plan.toString();
     }
