@@ -18,6 +18,7 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.lang.reflect.Type;
 import java.net.MalformedURLException;
+import java.net.Proxy;
 import java.net.URL;
 
 public class Client extends SearchClient {
@@ -39,14 +40,19 @@ public class Client extends SearchClient {
                 }
             })
             .create();
-    OkHttpClient client = new OkHttpClient();
+    OkHttpClient client;
     String apikey;
     String zone;
     Logger logger = LoggerFactory.getLogger(this.getClass());
 
     public Client(String apikey, String zone) {
+        this(apikey, zone, null);
+    }
+
+    public Client(String apikey, String zone, Proxy proxy) {
         this.zone = zone;
         this.apikey = apikey;
+        this.client = new OkHttpClient.Builder().proxy(proxy).build();
     }
 
     @Override

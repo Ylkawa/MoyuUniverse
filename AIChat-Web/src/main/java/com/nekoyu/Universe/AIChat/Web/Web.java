@@ -80,7 +80,7 @@ public class Web extends AIChatPlugin {
                 case "Google" ->
                         searchClient = new com.nekoyu.Universe.AIChat.Web.SearchAPI.Google.Client(config.GoogleAPIKey, config.SearchEngineID); // 废了但是还是写一下
                 case "BrightDataGoogle" ->
-                        searchClient = new com.nekoyu.Universe.AIChat.Web.SearchAPI.BrightData.GoogleSearch.Client(config.BrightDataApiKey, config.BrightDataZone);
+                        searchClient = new com.nekoyu.Universe.AIChat.Web.SearchAPI.BrightData.GoogleSearch.Client(config.BrightDataApiKey, config.BrightDataZone, proxy);
             }
             if (searchClient != null) searchClient.setSearchParam(config.SearchParam);
         } catch (FileNotFoundException e) {
