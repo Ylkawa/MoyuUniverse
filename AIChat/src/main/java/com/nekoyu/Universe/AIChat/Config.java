@@ -13,6 +13,7 @@ public class Config {
     Memory Memory = null;
     KnowledgeStore KnowledgeStore = null;
     Librarian Librarian = null;
+    Mail Mail = new Mail();
     SkillConfig Skills = null;
     com.nekoyu.Universe.AIChat.graph.GraphSettings Graph = new com.nekoyu.Universe.AIChat.graph.GraphSettings();
 
@@ -71,5 +72,22 @@ public class Config {
         List<String> tools;
         boolean thinking = false;
         boolean enableAsyncUpdate = true;
+    }
+
+    public static class Mail {
+        boolean enabled = false;
+
+        String protocol = "imaps";
+        String host;
+        int port = 993;
+        String username;
+        String password;
+        String folder = "INBOX";
+
+        String timezone = "Asia/Shanghai";
+        List<String> dailyTimes = List.of("08:00");
+
+        // 首次收取最近多少天的邮件；0 表示全部历史，后续按处理进度增量收取。
+        int initialLookbackDays = 0;
     }
 }
