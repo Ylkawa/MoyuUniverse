@@ -48,7 +48,7 @@ class StructuredPromptTest {
         var response = context.runTurn(provider, "offline", null, request, new ToolLoopOptions(), null);
         String prompt = assertPrompt(provider.calls.get(0), provider.options.get(0).responseFormat);
         assertEquals(before, GSON.toJson(request.responseFormat), "提示词生成不得修改请求中的 Schema");
-        assertTrue(prompt.contains("本块最多 3 条") && prompt.contains("最多 300 字") && prompt.contains("最多 1000 字"));
+        assertTrue(prompt.contains("本块最多 3 条") && prompt.contains("最多300字") && prompt.contains("最多1000字"));
         assertTrue(prompt.contains("{\"items\":[]}"));
         assertEquals(input, provider.calls.get(0).get(1).toString());
         assertTrue(KnowledgeQueryParser.parse(StructuredOutputs.content(response), 3).isEmpty());
