@@ -6,7 +6,9 @@ import java.util.regex.Pattern;
 
 /** 只保留实际输入或工具返回的来源片段，不把整个研究对话复制给入库模型。 */
 final class ResearchEvidence {
-    private static final Pattern URL = Pattern.compile("https?://[^\\s<>\"“”]+", Pattern.CASE_INSENSITIVE);
+    // 中文句读和括号是正文边界，不能只在末尾清理，否则会吞入日期、正文甚至下一条链接。
+    private static final Pattern URL = Pattern.compile(
+            "https?://[^\\s<>\"“”‘’`，。；、！？：（）【】《》「」『』]+", Pattern.CASE_INSENSITIVE);
     private final Map<String, String> evidence = new LinkedHashMap<>();
     private final Set<String> observedTools = new HashSet<>();
 
