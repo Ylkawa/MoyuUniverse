@@ -667,7 +667,7 @@ public class AIChat extends Law {
             activeTopic.replies.submit(() -> {
                 if (explicit) activeTopic.lastTrigger = message;
                 activeTopic.addUserInput(message, receivedAt, explicit, appendInput);
-                if (activeTopic.unaddressedMessages + activeTopic.waitingHumanCount() >= TOPIC_TIMEOUT)
+                if (activeTopic.messagesWithoutReply + activeTopic.waitingHumanCount() >= TOPIC_TIMEOUT)
                     activeTopic.replies.requestCheck();
             }, explicit || topicDue(activeTopic), false);
         }
@@ -728,9 +728,11 @@ public class AIChat extends Law {
                 if (!input.human()) continue;
                 if (result.addressedMessageIds().contains(input.message().id)) {
                     topic.lastAddressedAt = input.receivedAt();
-                    topic.unaddressedMessages = 0;
-                } else topic.unaddressedMessages++;
+                }
+                if (!result.shouldReply()) topic.messagesWithoutReply++;
             }
+            // 回复决策作用于整个批次；消息归属只更新对话时间，不重置静默消息计数。
+            if (result.shouldReply()) topic.messagesWithoutReply = 0;
             topic.replyLeading = result;
             if (result.shouldReply() || forced) {
                 topic.continuationPending = true;
@@ -752,7 +754,7 @@ public class AIChat extends Law {
     }
 
     private boolean topicDue(Topic topic) {
-        return topic.unaddressedMessages >= TOPIC_TIMEOUT
+        return topic.messagesWithoutReply >= TOPIC_TIMEOUT
                 || replyClock.getAsLong() - topic.lastAddressedAt >= TOPIC_IDLE_MILLIS;
     }
 
@@ -1405,9 +1407,16 @@ public class AIChat extends Law {
             }
         }
         if (shown == 0) ret.append("（无命中）\n");
-        logger.info("Leading complete: reply={}, retrieve={}, memoryChanges={}, memoryQueries={}, knowledgeQueries={}, memoryHits={}, knowledgeHits={}",
+        List<String> addressedLocationIds = batch.stream()
+                .filter(input -> input.human() && plan.addressedMessageIds().contains(input.message().id))
+                .map(input -> input.message().sender)
+                .filter(Objects::nonNull)
+                .map(Account::getLocationId)
+                .filter(Objects::nonNull)
+                .distinct().toList();
+        logger.info("Leading complete: reply={}, retrieve={}, memoryChanges={}, memoryQueries={}, knowledgeQueries={}, memoryHits={}, knowledgeHits={}, session={}, addressedLocationIds={}",
                 !memoryOnly && (forced || plan.shouldReply()), retrieve, changedMemories, plan.memoryQueries().size(), plan.knowledgeQueries().size(),
-                memoryHits.size(), knowledgeHits.size());
+                memoryHits.size(), knowledgeHits.size(), mcm.sessionId, addressedLocationIds);
         return new LeadingResult(!memoryOnly && (forced || plan.shouldReply()), plan.addressedMessageIds(), ret.toString());
     }
 

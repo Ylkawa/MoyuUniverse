@@ -8,15 +8,15 @@
 - `%LEADING%` 仅决定检索注解在主助手提示词中的展示位置；未使用占位符也会注入本批注解，不会关闭 leading。
 - 首次仍按会话 `Trigger=every`、非空 `Keyword`、直接 @/回复主助手或 `driveMessage` 激活 topic。激活后所有真人消息参加五秒静默批次；明确呼叫跳过等待，但成功的 leading 仍可判断无需回复。
 - topic 批次固定等待五秒；旧 `ToolLoop.AsyncDebounceMillis` 字段保留配置兼容，不再用于 topic 排期。
-- 与主助手对话时重置退出计数，包括无需回复的致谢。自激活或最后一次对话起十分钟、连续二十条未与主助手对话的真人消息，任一达到就处理剩余消息并退出。未决工具任务在完成或超时续答前保护 topic。
+- 连续二十条真人消息经过 leading 后均无需回复，就处理剩余消息并退出。`should_reply=true` 重置整个批次的退出计数（包括仅回应工具的批次）；`addressed_message_ids` 不重置计数，无需回复的致谢也计入。三十分钟空闲退出仍从激活或最后一次与主助手对话的真人消息起计时。未决工具任务在完成或超时续答前保护 topic。
 
 ## 输出与证据
 
-leading 输出包含 `add`、`update`、`delete`、`memory_queries`、`knowledge_queries`、`should_reply`、`addressed_message_ids`。后者只能引用本批真人消息的原始消息 ID，与正文和回复目标一致；同批消息顺序用于精确更新退出计数。仅回应本批工具输入时允许 `should_reply=true` 且 `addressed_message_ids=[]`。
+leading 输出包含 `add`、`update`、`delete`、`memory_queries`、`knowledge_queries`、`should_reply`、`addressed_message_ids`。后者只能引用本批真人消息的原始消息 ID，与正文和回复目标一致，用于消息归属与空闲时间更新。`Leading complete` 日志包含会话 ID 及这些消息发送者去重后的 `addressedLocationIds`，无需回复时也会记录。仅回应本批工具输入时允许 `should_reply=true` 且 `addressed_message_ids=[]`。
 
 相关类型位于 `com.nekoyu.Universe.AIChat.leading` 子包：`LeadingPlan` 负责解析校验，`LeadingResult` 表达推理结果，`MemoryStore` 定义持久化边界，`PendingMemoryWrite` 保存失败重试意图。解析测试在对应的 `leading` 测试目录，会话集成测试留在 AIChat 根测试包。
 
-`LeadingResult` 返回回复决策、消息归属及已完成的双库检索注解。普通旁聊也维护记忆，但不进行 RAG；驱动输入保留强制处理语义。工具进度、最终结果及超时均作为新工具输入交给 leading 决定是否发言，不在入队时强制续答。后台启动、检索或整理状态、重复进度和待核查猜测通常保持静默；能解决尚未完成请求的完整结果、关键失败或需要用户介入的反馈才考虑回复，无关、过时或已取消任务的结果可以忽略。静默处理的已完成调用也释放未决保护。助手、driver、tool 内容不能作为真人记忆证据，也不重置真人对话的退出计数。
+`LeadingResult` 返回回复决策、消息归属及已完成的双库检索注解。普通旁聊也维护记忆，但不进行 RAG；驱动输入保留强制处理语义。工具进度、最终结果及超时均作为新工具输入交给 leading 决定是否发言，不在入队时强制续答。后台启动、检索或整理状态、重复进度和待核查猜测通常保持静默；能解决尚未完成请求的完整结果、关键失败或需要用户介入的反馈才考虑回复，无关、过时或已取消任务的结果可以忽略。静默处理的已完成调用也释放未决保护。助手、driver、tool 内容不能作为真人记忆证据，也不增加真人消息计数；工具或驱动导致回复时按回复决策重置计数。
 
 待处理证据有独立引用，不受实时上下文 token 裁剪影响。旧上下文只供解释与去重；持久化失败保留已校验操作，新增重试复用 UUID，成功操作不重复执行。后续新证据更正同一条记忆时替换未确认的旧意图。
 

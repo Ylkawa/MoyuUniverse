@@ -38,7 +38,8 @@ public class Topic {
     final List<Input> failedLeadingInputs = new ArrayList<>();
     final Map<UUID, PendingMemoryWrite> failedMemoryWrites = new LinkedHashMap<>();
     volatile long lastAddressedAt;
-    volatile int unaddressedMessages;
+    /** 自上次 leading 决定回复后，连续无需回复的真人消息条数。 */
+    volatile int messagesWithoutReply;
     boolean managedLifecycle;
     boolean continuationPending;
     LeadingResult replyLeading;

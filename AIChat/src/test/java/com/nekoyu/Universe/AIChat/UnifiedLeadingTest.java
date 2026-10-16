@@ -100,7 +100,7 @@ class UnifiedLeadingTest {
         }
     }
 
-    @Test void batchObjectChangesUpdateCountExactly() {
+    @Test void addressedMessagesWithoutReplyStillCountTowardExpiry() {
         try (Fixture f = new Fixture(false)) {
             f.ai.startReplyService();
             f.annotator.output = messages -> {
@@ -119,9 +119,9 @@ class UnifiedLeadingTest {
             check(newHumanIds(f.annotator.calls.get(0)).equals(List.of(160742629L, -987654321L, 4294967296L)),
                     "retain original signed long IDs in input order");
             check(f.topic().replyLeading.addressedMessageIds().equals(Set.of(-987654321L))
-                            && f.topic().lastAddressedAt == 200 && f.topic().unaddressedMessages == 1,
-                    "match a negative original ID while counting by input order and arrival time");
-            check(f.provider.calls.isEmpty(), "addressed thanks may reset lifetime without a reply");
+                            && f.topic().lastAddressedAt == 200 && f.topic().messagesWithoutReply == 3,
+                    "message attribution updates idle time but every silent human input counts toward expiry");
+            check(f.provider.calls.isEmpty(), "addressed thanks does not require a reply");
         }
     }
 
@@ -149,10 +149,61 @@ class UnifiedLeadingTest {
     @Test void lengthBoundaryCanBeResetByLeading() {
         try (Fixture f = new Fixture(false)) {
             f.ai.startReplyService();
+            f.annotator.output = messages -> {
+                JsonObject plan = plan(true);
+                plan.getAsJsonArray("addressed_message_ids").add(newHumanIds(messages).get(0));
+                return plan.toString();
+            };
             for (int i = 0; i < 20; i++) send(f, "talking to main");
             f.time.drainWorkers();
-            check(f.topic() != null && f.topic().unaddressedMessages == 0 && f.provider.calls.size() == 1,
-                    "provisional length check does not close an addressed batch");
+            check(f.topic() != null && f.topic().messagesWithoutReply == 0 && f.provider.calls.size() == 1,
+                    "one reply decision resets the entire batch, including later unaddressed messages");
+        }
+    }
+
+    @Test void twentySilentAddressedMessagesCloseTopicAcrossBatches() {
+        try (Fixture f = new Fixture(false)) {
+            f.ai.startReplyService();
+            send(f, "initial question");
+            f.time.advance(5_000);
+            f.annotator.output = messages -> {
+                JsonObject plan = plan(false);
+                newHumanIds(messages).forEach(id -> plan.getAsJsonArray("addressed_message_ids").add(id));
+                return plan.toString();
+            };
+            for (int i = 0; i < 19; i++) {
+                send(f, "thanks without a reply " + i);
+                f.time.advance(5_000);
+            }
+            check(f.topic() != null && f.topic().messagesWithoutReply == 19,
+                    "addressed silent batches accumulate without resetting the count");
+            send(f, "twentieth thanks");
+            f.time.drainWorkers();
+            check(f.ai.activatingTopics.isEmpty() && f.provider.calls.size() == 1,
+                    "twentieth silent message closes even when all messages address the assistant");
+        }
+    }
+
+    @Test void usefulToolReplyResetsSilentHumanCount() {
+        try (Fixture f = new Fixture(false)) {
+            f.ai.startReplyService();
+            send(f, "initial question");
+            f.time.advance(5_000);
+            f.annotator.output = messages -> routedPlan(messages, false);
+            for (int i = 0; i < 19; i++) send(f, "side conversation " + i);
+            f.time.advance(5_000);
+            check(f.topic().messagesWithoutReply == 19, "nineteen silent human messages remain active");
+            f.annotator.output = messages -> routedPlan(messages, true);
+            Topic topic = f.topic();
+            topic.replies.submit(() -> topic.addToolCallback("callback", "useful final result", f.time.now), false, false);
+            f.time.advance(5_000);
+            check(f.topic() == topic && topic.messagesWithoutReply == 0 && f.provider.calls.size() == 2
+                            && topic.replyLeading.addressedMessageIds().isEmpty(),
+                    "tool-only should_reply resets the count without human attribution");
+            f.annotator.output = messages -> routedPlan(messages, false);
+            for (int i = 0; i < 20; i++) send(f, "new side conversation " + i);
+            f.time.drainWorkers();
+            check(f.ai.activatingTopics.isEmpty(), "twenty silent messages after the tool reply close the topic");
         }
     }
 
@@ -208,7 +259,7 @@ class UnifiedLeadingTest {
             f.time.drainWorkers();
             check(f.provider.calls.size() == 1 && f.topic().failedLeadingInputs.size() == 2, "explicit call falls back and preserves facts");
             check(f.topic().replyLeading.addressedMessageIds().equals(Set.of(160742630L))
-                            && f.topic().unaddressedMessages == 0 && f.topic().lastAddressedAt == 5_000,
+                            && f.topic().messagesWithoutReply == 0 && f.topic().lastAddressedAt == 5_000,
                     "direct-call fallback uses the original message ID to update lifetime");
             f.annotator.fail = false;
             f.annotator.output = messages -> routedPlan(messages, false);
@@ -417,7 +468,7 @@ class UnifiedLeadingTest {
             f.annotator.output = messages -> routedPlan(messages, false);
             f.ai.driveMessage(f.sessionId, new MFChain("driver"));
             f.time.advance(5_000);
-            check(f.provider.calls.size() == 1 && f.topic().unaddressedMessages == 0 && f.topic().lastAddressedAt == 0,
+            check(f.provider.calls.size() == 1 && f.topic().messagesWithoutReply == 0 && f.topic().lastAddressedAt == 0,
                     "driver must reply but does not reset human lifetime");
             String driverDirectory = newInputDirectory(f.annotator.calls.get(0));
             check(driverDirectory.startsWith("来源=driver；时间=") && !driverDirectory.contains("消息ID="),
@@ -487,7 +538,7 @@ class UnifiedLeadingTest {
             f.time.advance(5_000);
             check(f.annotator.calls.size() == 2 && f.provider.calls.size() == 1,
                     "a mixed batch does not turn progress and chatter into a forced reply");
-            check(f.topic().unaddressedMessages == 1, "only human chatter contributes to expiry");
+            check(f.topic().messagesWithoutReply == 1, "only human chatter contributes to expiry");
         }
     }
 
