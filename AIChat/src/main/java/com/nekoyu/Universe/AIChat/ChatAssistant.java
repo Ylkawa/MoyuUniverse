@@ -52,18 +52,7 @@ public class ChatAssistant extends Assistant {
         for (LLMFunction tool : tools) addTool(tool);
     }
 
-    public void setThinking(boolean thinking) {
-        completionsRequest.enable_thinking = thinking;
-    }
-
-    public void setSystemPromptFirst(String promptFirst) {
-        chatContext.setSystemPromptFirst(promptFirst);
-    }
-
-    public void setSystemPromptLast(String promptLast) {
-        chatContext.setSystemPromptLast(promptLast);
-    }
-
+    /** 上下文和系统提示词由调用方配置，再整体交给助手执行。 */
     public void setChatContext(ChatContext chatContext) {
         this.chatContext = chatContext;
     }
@@ -72,6 +61,7 @@ public class ChatAssistant extends Assistant {
         return chatContext;
     }
 
+    /** 思考、输出格式和回调等选项由调用方统一配置，不在助手上重复提供字段级入口。 */
     public void setCompletionsRequest(CompletionsRequest completionsRequest) {
         this.completionsRequest = completionsRequest;
     }

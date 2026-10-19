@@ -73,7 +73,22 @@ public class AIChat extends Law {
     KnowledgeSearch leadingKnowledge = (question, limit) -> knowledgeStore == null
             ? List.of() : knowledgeStore.search(question, limit);
     Librarian librarian = null;
-    Map<String, ChatAssistant> subAgents = new HashMap<>();
+    Map<String, SubAgentDefinition> subAgents = new HashMap<>();
+
+    /** 子代理复用助手及工具配置，每次调用在新上下文中设置定义中的提示词。 */
+    record SubAgentDefinition(ChatAssistant assistant, String systemPrompt) {
+        static SubAgentDefinition from(LLMProvider provider, SubAgentConfig config) {
+            ChatAssistant assistant = new ChatAssistant(provider, config.model);
+            CompletionsRequest request = new CompletionsRequest();
+            request.enable_thinking = config.thinking;
+            assistant.setCompletionsRequest(request);
+            if (config.tools != null) for (String toolName : config.tools) {
+                addRegisteredTools(assistant, toolName);
+            }
+            assistant.setDescription(config.description);
+            return new SubAgentDefinition(assistant, config.SystemPrompt);
+        }
+    }
     Multimap<String, File> emojisCollect = ArrayListMultimap.create();
     public HikariDataSource dataSource;
     /**
@@ -374,14 +389,7 @@ public class AIChat extends Law {
                     SubAgentConfig subAgentConfig = gson.fromJson(inputStreamReader, SubAgentConfig.class);
                     Object o = Universe.Providers.get(subAgentConfig.ProviderId);
                     if (o instanceof LLMProvider llmProvider) {
-                        ChatAssistant assistant = new ChatAssistant(llmProvider, subAgentConfig.model);
-                        assistant.setSystemPromptFirst(subAgentConfig.SystemPrompt);
-                        if (subAgentConfig.tools != null) for (String toolName : subAgentConfig.tools) {
-                            addRegisteredTools(assistant, toolName);
-                        }
-                        assistant.setThinking(subAgentConfig.thinking);
-                        assistant.setDescription(subAgentConfig.description);
-                        subAgents.put(subAgentConfig.name, assistant);
+                        subAgents.put(subAgentConfig.name, SubAgentDefinition.from(llmProvider, subAgentConfig));
 
                         logger.info("已载入 SubAgent : {}", subAgentConfig.name);
                     } else
@@ -814,7 +822,8 @@ public class AIChat extends Law {
             }
         }
         if (sessionCfg.subAgents != null) for (String subAgentName : sessionCfg.subAgents) {
-            ChatAssistant subAgent = subAgents.get(subAgentName);
+            SubAgentDefinition definition = subAgents.get(subAgentName);
+            ChatAssistant subAgent = definition.assistant();
             // 作为 tool 添加，以供 assistant 调用 subAgent
             LLMFunction llmFunction = LLMFunction.builder()
                     .name(subAgentName)
@@ -824,6 +833,7 @@ public class AIChat extends Law {
                             .required("Question"))
                     .syncCallback(args -> {
                         ChatContext subCtx = new ChatContext();
+                        subCtx.setSystemPromptFirst(definition.systemPrompt());
                         subCtx.userMsg(new Message(args.getAsJsonObject().get("Question").getAsString()));
                         subAgent.setChatContext(subCtx);
                         try {
@@ -987,7 +997,7 @@ public class AIChat extends Law {
                     }
                 }
             };
-            assistant.setThinking(sessionCfg.enable_thinking);
+            completionsRequest.enable_thinking = sessionCfg.enable_thinking;
             assistant.setCompletionsRequest(completionsRequest);
             assistant.setToolLoopOptions(topic.getToolLoopOptions());
             assistant.setChatContext(openaiCtx);
