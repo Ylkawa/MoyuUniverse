@@ -1351,7 +1351,7 @@ public class AIChat extends Law {
 
         int changedMemories = applyMemoryPlan(topic, plan, numberedMemoryIds, candidateItems, evidence);
         boolean retrieve = !memoryOnly && (forced || plan.shouldReply());
-        Map<UUID, Memory.Item> memoryHits = new LinkedHashMap<>();
+        RetrievalSelection.MemoryHits memoryHits = new RetrievalSelection.MemoryHits();
         if (retrieve && memory != null && embedding != null && !plan.memoryQueries().isEmpty()) {
             try {
                 EmbeddingRequest request = new EmbeddingRequest();
@@ -1373,7 +1373,7 @@ public class AIChat extends Law {
                             ? new ArrayList<>(allowedLocations) : List.of(query.locationId());
                     if (queryScope.isEmpty()) continue;
                     try {
-                        for (Memory.Item item : memory.query(vector, queryScope)) memoryHits.putIfAbsent(item.id, item);
+                        memoryHits.add(data.index, memory.query(vector, queryScope));
                     } catch (RuntimeException e) {
                         logger.warn("Leading memory query failed", e);
                     }
@@ -1382,18 +1382,14 @@ public class AIChat extends Law {
                 logger.warn("Leading memory retrieval failed", e);
             }
         }
-        for (Memory.Item item : memoryHits.values()) topic.activatingMemory.put(item.id, item);
+        for (Memory.Item item : memoryHits.all()) topic.activatingMemory.put(item.id, item);
 
-        Map<Long, KnowledgeStore.KnowledgeResult> knowledgeHits = new LinkedHashMap<>();
+        RetrievalSelection.KnowledgeHits knowledgeHits = new RetrievalSelection.KnowledgeHits();
         if (retrieve) {
-            for (String question : plan.knowledgeQueries()) {
+            for (int queryIndex = 0; queryIndex < plan.knowledgeQueries().size(); queryIndex++) {
+                String question = plan.knowledgeQueries().get(queryIndex);
                 try {
-                    for (KnowledgeStore.KnowledgeResult hit : leadingKnowledge.search(question, 6)) {
-                        KnowledgeStore.KnowledgeResult previous = knowledgeHits.get(hit.documentId);
-                        if (previous == null || hit.bestScore > previous.bestScore) {
-                            knowledgeHits.put(hit.documentId, hit);
-                        }
-                    }
+                    knowledgeHits.add(queryIndex, leadingKnowledge.search(question, 6));
                 } catch (IOException | RuntimeException e) {
                     logger.warn("Leading knowledge query failed", e);
                 }
@@ -1403,21 +1399,21 @@ public class AIChat extends Law {
         StringBuilder ret = new StringBuilder("本轮预检索（候选信息，回答前核对来源与适用范围）：\n");
         ret.append("记忆库：\n");
         int shown = 0;
-        for (Memory.Item item : memoryHits.values()) {
-            if (shown++ >= 6) break;
+        for (Memory.Item item : memoryHits.selected()) {
+            shown++;
             ret.append("- ").append(item).append("\n");
         }
         if (shown == 0) ret.append("（无命中）\n");
         ret.append("本地知识库：\n");
-        List<KnowledgeStore.KnowledgeResult> rankedKnowledge = new ArrayList<>(knowledgeHits.values());
-        rankedKnowledge.sort((a, b) -> Float.compare(b.bestScore, a.bestScore));
         shown = 0;
-        for (KnowledgeStore.KnowledgeResult hit : rankedKnowledge) {
-            if (shown++ >= 4) break;
-            ret.append("- 标题：").append(hit.title).append("；来源：").append(hit.url)
-                    .append("；匹配问题：").append(hit.bestQuery)
-                    .append("；结论：").append(hit.bestConclusion)
-                    .append("；相似度：").append(hit.bestScore).append("\n");
+        for (KnowledgeStore.KnowledgeResult hit : knowledgeHits.selected()) {
+            shown++;
+            ret.append("- 标题：").append(hit.title).append("；来源：").append(hit.url).append("\n");
+            for (KnowledgeStore.KnowledgeMatch fact : knowledgeHits.facts(hit.documentId)) {
+                ret.append("  匹配问题：").append(fact.question())
+                        .append("；结论：").append(fact.conclusion())
+                        .append("；相似度：").append(fact.score()).append("\n");
+            }
             if (hit.content != null && !hit.content.isBlank()) {
                 ret.append("  来源摘要：")
                         .append(hit.content, 0, Math.min(hit.content.length(), 800)).append("\n");

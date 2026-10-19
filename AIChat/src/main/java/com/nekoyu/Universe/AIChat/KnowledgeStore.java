@@ -363,32 +363,16 @@ public class KnowledgeStore {
             String query = payload.getOrDefault("query", JsonWithInt.Value.getDefaultInstance()).getStringValue();
             String conclusion = payload.getOrDefault("conclusion", JsonWithInt.Value.getDefaultInstance()).getStringValue();
             float confidence = (float) payload.getOrDefault("confidence", JsonWithInt.Value.getDefaultInstance()).getDoubleValue();
-            long ttl = payload.getOrDefault("ttl", JsonWithInt.Value.getDefaultInstance()).getIntegerValue();
-
-            KnowledgeResult kr = deduped.get(documentId);
-            if (kr == null) {
-                kr = new KnowledgeResult();
-                kr.documentId = documentId;
-                kr.bestScore = point.getScore();
-                kr.bestQuery = query;
-                kr.bestConclusion = conclusion;
-                kr.bestConfidence = confidence;
-                kr.matchedQueries = new ArrayList<>();
-                kr.matchedQueries.add(query);
-                deduped.put(documentId, kr);
-            } else {
-                if (point.getScore() > kr.bestScore) {
-                    kr.bestScore = point.getScore();
-                    kr.bestQuery = query;
-                    kr.bestConclusion = conclusion;
-                    kr.bestConfidence = confidence;
-                }
-                kr.matchedQueries.add(query);
-            }
+            KnowledgeResult kr = deduped.computeIfAbsent(documentId, id -> {
+                KnowledgeResult value = new KnowledgeResult();
+                value.documentId = id;
+                return value;
+            });
+            kr.addMatch(new KnowledgeMatch(query, conclusion, confidence, point.getScore()));
         }
 
         List<KnowledgeResult> results = new ArrayList<>(deduped.values());
-        results.sort((a, b) -> Float.compare(b.bestScore, a.bestScore));
+        results.sort(KnowledgeResult.ORDER);
         if (results.size() > maxDocuments) results = new ArrayList<>(results.subList(0, maxDocuments));
         for (KnowledgeResult hit : results) {
             hit.url = getDocumentUrl(hit.documentId);
@@ -547,7 +531,22 @@ public class KnowledgeStore {
         return allVectors;
     }
 
+    public record KnowledgeMatch(String question, String conclusion, float confidence, float score) {
+        public KnowledgeMatch {
+            question = Objects.toString(question, "").strip();
+            conclusion = Objects.toString(conclusion, "").strip();
+        }
+
+        public static final Comparator<KnowledgeMatch> ORDER = Comparator
+                .comparingDouble(KnowledgeMatch::score).reversed()
+                .thenComparing(KnowledgeMatch::question).thenComparing(KnowledgeMatch::conclusion)
+                .thenComparing(Comparator.comparingDouble(KnowledgeMatch::confidence).reversed());
+    }
+
     public static class KnowledgeResult {
+        public static final Comparator<KnowledgeResult> ORDER = Comparator
+                .comparingDouble((KnowledgeResult result) -> result.bestScore).reversed()
+                .thenComparingLong(result -> result.documentId);
         public long documentId;
         public String url;
         public String title;
@@ -556,7 +555,38 @@ public class KnowledgeStore {
         public String bestQuery;
         public String bestConclusion;
         public float bestConfidence;
-        public List<String> matchedQueries;
+        public List<String> matchedQueries = new ArrayList<>();
+        public List<KnowledgeMatch> matches = new ArrayList<>();
+
+        /** 精确合并事实，旧字段始终对应同一条最高分事实。 */
+        public void addMatch(KnowledgeMatch match) {
+            for (int i = 0; i < matches.size(); i++) {
+                KnowledgeMatch previous = matches.get(i);
+                if (previous.question().equals(match.question()) && previous.conclusion().equals(match.conclusion())) {
+                    if (KnowledgeMatch.ORDER.compare(match, previous) < 0) matches.set(i, match);
+                    refreshBest();
+                    return;
+                }
+            }
+            matches.add(match);
+            refreshBest();
+        }
+
+        public List<KnowledgeMatch> factMatches() {
+            if (!matches.isEmpty()) return List.copyOf(matches);
+            if (bestQuery == null && bestConclusion == null) return List.of();
+            return List.of(new KnowledgeMatch(bestQuery, bestConclusion, bestConfidence, bestScore));
+        }
+
+        private void refreshBest() {
+            matches.sort(KnowledgeMatch.ORDER);
+            KnowledgeMatch best = matches.get(0);
+            bestQuery = best.question();
+            bestConclusion = best.conclusion();
+            bestScore = best.score();
+            bestConfidence = best.confidence();
+            matchedQueries = matches.stream().map(KnowledgeMatch::question).distinct().toList();
+        }
 
         @Override
         public String toString() {

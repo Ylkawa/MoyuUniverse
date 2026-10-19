@@ -192,11 +192,7 @@ public class Memory implements MemoryStore {
             }
 
             // 按综合得分排序：向量相似度 + importance + confidence
-            items.sort((a, b) -> {
-                float scoreA = a.score * 0.5f + a.importance * 0.3f + a.confidence * 0.2f;
-                float scoreB = b.score * 0.5f + b.importance * 0.3f + b.confidence * 0.2f;
-                return Float.compare(scoreB, scoreA);
-            });
+            items.sort(RETRIEVAL_ORDER);
 
             // 返回前 10 条
             return items.stream().limit(10).toList();
@@ -560,6 +556,13 @@ public class Memory implements MemoryStore {
         if (resp == null || resp.data == null || resp.data.isEmpty()) throw new IOException("Empty response");
         return resp.data.get(0).embedding;
     }
+
+    public static float retrievalScore(Item item) {
+        return item.score * 0.5f + item.importance * 0.3f + item.confidence * 0.2f;
+    }
+
+    public static final Comparator<Item> RETRIEVAL_ORDER = Comparator
+            .comparingDouble(Memory::retrievalScore).reversed().thenComparing(item -> item.id);
 
     public static class Item {
         public UUID id = UUID.randomUUID();

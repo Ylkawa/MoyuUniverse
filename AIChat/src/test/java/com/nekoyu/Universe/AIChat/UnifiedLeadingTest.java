@@ -730,6 +730,89 @@ class UnifiedLeadingTest {
         }
     }
 
+    @Test void multiQueryRagPreservesFactsAndMemoryCoverageInMainPrompt() {
+        String normal = multiQueryPrompt(false);
+        String reversed = multiQueryPrompt(true);
+        check(normal.equals(reversed), "embedding response order cannot change injected selection");
+        check(normal.contains("condition answer") && normal.contains("quota answer"),
+                "both queries' facts from the same document reach main");
+        check(normal.indexOf("condition answer") == normal.lastIndexOf("condition answer"), "duplicate fact appears once");
+        check(normal.indexOf("title-1") == normal.lastIndexOf("title-1"), "document title appears once");
+        check(normal.indexOf("https://example.invalid/1") == normal.lastIndexOf("https://example.invalid/1"), "source appears once");
+        check(normal.contains("title-9") && !normal.contains("title-4"), "lower scoring query retains a document slot");
+        check(normal.split("- 标题：", -1).length - 1 == 4, "at most four documents injected");
+        check(normal.split("  匹配问题：", -1).length - 1 == 6, "three facts for shared document and one for each other document");
+        check(!normal.contains("fourth answer") && !normal.contains("x".repeat(801)), "fact and source length limits hold");
+        check(normal.contains("memory-9") && normal.contains("memory-8") && !normal.contains("memory-5"),
+                "memory coverage and global ranking both reach main");
+        check(normal.split("memory-", -1).length - 1 == 6, "six unique memories injected");
+        check(normal.indexOf("memory-8") < normal.indexOf("memory-1"), "higher duplicate score controls final order");
+    }
+
+    private String multiQueryPrompt(boolean reverseEmbeddings) {
+        try (Fixture f = new Fixture(false)) {
+            FakeMemory store = new FakeMemory();
+            var first = new ArrayList<Memory.Item>();
+            for (int i = 1; i <= 8; i++) first.add(RetrievalSelectionTest.memory(i, 1f - i * 0.02f));
+            first.add(RetrievalSelectionTest.memory(8, 0.99f));
+            store.vectorQueryHits.put(0f, first);
+            store.vectorQueryHits.put(1f, List.of(RetrievalSelectionTest.memory(9, 0.61f), RetrievalSelectionTest.memory(8, 0.60f)));
+            f.ai.memory = store;
+            String embeddingId = f.providerId + "-multi-embedding";
+            com.nekoyu.Universe.API.Providers.LLMProvider.Embedding embedding = request -> {
+                var response = new com.nekoyu.Universe.API.Providers.LLMProvider.RespBodies.EmbeddingResponse();
+                for (int n = 0; n < request.message.size(); n++) {
+                    int i = reverseEmbeddings ? request.message.size() - 1 - n : n;
+                    var data = new com.nekoyu.Universe.API.Providers.LLMProvider.RespBodies.EmbeddingResponse.Embedding();
+                    data.index = i;
+                    data.embedding = new double[]{i, 1};
+                    response.data.add(data);
+                }
+                return response;
+            };
+            com.nekoyu.Universe.Universe.Providers.put(embeddingId, embedding);
+            f.ai.globalCfg.Annotator.embeddingProvider = embeddingId;
+            f.ai.leadingKnowledge = (question, limit) -> {
+                if (question.equals("condition")) {
+                    var documents = new ArrayList<KnowledgeStore.KnowledgeResult>();
+                    documents.add(RetrievalSelectionTest.document(1,
+                            RetrievalSelectionTest.fact("condition", "condition answer", 0.99f),
+                            RetrievalSelectionTest.fact("extra", "extra answer", 0.98f),
+                            RetrievalSelectionTest.fact("fourth", "fourth answer", 0.97f)));
+                    for (int i = 2; i <= 6; i++) documents.add(RetrievalSelectionTest.document(i,
+                            RetrievalSelectionTest.fact("q" + i, "answer" + i, 1f - i * 0.02f)));
+                    return documents;
+                }
+                return List.of(RetrievalSelectionTest.document(1,
+                                RetrievalSelectionTest.fact("quota", "quota answer", 0.65f),
+                                RetrievalSelectionTest.fact("condition", "condition answer", 0.61f)),
+                        RetrievalSelectionTest.document(9, RetrievalSelectionTest.fact("quota source", "quota source answer", 0.75f)));
+            };
+            f.annotator.output = messages -> {
+                var result = JsonParser.parseString(routedPlan(messages, true)).getAsJsonObject();
+                for (String question : List.of("condition", "quota")) {
+                    result.getAsJsonArray("knowledge_queries").add(question);
+                    var query = new JsonObject();
+                    query.addProperty("question", question);
+                    query.addProperty("location_id", "Test:user");
+                    result.getAsJsonArray("memory_queries").add(query);
+                }
+                return result.toString();
+            };
+            try {
+                f.ai.startReplyService();
+                send(f, "multi question");
+                f.time.advance(5_000);
+                check(store.queryCount == 2, "both memory queries execute");
+                check(f.topic().activatingMemory.size() == 9, "all unique hits remain active beyond display limit");
+                return f.provider.calls.get(0).stream().filter(m -> "system".equals(m.role)
+                        && m.toString().contains("本轮预检索")).findFirst().orElseThrow().toString();
+            } finally {
+                com.nekoyu.Universe.Universe.Providers.remove(embeddingId);
+            }
+        }
+    }
+
     private static void send(Fixture f, String text) { f.ai.handleSessionMessage(f.config, f.provider, f.user(text)); }
     private static String lastPrompt(Fixture f) {
         List<Message> messages = f.annotator.calls.get(f.annotator.calls.size() - 1);
@@ -769,6 +852,7 @@ class UnifiedLeadingTest {
         final Map<UUID, Integer> deleteAttempts = new HashMap<>();
         final Map<String, double[]> embeddingVectors = new HashMap<>();
         List<Memory.Item> queryHits = List.of();
+        final Map<Float, List<Memory.Item>> vectorQueryHits = new HashMap<>();
         int queryCount;
         boolean hideCandidates;
         boolean queryFailure;
@@ -802,7 +886,7 @@ class UnifiedLeadingTest {
         @Override public List<Memory.Item> query(List<Float> vector, List<String> locations) {
             queryCount++;
             if (queryFailure) throw new IllegalStateException("fake query failure");
-            return queryHits;
+            return vectorQueryHits.getOrDefault(vector.get(0), queryHits);
         }
         @Override public List<Memory.Item> getLastMemoryItems(List<String> locations, int limit) {
             return hideCandidates ? List.of() : new ArrayList<>(items.values());
