@@ -1,11 +1,11 @@
-package com.nekoyu.Universe.AIChat;
+package com.nekoyu.Universe.AIChat.knowledge;
 
 import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.Message;
 import org.junit.jupiter.api.Test;
 
 import java.util.*;
 
-import static com.nekoyu.Universe.AIChat.LibrarianResearchTest.*;
+import static com.nekoyu.Universe.AIChat.knowledge.LibrarianResearchTest.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 class ResearchEvidenceTest {

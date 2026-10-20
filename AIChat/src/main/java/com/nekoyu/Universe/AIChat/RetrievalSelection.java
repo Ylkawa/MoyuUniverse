@@ -1,5 +1,7 @@
 package com.nekoyu.Universe.AIChat;
 
+import com.nekoyu.Universe.AIChat.knowledge.KnowledgeStore;
+
 import java.util.*;
 import java.util.function.Function;
 

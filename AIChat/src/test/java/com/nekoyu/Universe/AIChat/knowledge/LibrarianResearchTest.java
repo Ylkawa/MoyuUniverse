@@ -1,4 +1,8 @@
-package com.nekoyu.Universe.AIChat;
+package com.nekoyu.Universe.AIChat.knowledge;
+
+import com.nekoyu.Universe.AIChat.AIChat;
+import com.nekoyu.Universe.AIChat.Config;
+import static com.nekoyu.Universe.AIChat.RegisteredToolsTestSupport.unregisterTools;
 
 import com.nekoyu.Universe.API.Providers.LLMProvider.LLMProvider;
 import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.*;
@@ -10,7 +14,7 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.*;
 import static org.junit.jupiter.api.Assertions.*;
 
-class LibrarianResearchTest {
+public class LibrarianResearchTest {
     private static final String URL = "https://example.invalid/evidence";
     private static final String FINAL = "完整研究报告\n\n早期结论：功能已经提供。依据：" + URL
             + "\n\n后续结论：仅限指定版本。限制：只有搜索摘要，尚未核对原文。";
@@ -65,7 +69,7 @@ class LibrarianResearchTest {
             assertFalse(completed.get().evidence().get(URL).contains("下一步核对版本"));
             assertTrue(trace.indexOf("feedback") < trace.indexOf("tool"));
             assertTrue(feedback.stream().noneMatch(s -> s.contains("SECRET_REASONING")));
-        } finally { AIChat.llmFunctions.removeAll(group); }
+        } finally { unregisterTools(group); }
     }
 
     @Test void toolBudgetStillReservesCompleteFinalReport() {
@@ -88,7 +92,7 @@ class LibrarianResearchTest {
             config.enableAsyncUpdate = false;
             assertEquals(FINAL, new Librarian(provider, config, q -> "", r -> fail("禁用入库")).search("问题"));
             assertEquals(4, executed.get());
-        } finally { AIChat.llmFunctions.removeAll(group); }
+        } finally { unregisterTools(group); }
     }
 
     @Test void truncatedAndFailedResponsesNeverTriggerIngestion() {
@@ -134,15 +138,15 @@ class LibrarianResearchTest {
         assertEquals(0, indexed.get());
     }
 
-    static Config.Librarian config(String group) {
+    public static Config.Librarian config(String group) {
         Config.Librarian config = new Config.Librarian();
         config.model = "offline-research";
         config.tools = group == null ? List.of() : List.of(group);
         return config;
     }
 
-    interface Round { CompletionsResponse call(List<Message> messages, CompletionsRequest request) throws IOException; }
-    static LLMProvider provider(Round round) {
+    public interface Round { CompletionsResponse call(List<Message> messages, CompletionsRequest request) throws IOException; }
+    public static LLMProvider provider(Round round) {
         return new LLMProvider() {
             @Override public CompletionsResponse completions(String model, List<Message> messages, List<LLMFunction> tools,
                                                             CompletionsRequest request, BufferCallback callback) throws IOException {
@@ -150,7 +154,7 @@ class LibrarianResearchTest {
             }
         };
     }
-    static CompletionsResponse response(String text, String finish) {
+    public static CompletionsResponse response(String text, String finish) {
         var response = new CompletionsResponse();
         response.choices = new CompletionsResponse.Choice[]{new CompletionsResponse.Choice()};
         response.choices[0].message.content = text;
@@ -158,7 +162,7 @@ class LibrarianResearchTest {
         response.choices[0].finish_reason = finish;
         return response;
     }
-    static CompletionsResponse toolResponse(String text, int number) {
+    public static CompletionsResponse toolResponse(String text, int number) {
         var response = response(text, "tool_calls");
         Tool_call call = new Tool_call();
         call.id = "lookup-" + number;

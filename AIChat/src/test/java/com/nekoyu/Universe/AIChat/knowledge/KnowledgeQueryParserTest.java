@@ -1,4 +1,4 @@
-package com.nekoyu.Universe.AIChat;
+package com.nekoyu.Universe.AIChat.knowledge;
 
 import java.util.List;
 

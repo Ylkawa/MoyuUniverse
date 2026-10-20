@@ -1,11 +1,11 @@
-package com.nekoyu.Universe.AIChat;
+package com.nekoyu.Universe.AIChat.knowledge;
 
 import org.junit.jupiter.api.Test;
 import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import static org.junit.jupiter.api.Assertions.*;
-import static com.nekoyu.Universe.AIChat.LibrarianResearchTest.*;
+import static com.nekoyu.Universe.AIChat.knowledge.LibrarianResearchTest.*;
 
 class KnowledgeIngestionTest {
     private static final String URL = "https://example.invalid/source";

@@ -1,4 +1,8 @@
-package com.nekoyu.Universe.AIChat;
+package com.nekoyu.Universe.AIChat.knowledge;
+
+import com.nekoyu.Universe.AIChat.ChatContext;
+import com.nekoyu.Universe.AIChat.StructuredOutputs;
+import com.nekoyu.Universe.AIChat.ToolLoopOptions;
 
 import com.nekoyu.Universe.API.Providers.LLMProvider.LLMProvider;
 import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.CompletionsRequest;

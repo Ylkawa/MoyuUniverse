@@ -5,10 +5,10 @@ import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.ResponseFormat;
 import com.nekoyu.Universe.API.Providers.LLMProvider.RespBodies.CompletionsResponse;
 
 /** 内置自动化的输出契约；Schema 之外的业务约束仍由各调用方校验。 */
-final class StructuredOutputs {
+public final class StructuredOutputs {
     private StructuredOutputs() {}
 
-    static ResponseFormat leading() {
+    public static ResponseFormat leading() {
         JsonSchema schema = memoryOperations()
                 .property("should_reply", JsonSchema.booleanType().description("本批真人请求或工具反馈是否值得主助手现在发言；普通进度及无关结果无需回复"))
                 .property("addressed_message_ids", JsonSchema.array(JsonSchema.integer()
@@ -24,7 +24,7 @@ final class StructuredOutputs {
         return ResponseFormat.jsonSchema("leading_plan", schema, true);
     }
 
-    static ResponseFormat knowledge() {
+    public static ResponseFormat knowledge() {
         JsonSchema item = object()
                 .property("question", JsonSchema.string().description("保留主体和适用范围的检索问题"))
                 .property("conclusion", JsonSchema.string().description("由原文明确支持、直接回答问题的结论"))
@@ -35,13 +35,13 @@ final class StructuredOutputs {
                 .property("items", JsonSchema.array(item)).required("items"), true);
     }
 
-    static ResponseFormat conflict() {
+    public static ResponseFormat conflict() {
         return ResponseFormat.jsonSchema("knowledge_conflict", object()
                 .property("conflict", JsonSchema.booleanType().description("是否存在事实性冲突"))
                 .required("conflict"), true);
     }
 
-    static ResponseFormat ingestion() {
+    public static ResponseFormat ingestion() {
         JsonSchema source = object().property("url", JsonSchema.string())
                 .property("title", JsonSchema.string()).property("content", JsonSchema.string())
                 .required("url", "title", "content");
@@ -50,7 +50,7 @@ final class StructuredOutputs {
     }
 
     /** 仅完整结束的最终回答可以进入业务解析和持久化流程。 */
-    static String content(CompletionsResponse response) {
+    public static String content(CompletionsResponse response) {
         if (response == null || response.choices == null || response.choices.length == 0
                 || response.choices[0] == null || response.choices[0].message == null
                 || !"stop".equals(response.choices[0].finish_reason)

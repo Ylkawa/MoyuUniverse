@@ -1,5 +1,8 @@
 package com.nekoyu.Universe.AIChat;
 
+import com.nekoyu.Universe.AIChat.knowledge.KnowledgeStore;
+import com.nekoyu.Universe.AIChat.knowledge.Librarian;
+
 import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.Multimap;
 import com.google.gson.Gson;

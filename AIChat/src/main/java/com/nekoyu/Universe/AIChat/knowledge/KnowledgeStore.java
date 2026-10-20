@@ -1,4 +1,9 @@
-package com.nekoyu.Universe.AIChat;
+package com.nekoyu.Universe.AIChat.knowledge;
+
+import com.nekoyu.Universe.AIChat.ChatAssistant;
+import com.nekoyu.Universe.AIChat.ChatContext;
+import com.nekoyu.Universe.AIChat.Config;
+import com.nekoyu.Universe.AIChat.StructuredOutputs;
 
 import com.nekoyu.Universe.API.MessageChannel.MFChain;
 import com.nekoyu.Universe.API.MessageChannel.MessageField.TextField;

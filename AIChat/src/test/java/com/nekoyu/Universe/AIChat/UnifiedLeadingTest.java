@@ -1,5 +1,10 @@
 package com.nekoyu.Universe.AIChat;
 
+import com.nekoyu.Universe.AIChat.knowledge.KnowledgeStore;
+import com.nekoyu.Universe.AIChat.knowledge.KnowledgeQueryParserTest;
+import com.nekoyu.Universe.AIChat.knowledge.StructuredOutputsTest;
+import com.nekoyu.Universe.AIChat.knowledge.StructuredTurnTest;
+
 import com.nekoyu.Universe.AIChat.leading.LeadingPlanTest;
 import com.nekoyu.Universe.AIChat.leading.MemoryStore;
 

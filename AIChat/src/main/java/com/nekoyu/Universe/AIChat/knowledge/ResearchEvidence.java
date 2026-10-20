@@ -1,4 +1,4 @@
-package com.nekoyu.Universe.AIChat;
+package com.nekoyu.Universe.AIChat.knowledge;
 
 import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.Message;
 import java.util.*;

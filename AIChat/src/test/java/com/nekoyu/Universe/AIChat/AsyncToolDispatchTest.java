@@ -9,7 +9,7 @@ import java.util.*;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.*;
 import static org.junit.jupiter.api.Assertions.*;
-import static com.nekoyu.Universe.AIChat.LibrarianResearchTest.*;
+import static com.nekoyu.Universe.AIChat.knowledge.LibrarianResearchTest.*;
 
 class AsyncToolDispatchTest {
     @Test void leadingCanSuppressProgressAndStillDeliverFullReport() throws Exception {

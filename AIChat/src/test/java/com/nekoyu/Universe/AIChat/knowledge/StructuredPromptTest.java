@@ -1,4 +1,11 @@
-package com.nekoyu.Universe.AIChat;
+package com.nekoyu.Universe.AIChat.knowledge;
+
+import com.nekoyu.Universe.AIChat.AIChat;
+import com.nekoyu.Universe.AIChat.ChatContext;
+import com.nekoyu.Universe.AIChat.Config;
+import com.nekoyu.Universe.AIChat.StructuredOutputs;
+import com.nekoyu.Universe.AIChat.ToolLoopOptions;
+import static com.nekoyu.Universe.AIChat.RegisteredToolsTestSupport.unregisterTools;
 
 import com.google.gson.Gson;
 import com.nekoyu.Universe.API.Providers.LLMProvider.LLMProvider;
@@ -19,22 +26,9 @@ import java.util.concurrent.atomic.AtomicInteger;
 import static org.junit.jupiter.api.Assertions.*;
 
 /** 检查业务提示词与输出契约分别传递，通用 Schema 提示词由 Adapter 添加。 */
-class StructuredPromptTest {
+public class StructuredPromptTest {
     private static final Gson GSON = new Gson();
     private static final String SCHEMA_MARKER = "字段定义：\n";
-
-    @Test void leadingSendsItsCompleteContract() {
-        try (DriveMessageTest.Fixture fixture = new DriveMessageTest.Fixture(false)) {
-            fixture.ai.startReplyService();
-            fixture.ai.handleSessionMessage(fixture.config, fixture.provider, fixture.user("ordinary question"));
-            fixture.time.advance(5_000);
-            String prompt = assertPrompt(fixture.annotator.calls.get(0), StructuredOutputs.leading());
-            assertTrue(prompt.contains("原始消息 ID，允许负数"));
-            assertTrue(prompt.contains("location_id 必须出现，非特定用户查询时使用 null"));
-            assertTrue(prompt.contains("最多 500 字") && prompt.contains("最多 200 字"));
-            assertTrue(prompt.contains("\"should_reply\":false,\"addressed_message_ids\":[]"));
-        }
-    }
 
     @Test void knowledgeSendsItsCompleteContractAndKeepsInputSeparate() throws Exception {
         ResponseFormat format = StructuredOutputs.knowledge();
@@ -96,11 +90,11 @@ class StructuredPromptTest {
             assertTrue(conflictPrompt.contains("范围不同或无法确定范围相同，不据此判定冲突"));
         } finally {
             Universe.Providers.remove(providerId);
-            AIChat.llmFunctions.removeAll(toolGroup);
+            unregisterTools(toolGroup);
         }
     }
 
-    private static String assertPrompt(List<Message> messages, ResponseFormat format) {
+    public static String assertPrompt(List<Message> messages, ResponseFormat format) {
         assertEquals("json_schema", format.type);
         assertTrue(format.jsonSchema.strict);
         String prompt = messages.get(0).toString();

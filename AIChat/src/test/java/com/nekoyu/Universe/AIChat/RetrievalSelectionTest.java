@@ -1,5 +1,7 @@
 package com.nekoyu.Universe.AIChat;
 
+import com.nekoyu.Universe.AIChat.knowledge.KnowledgeStore;
+
 import org.junit.jupiter.api.Test;
 import java.util.*;
 import static org.junit.jupiter.api.Assertions.*;

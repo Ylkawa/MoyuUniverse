@@ -1,6 +1,6 @@
 import com.google.gson.Gson;
 import com.nekoyu.Universe.AIChat.Config;
-import com.nekoyu.Universe.AIChat.KnowledgeStore;
+import com.nekoyu.Universe.AIChat.knowledge.KnowledgeStore;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
 

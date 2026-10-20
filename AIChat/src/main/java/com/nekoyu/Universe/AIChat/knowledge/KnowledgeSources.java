@@ -1,4 +1,4 @@
-package com.nekoyu.Universe.AIChat;
+package com.nekoyu.Universe.AIChat.knowledge;
 
 import com.google.gson.Gson;
 import com.google.gson.JsonObject;

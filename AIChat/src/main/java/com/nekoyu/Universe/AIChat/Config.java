@@ -29,11 +29,11 @@ public class Config {
     }
 
     public static class Qdrant {
-        String address = "127.0.0.1";
-        int port = 6334;
-        boolean encryptedConnection = true;
-        String secretKey = null;
-        String provider = null;
+        public String address = "127.0.0.1";
+        public int port = 6334;
+        public boolean encryptedConnection = true;
+        public String secretKey = null;
+        public String provider = null;
     }
 
     public static class Annotator {
@@ -51,27 +51,27 @@ public class Config {
     }
 
     public static class KnowledgeStore {
-        String collection = "moyu_universe_aic_ks";
-        String vectorName = "vector";
-        String documentsTable = "ks_documents";
-        String embeddingProvider = null;
-        String embeddingModel = null;
-        int dimension = 0;
-        String llmProvider = null;
-        String llmModel = null;
-        int queryCount = 8;
-        int candidateLimit = 30;
-        int chunkTokenThreshold = 2000;
-        int embeddingBatchSize = 50;
-        int defaultTtlDays = 30;
+        public String collection = "moyu_universe_aic_ks";
+        public String vectorName = "vector";
+        public String documentsTable = "ks_documents";
+        public String embeddingProvider = null;
+        public String embeddingModel = null;
+        public int dimension = 0;
+        public String llmProvider = null;
+        public String llmModel = null;
+        public int queryCount = 8;
+        public int candidateLimit = 30;
+        public int chunkTokenThreshold = 2000;
+        public int embeddingBatchSize = 50;
+        public int defaultTtlDays = 30;
     }
 
     public static class Librarian {
-        String provider = null;
-        String model = null;
-        List<String> tools;
-        boolean thinking = false;
-        boolean enableAsyncUpdate = true;
+        public String provider = null;
+        public String model = null;
+        public List<String> tools;
+        public boolean thinking = false;
+        public boolean enableAsyncUpdate = true;
     }
 
     public static class Mail {
