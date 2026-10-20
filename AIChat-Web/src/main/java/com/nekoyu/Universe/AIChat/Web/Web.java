@@ -15,8 +15,6 @@ import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.Message;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
-import org.jsoup.Jsoup;
-import org.jsoup.nodes.Document;
 import org.openqa.selenium.JavascriptExecutor;
 import org.openqa.selenium.PageLoadStrategy;
 import org.openqa.selenium.TimeoutException;
@@ -116,7 +114,7 @@ public class Web extends AIChatPlugin {
         LLMFunction visitUrl = LLMFunction.builder()
                 .name("VisitWebPage")
                 .description("""
-                        获取部分受支持的网页中的信息（内容会被精简）仅支持哔哩哔哩视频和用户空间、YouTube视频、Wikipedia词条、萌娘百科词条、Biligame Wiki词条、游民星空Handbook、米游社文章，访问其他链接会被拒绝。
+                        获取网页中的信息（内容会被精简）。哔哩哔哩视频和用户空间、YouTube视频、Wikipedia词条、萌娘百科词条、Biligame Wiki词条、游民星空Handbook、米游社文章使用专用适配；其他网页在已配置浏览器抓取时以保留基本格式的 Markdown 返回（最多5000字符），未配置时拒绝访问。
                         仅根据实际返回的内容回答；抓取失败或链接不受支持时说明限制，不得声称已读取页面，也不得根据标题或网址补写正文。
                         """)
                 .parameters(JsonSchema.object()
@@ -470,7 +468,7 @@ public class Web extends AIChatPlugin {
             }
 
             if (config.Selenium == null) return new MFChain("不支持的链接类型, 请停止访问此链接，只允许访问支持的页面");
-            // 特殊适配未命中，Fallback到直接返回网页内容
+            // 特殊适配未命中，Fallback 到浏览器抓取并转换为 Markdown。
             return visitWithSelenium(url);
         }
         return new MFChain("未知原因导致访问失败");
@@ -509,10 +507,9 @@ public class Web extends AIChatPlugin {
                                 && document.body !== null && document.body.innerText.trim().length > 0;
                             """)));
             stage = "读取页面正文";
-            Document document = Jsoup.parse(driver.getPageSource());
-            String text = document.body().text();
-            if (text.isBlank()) return new MFChain("Selenium 未获取到可读的页面正文");
-            return new MFChain(text.substring(0, Math.min(text.length(), 5000)));
+            String markdown = HtmlMarkdown.convert(driver.getPageSource(), driver.getCurrentUrl());
+            if (markdown.isBlank()) return new MFChain("Selenium 未获取到可读的页面正文");
+            return new MFChain(markdown.substring(0, Math.min(markdown.length(), 5000)));
         } catch (TimeoutException e) {
             logger.warn("Selenium 网页抓取超时（{}）：{}", stage, url, e);
             return new MFChain("Selenium 网页抓取超时：" + stage + "，未读取到页面内容");

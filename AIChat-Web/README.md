@@ -1,5 +1,13 @@
 # AIChat-Web
 
+## 浏览器网页抓取
+
+配置 `Selenium.URL` 时，未命中专用适配的网页通过远程 Selenium 抓取渲染后的 HTML，转换为 Markdown 后返回。保留标题层级、段落与换行、粗体/斜体/删除线、嵌套列表、引用、代码、基础表格、链接和图片地址/替代文字；相对地址按最终页面 URL（包括重定向和 HTML base）解析。脚本、样式、模板及带 `hidden` / `aria-hidden=true` 的元素不进入结果。转换使用现有 Jsoup，无新增依赖。
+
+这是 HTML 语义转换，不还原 CSS 布局或计算样式；合并单元格不还原跨度。沿用最多 5000 字符的返回限制（包含 Markdown 标记，超长内容末尾可能截断格式），以及原有超时、错误提示和浏览器会话释放逻辑。专用站点的 API/图片解析保持原有行为。
+
+离线验证：运行 `HtmlMarkdownTest` 和 `SeleniumFetchTest` 的 main；后者使用本地模拟 W3C WebDriver 服务，覆盖 Markdown 回传、重定向后的相对链接、长度限制、异常与会话释放，不代表真实 Selenium 服务或任意目标网页已经验收。
+
 ## map 地图与出行技能
 
 Web 插件内置原生 AIChat `map` Skill，默认 `ON_DEMAND`。天气、行政区、地理编码、逆地理编码、地点搜索和路线查询分别注册为 `MapWeather`、`MapDistrict`、`MapGeocode`、`MapRegeocode`、`MapSearch`、`MapRoute`，由同一个 Skill 的 `toolNames` 关联。插件先注册技能及其回调，模型使用现有 `ManageSkills` 激活 `map` 后才加载操作说明和六个函数。无需向会话 `Tools` 列表添加各项地图功能。

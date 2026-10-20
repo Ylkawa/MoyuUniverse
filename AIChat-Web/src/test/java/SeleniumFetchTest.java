@@ -53,6 +53,17 @@ public class SeleniumFetchTest {
             check(visit(grid.endpoint()).length() == 5000, "existing text limit preserved");
             check(grid.deletes.get() == 1, "truncated result quits session");
         }
+        try (Grid grid = new Grid("formatted")) {
+            String result = visit(grid.endpoint());
+            check(result.contains("# 离线测试正文\n\n**重点**"), "rendered HTML returned as Markdown");
+            check(result.contains("[更多](<https://example.org/redirected/more>)"), "links use final page URL");
+            check(!result.contains("不应返回的脚本"), "script omitted from returned content");
+            check(grid.deletes.get() == 1, "Markdown result quits session");
+        }
+        try (Grid grid = new Grid("empty")) {
+            check(visit(grid.endpoint()).contains("未获取到可读的页面正文"), "empty conversion reported");
+            check(grid.deletes.get() == 1, "empty result quits session");
+        }
         for (String mode : new String[]{"navigation-timeout", "script-error", "source-error"}) {
             try (Grid grid = new Grid(mode)) {
                 String result = visit(grid.endpoint());
@@ -121,7 +132,9 @@ public class SeleniumFetchTest {
                     value = error("invalid session id", "offline cleanup failure");
                 }
             } else if (path.endsWith("/url")) {
-                if (mode.equals("navigation-timeout")) {
+                if (method.equals("GET")) {
+                    value = "https://example.org/redirected/article";
+                } else if (mode.equals("navigation-timeout")) {
                     status = 500;
                     value = error("timeout", "offline navigation timed out");
                 }
@@ -130,8 +143,13 @@ public class SeleniumFetchTest {
                 if (mode.equals("source-error")) {
                     status = 500;
                     value = error("unknown error", "offline source failure");
-                } else value = "<html><body>" + (mode.equals("long") ? "字".repeat(5100) : "离线测试正文")
-                        + "</body></html>";
+                } else value = "<html><body>" + switch (mode) {
+                    case "long" -> "字".repeat(5100);
+                    case "formatted" -> "<h1>离线测试正文</h1><p><strong>重点</strong></p><a href='more'>更多</a>"
+                            + "<script>不应返回的脚本</script>";
+                    case "empty" -> "<script>not readable</script>";
+                    default -> "离线测试正文";
+                } + "</body></html>";
             } else if (path.endsWith("/execute/sync")) {
                 if (mode.equals("script-error")) {
                     status = 500;
