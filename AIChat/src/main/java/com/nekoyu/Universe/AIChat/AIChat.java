@@ -207,7 +207,7 @@ public class AIChat extends Law {
             globalCfg = gson.fromJson(configJson, Config.class);
             if (globalCfg.SQLConfig != null) {
                 HikariConfig config = new HikariConfig();
-                config.setDriverClassName("com.mysql.cj.jdbc.Driver");
+                config.setDriverClassName("org.postgresql.Driver");
                 config.setJdbcUrl(globalCfg.SQLConfig.url);
                 config.setUsername(globalCfg.SQLConfig.user);
                 config.setPassword(globalCfg.SQLConfig.password);

@@ -41,6 +41,7 @@ public class KnowledgeStore {
     private final String collection;
     private final String vectorName;
     private final String documentsTable;
+    private final DocumentArchive documentArchive;
     private final int dimension;
     private final int queryCount;
     private final int candidateLimit;
@@ -53,6 +54,7 @@ public class KnowledgeStore {
 
     public KnowledgeStore(Config.Qdrant qdrantCfg, Config.KnowledgeStore ksCfg, HikariDataSource dataSource) throws IOException {
         this.dataSource = dataSource;
+        this.documentArchive = new DocumentArchive(dataSource, ksCfg.documentsTable);
         try {
             embedding = (Embedding) Universe.Providers.get(ksCfg.embeddingProvider);
         } catch (ClassCastException e) {
@@ -77,7 +79,7 @@ public class KnowledgeStore {
             client = new QdrantClient(builder.build());
             collection = ksCfg.collection;
             vectorName = ksCfg.vectorName;
-            documentsTable = ksCfg.documentsTable;
+            documentsTable = DocumentArchive.sqlName(ksCfg.documentsTable);
             initCollection();
             initTable();
         } catch (InterruptedException | ExecutionException | SQLException e) {
@@ -115,22 +117,7 @@ public class KnowledgeStore {
     }
 
     private void initTable() throws SQLException {
-        String sql = """
-                CREATE TABLE IF NOT EXISTS %s (
-                    id BIGINT AUTO_INCREMENT PRIMARY KEY,
-                    url TEXT NOT NULL,
-                    url_hash CHAR(64) NOT NULL UNIQUE,
-                    title VARCHAR(512),
-                    content LONGTEXT,
-                    created_at BIGINT NOT NULL,
-                    updated_at BIGINT NOT NULL
-                )
-                ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
-                """.formatted(documentsTable);
-        try (Connection conn = dataSource.getConnection();
-             Statement stmt = conn.createStatement()) {
-            stmt.execute(sql);
-        }
+        documentArchive.initialize();
         logger.info("Documents table ready: {}", documentsTable);
     }
 
@@ -234,33 +221,8 @@ public class KnowledgeStore {
     }
 
     private long upsertDocument(String url, String title, String content) {
-        long now = System.currentTimeMillis();
-        String urlHash = sha256(url);
-        String sql = """
-                INSERT INTO %s (url, url_hash, title, content, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?)
-                ON DUPLICATE KEY UPDATE title=VALUES(title), content=VALUES(content), updated_at=VALUES(updated_at)
-                """.formatted(documentsTable);
-        try (Connection conn = dataSource.getConnection();
-             PreparedStatement pstmt = conn.prepareStatement(sql, Statement.RETURN_GENERATED_KEYS)) {
-            pstmt.setString(1, url);
-            pstmt.setString(2, urlHash);
-            pstmt.setString(3, title);
-            pstmt.setString(4, content);
-            pstmt.setLong(5, now);
-            pstmt.setLong(6, now);
-            pstmt.executeUpdate();
-            try (ResultSet rs = pstmt.getGeneratedKeys()) {
-                if (rs.next()) {
-                    return rs.getLong(1);
-                }
-            }
-            try (PreparedStatement select = conn.prepareStatement("SELECT id FROM " + documentsTable + " WHERE url_hash = ?")) {
-                select.setString(1, urlHash);
-                try (ResultSet rs = select.executeQuery()) {
-                    if (rs.next()) return rs.getLong(1);
-                }
-            }
+        try {
+            return documentArchive.upsert(url, sha256(url), title, content, System.currentTimeMillis());
         } catch (SQLException e) {
             logger.error("Failed to upsert document for url={}", url, e);
         }

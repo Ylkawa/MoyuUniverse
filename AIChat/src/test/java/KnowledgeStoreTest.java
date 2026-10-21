@@ -18,14 +18,14 @@ public class KnowledgeStoreTest {
         System.out.println("=== KnowledgeStore Integration Tests ===\n");
 
         HikariConfig hikariConfig = new HikariConfig();
-        hikariConfig.setJdbcUrl("jdbc:mysql://127.0.0.1:3306/moyu_universe_test?useSSL=false&serverTimezone=Asia/Shanghai");
-        hikariConfig.setUsername("root");
-        hikariConfig.setPassword("");
+        hikariConfig.setJdbcUrl(System.getenv().getOrDefault("PG_URL", "jdbc:postgresql://127.0.0.1:5432/moyu_universe_test"));
+        hikariConfig.setUsername(System.getenv().getOrDefault("PG_USER", "postgres"));
+        hikariConfig.setPassword(System.getenv().getOrDefault("PG_PASSWORD", ""));
         try {
             dataSource = new HikariDataSource(hikariConfig);
             dataSource.getConnection().close();
         } catch (Exception e) {
-            System.out.println("SKIP: Cannot connect to MySQL: " + e.getMessage());
+            System.out.println("SKIP: Cannot connect to PostgreSQL: " + e.getMessage());
             return;
         }
 
@@ -78,7 +78,7 @@ public class KnowledgeStoreTest {
             String content = "原神是由米哈游开发的开放世界冒险游戏。游戏于2020年9月28日全球同步上线。玩家扮演旅行者，在提瓦特大陆寻找失散的亲人。";
             store.indexDocumentSync(url, "原神简介", content);
             Thread.sleep(3000);
-            assertTrue("1. Short document indexed to MySQL + Qdrant", store.hasDocument(url));
+            assertTrue("1. Short document indexed to PostgreSQL + Qdrant", store.hasDocument(url));
         } catch (Exception e) {
             assertTrue("1. Short document indexed", false);
             System.out.println("   Error: " + e.getMessage());
@@ -129,7 +129,7 @@ public class KnowledgeStoreTest {
     static void testSearchReturnsFullContent() {
         try {
             List<KnowledgeStore.KnowledgeResult> results = store.search("原神");
-            assertTrue("5. Search returns full content from MySQL",
+            assertTrue("5. Search returns full content from PostgreSQL",
                     !results.isEmpty() && results.get(0).content != null && results.get(0).content.contains("米哈游"));
         } catch (Exception e) {
             assertTrue("5. Search returns full content", false);

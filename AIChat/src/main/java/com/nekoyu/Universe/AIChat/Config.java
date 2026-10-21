@@ -53,7 +53,7 @@ public class Config {
     public static class KnowledgeStore {
         public String collection = "moyu_universe_aic_ks";
         public String vectorName = "vector";
-        public String documentsTable = "ks_documents";
+        public String documentsTable = "aichat.knowledge_document";
         public String embeddingProvider = null;
         public String embeddingModel = null;
         public int dimension = 0;
