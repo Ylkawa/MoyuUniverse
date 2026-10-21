@@ -1,7 +1,7 @@
 # 幻月末屿 : 末屿宇宙 #
 这个项目内部名词写得比较中二，所以看不懂是正常的
 
-最近功能的工件打包、完整配置、发布验收与回滚步骤见 [部署操作文档](docs/deployment-operations-2026-10-14.md)。
+当前统一使用 [业务 JAR 与外部 lib 分离部署](distribution/README.md)，通过 `scripts/package-deployment.ps1` 构建。完整配置、业务验收与回滚背景见 [部署操作文档](docs/deployment-operations-2026-10-14.md)。
 
 ## 名词对照： ##
 宇宙端 Universe：主程序

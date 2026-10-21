@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent><groupId>com.nekoyu</groupId><artifactId>MoyuUniverse</artifactId><version>2.0-Phototaxis</version></parent>
+    <artifactId>distribution</artifactId>
+    <packaging>pom</packaging>
+    <!-- Resolve one runtime dependency graph for every deployed module. Internal modules
+         remain in Universe.jar/laws/Plugins and must never be duplicated in lib. -->
+    <dependencies>
+        <dependency><groupId>com.nekoyu</groupId><artifactId>Universe</artifactId><version>${project.version}</version></dependency>
+        <dependency><groupId>com.nekoyu.Universe</groupId><artifactId>AIChat</artifactId><version>${project.version}</version></dependency>
+        <dependency><groupId>com.nekoyu</groupId><artifactId>OnebotAdapter</artifactId><version>${project.version}</version></dependency>
+        <dependency><groupId>com.nekoyu.Universe</groupId><artifactId>Minecraft-Connect</artifactId><version>${project.version}</version></dependency>
+        <dependency><groupId>com.nekoyu</groupId><artifactId>NetworkStatusMonitor</artifactId><version>${project.version}</version></dependency>
+        <dependency><groupId>com.nekoyu.Universe</groupId><artifactId>ColorGroupName</artifactId><version>${project.version}</version></dependency>
+        <dependency><groupId>com.nekoyu.Universe</groupId><artifactId>AliyunWebhook</artifactId><version>${project.version}</version></dependency>
+        <dependency><groupId>com.nekoyu</groupId><artifactId>AIChat-Web</artifactId><version>${project.version}</version></dependency>
+        <dependency><groupId>com.nekoyu.universe</groupId><artifactId>openaiadapter</artifactId><version>${project.version}</version></dependency>
+        <dependency><groupId>com.nekoyu</groupId><artifactId>AIChat-NetTools</artifactId><version>${project.version}</version></dependency>
+        <dependency><groupId>com.nekoyu.universe</groupId><artifactId>DashScopeAdapter</artifactId><version>${project.version}</version></dependency>
+        <dependency><groupId>com.nekoyu.universe</groupId><artifactId>AIChat-ImageEdit</artifactId><version>${project.version}</version></dependency>
+        <dependency><groupId>com.nekoyu.universe</groupId><artifactId>MailAdapter</artifactId><version>${project.version}</version></dependency>
+    </dependencies>
+</project>

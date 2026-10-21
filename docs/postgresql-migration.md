@@ -20,6 +20,12 @@ SHA-256：`3db179d4df674bec7212cc7cbfdb46ae39adf1c369c6e1ca1b45c36db77b4c59`。
 
 ## 部署配置
 
+### 当前统一部署方式（业务 JAR + lib）
+
+已按后续要求统一将运行库分离到 `lib/`，主程序、法则和插件只保留各自业务代码与资源。使用 [统一依赖部署说明](../distribution/README.md) 中的 `scripts/package-deployment.ps1` 构建，并改用生成的 start.cmd/start.sh。IDEA artifact 同样已移除合并依赖，但单独 Build Artifacts 不收集 lib；发布以脚本生成的完整目录为准。
+
+之前提供的 `target/postgresql-migration-20261021.zip` 只含 PostgreSQL 迁移的部分替换工件，lib 也仅含两个新增库，不能作为首次切换至外部依赖布局的完整发行包。首次切换请使用新打包脚本生成的全量 lib 和业务工件；数据库的最终同步与配置步骤保持如下。
+
 备份现有部署目录的工件和配置。在实际 `config/AIChat/config.json` 中只更新以下字段，保留其他配置：
 
 ```json
@@ -44,7 +50,7 @@ SHA-256：`3db179d4df674bec7212cc7cbfdb46ae39adf1c369c6e1ca1b45c36db77b4c59`。
 1. 停止旧实例或暂停全部文档归档写入，等待已开始的归档写入结束。
 2. 从仓库根目录设置下方环境变量，执行 `verify`。这是切换前的实时对账，首次导入成功不代表此后 MySQL 没有新增或修改。
 3. 若 `verify` 不一致且 PostgreSQL 仍未投入运行，用 `sync` 从首次快照作为 baseline 同步。成功后再执行 `verify`。
-4. 构建并部署包含 PostgreSQL 驱动及本次代码适配的工件，保留现有配置和持久数据，只启用原有法则/插件。按现有部署方式确认运行时 classpath 包含 PostgreSQL JDBC；数据库最终同步与配置步骤见上下文。
+4. 按统一依赖部署文档首次切换至完整薄 JAR + lib 布局，使用新的 `target/deployment-external-libs-20261021-r2/` 发行目录（含全部模块和依赖），只启用原有法则/插件。目录内 `release.json` 提供 SHA-256；工件基于当前含已有邮件/研究改动的工作区构建，未提交。首次切换不能只使用此前的两库驱动增量包。
 5. 合并上面的配置，然后启动新实例。确认数据库和 KnowledgeStore 初始化成功，再用一次现有知识检索核对标题、URL 和正文，并通过实际归档入口新增/更新一篇测试文档。
 6. 确认新文档自增 id 正常、同 URL 更新仍保留 id。现有 Qdrant collection 和模型配置保持原值。
 

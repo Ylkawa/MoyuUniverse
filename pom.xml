@@ -21,6 +21,8 @@
         <module>AIChat-NetTools</module>
         <module>DashScopeAdapter</module>
         <module>AIChat-ImageEdit</module>
+        <module>MailAdapter</module>
+        <module>distribution</module>
     </modules>
 
     <properties>

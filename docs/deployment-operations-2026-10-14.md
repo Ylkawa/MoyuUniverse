@@ -1,5 +1,7 @@
 # 最近功能部署操作文档（2026-10-14）
 
+2026-10-21 更新：所有模块统一采用 [业务 JAR 与外部 lib 分离部署](../distribution/README.md)。打包、启动及增量更新以该文档和新版 package-deployment.ps1 为准；以下保留业务配置及验收背景。
+
 适用：从线上 `c2807b4e81dfdb37025c4ba46e7d768f21f47df0` 升级到当前 Phototaxis 功能。包含六类 graph、本地图标与向量缓存、Java DashScopeAdapter、图片编辑、MIME 识别、百炼搜索、知识/记忆维护、会话驱动队列和 Selenium 修复。变更提交列表见 [此前交接清单](deployment-handoff-2026-10-13.md)。
 
 本轮代码和资源尚需固定为发行提交。本文提供可执行的打包和发布流程；尚未操作线上，线上 OS、服务名、工作目录和原启动参数未确认。下文用 `APP_ROOT` 表示**现有程序工作目录**，按实际路径替换。服务切换沿用现有管理方式，不假设 systemd、Docker 或 Windows 服务名称。
