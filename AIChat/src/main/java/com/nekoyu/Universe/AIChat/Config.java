@@ -75,19 +75,9 @@ public class Config {
     }
 
     public static class Mail {
-        boolean enabled = false;
-
-        String protocol = "imaps";
-        String host;
-        int port = 993;
-        String username;
-        String password;
-        String folder = "INBOX";
-
-        String timezone = "Asia/Shanghai";
-        List<String> dailyTimes = List.of("08:00");
-
-        // 首次收取最近多少天的邮件；0 表示全部历史，后续按处理进度增量收取。
-        int initialLookbackDays = 0;
+        // 预留：允许进入研究流程的邮件来源白名单，空数组表示不监听任何来源。
+        // 每项为 MailAdapter 广播的完整 SessionId（channelId:发件人邮箱地址），按字面值精确匹配。
+        // 仅允许指定发件人的邮件进入研究流程，不按收件邮箱通道整体放行。
+        String[] SessionId = new String[0];
     }
 }
