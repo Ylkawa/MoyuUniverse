@@ -42,6 +42,7 @@ public class KnowledgeStore {
     private final String vectorName;
     private final String documentsTable;
     private final DocumentArchive documentArchive;
+    private final ResearchStore researchStore;
     private final int dimension;
     private final int queryCount;
     private final int candidateLimit;
@@ -82,6 +83,8 @@ public class KnowledgeStore {
             documentsTable = DocumentArchive.sqlName(ksCfg.documentsTable);
             initCollection();
             initTable();
+            researchStore = new ResearchStore(dataSource, client, embedding, collection + "_research",
+                    vectorName, ksCfg.embeddingModel, dimension);
         } catch (InterruptedException | ExecutionException | SQLException e) {
             throw new IOException(e);
         }
@@ -119,10 +122,33 @@ public class KnowledgeStore {
     private void initTable() throws SQLException {
         documentArchive.initialize();
         logger.info("Documents table ready: {}", documentsTable);
+        try (Connection connection = dataSource.getConnection();
+             Statement statement = connection.createStatement()) {
+            statement.execute("CREATE SCHEMA IF NOT EXISTS aichat");
+            statement.execute("""
+                    CREATE TABLE IF NOT EXISTS aichat.research_task (
+                        id uuid PRIMARY KEY,
+                        topic text NOT NULL,
+                        question text NOT NULL,
+                        status text NOT NULL DEFAULT 'running'
+                            CHECK (status IN ('running', 'completed', 'failed')),
+                        report text,
+                        last_request jsonb,
+                        error text,
+                        created_at timestamptz NOT NULL DEFAULT now(),
+                        finished_at timestamptz
+                    )
+                    """);
+        }
+        logger.info("Research tasks table ready: aichat.research_task");
     }
 
     public void indexDocument(String url, String title, String content) {
         indexQueue.offer(new IndexTask(url, title, content));
+    }
+
+    public ResearchStore researchStore() {
+        return researchStore;
     }
 
     /** 研究结束后使用知识库自己的模型编排，研究模型不负责结构化提取。 */

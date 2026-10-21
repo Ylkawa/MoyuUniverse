@@ -277,17 +277,19 @@ public class AIChat extends Law {
                                         .description("""
                                                 图书管理员，结合本地知识库与联网工具，研究一个问题，或核查、补充并整理输入资料。
                                                 适用：概念原理、教程、技术文档、明确版本的攻略和使用方法；也可整理新闻、文章和搜索结果，核查关键事实，补充用户可能关心的实际影响、使用条件与限制，归并重复报道，区分事实、观点和待确认信息。
-                                                调用时明确“研究问题”或“整理资料”以及目标、关注点；整理资料尽量提供标题、内容、来源链接和发布时间。已有足够资料可直接回答，无需重复研究。
+                                                调用时先用 topic 一句话确认研究主题，保留主体、目标和必要的版本、平台、地区或时间范围；question 提供“研究问题”或“整理资料”的完整要求、背景和关注点。整理资料尽量提供标题、内容、来源链接和发布时间。已有足够资料可直接回答，无需重复研究。
                                                 研究在后台执行，阶段进度和最终完整报告会分次作为工具消息返回；已启动同一任务时不要重复调用。阶段反馈可能仍待核查，最终报告会完整重述结论、来源与限制。
                                                 内容筛选：排除政治导向、娱乐八卦和饭圈内容，以及无实质信息的广告、引流和情绪煽动；技术相关的监管事实、娱乐行业的技术或产品信息保留必要事实，不扩写立场。整理结果不得包含无关隐私、凭据或危险操作细节。
                                                 新闻和时效性资料必须保留日期与适用范围，不能把历史知识当作当前状态。当前天气、实时价格、库存等需要即时数据的查询，优先使用专用实时查询工具。
                                                 """)
                                         .parameters(JsonSchema.object()
+                                                .property("topic", JsonSchema.string().description("一句话确认研究主题，明确主体、研究目标和必要的版本、平台、地区或时间范围，用于检索历史研究。不要粘贴长篇输入资料。"))
                                                 .property("question", JsonSchema.string().description("需要研究的问题，或需要核查和整理的资料及整理要求。请明确任务类型、目标和关注点；研究问题尽量注明主体、版本或平台，整理资料尽量附标题、内容、来源链接和发布时间。"))
-                                                .required("question"))
+                                                .required("topic", "question"))
                                         .asyncCallback((args, calling) -> {
                                             try {
-                                                librarian.search(args.getAsJsonObject().get("question").getAsString(), calling);
+                                                librarian.search(args.getAsJsonObject().get("topic").getAsString(),
+                                                        args.getAsJsonObject().get("question").getAsString(), calling);
                                             } catch (Exception e) {
                                                 logger.error("Librarian调用出错", e);
                                                 calling.calling(new Message("调用失败: " + e.getMessage()));
