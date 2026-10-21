@@ -2,6 +2,7 @@ package com.nekoyu.universe.MailAdapter;
 
 import com.nekoyu.Universe.API.MessageChannel.*;
 import com.nekoyu.Universe.API.MessageChannel.Features.SessionChat;
+import com.nekoyu.Universe.Utils.HtmlMarkdown;
 import jakarta.mail.*;
 import jakarta.mail.internet.*;
 import jakarta.mail.search.ReceivedDateTerm;
@@ -161,7 +162,7 @@ public class MailChannel extends MessageChannel implements SessionChat {
         if (Part.ATTACHMENT.equalsIgnoreCase(part.getDisposition()) || part.getFileName() != null)
             return "[附件: " + Objects.toString(part.getFileName(), "unnamed") + "]";
         if (part.isMimeType("text/plain")) return Objects.toString(part.getContent(), "");
-        if (part.isMimeType("text/html")) return "[HTML]\n" + Objects.toString(part.getContent(), "");
+        if (part.isMimeType("text/html")) return HtmlMarkdown.convertEmail(Objects.toString(part.getContent(), ""));
         if (part.isMimeType("multipart/*")) {
             Multipart multipart = (Multipart) part.getContent();
             if (part.isMimeType("multipart/alternative")) {
