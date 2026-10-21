@@ -1,0 +1,57 @@
+{
+  "说明": "邮件为附件节选，历史与兴趣均为模拟数据；不代表真实数据库记录",
+  "task_time": "2026-10-21T18:40:00+08:00",
+  "event": "百炼DeepSeek-V4.1-Flash升级安排及使用影响",
+  "mail": {
+    "id": "M1",
+    "type": "email",
+    "sent_at": "2026-10-21T18:34:00+08:00",
+    "sender": "system@notice.aliyun.com",
+    "authentication": "本测试未核验",
+    "subject": "【大模型服务平台百炼】DeepSeek-V4.1-Flash升级通知",
+    "paragraphs": [
+      "影响时间：2026-10-27，以实际变更时间为准。",
+      "百炼将于北京时间2026年10月27日开始更新升级deepseek-v4.1-flash模型。",
+      "升级后，deepseek-v4.1-flash自动更新为deepseek-v4.1-flash-1017快照模型，计费项和价格不变。",
+      "通知称1017版本在多项基准上提升，同时缩短任务运行时间与输出长度。",
+      "10月27日之前可以指定deepseek-v4.1-flash-1017模型名测试效果。"
+    ],
+    "links": [
+      "https://bailian.console.aliyun.com/cn-beijing/model/market/detail/deepseek-v4.1-flash",
+      "https://bailian.console.aliyun.com/cn-beijing/model/market/detail/deepseek-v4.1-flash-1017"
+    ],
+    "link_status": "尚未读取网页"
+  },
+  "baseline": [
+    {
+      "id": "F1",
+      "statement": "已有研究记录可在百炼指定1017快照模型名进行测试。",
+      "research_id": "R1",
+      "checked_at": "2026-10-21T14:00:00+08:00"
+    }
+  ],
+  "history": [
+    {
+      "id": "R1",
+      "topic": "百炼1017快照接入",
+      "summary": "记录指定快照进行测试的方法，没有默认模型切换日期及计费变更安排。",
+      "body_loaded": false
+    },
+    {
+      "id": "R2",
+      "topic": "百炼上一版V4.1-Flash计费口径",
+      "summary": "旧版价格与条件。索引不提供单价，未核对本次升级后的适用性。",
+      "body_loaded": false
+    }
+  ],
+  "interests": [
+    { "id": "P1", "focus": "输入输出单价、缓存计费、地区及上下文长度条件" },
+    { "id": "P2", "focus": "默认模型切换、提前测试、参数兼容与回退安排" }
+  ],
+  "today": {
+    "date": "2026-10-21",
+    "timezone": "Asia/Shanghai",
+    "completed_research_ids": ["R1"]
+  },
+  "daily_research": { "enabled": false, "items": [] }
+}

@@ -1,0 +1,60 @@
+{
+  "说明": "根据用户提供的BenchLM邮件摘录测试；邮件说法未联网核验，历史基线与兴趣为模拟数据，不含收件人和退订标识",
+  "task_time": "2026-10-21T02:00:00+08:00",
+  "event": "整理BenchLM模型周报：分别处理模型发布、榜单变化和历史回顾，归并速览与正文",
+  "mail": {
+    "id": "M1",
+    "type": "email",
+    "sent_at": "2026-10-21T01:31:08+08:00",
+    "sender": "benchlm@mail.beehiiv.com",
+    "authentication": "本测试未核验",
+    "subject": "Last year’s #1 model is unranked today",
+    "paragraphs": [
+      "This week in 60 seconds: MiniMax M3.1 Flash enters at #27, priced at $0.15/$0.60 per million tokens. Argon is now #5, Supported. Mercury 3 has no rank yet.",
+      "The board, scored October 20: Argon moved from #6 Estimated to #5 Supported. BenchLM says Supported means enough independent source families to stand behind the row; ranks can still move.",
+      "MiniMax M3.1 Flash launched October 19 at $0.15 input and $0.60 output per million tokens. Its benchmark rows are MiniMax's own runs. MiniMax says agentic task cost is 70% lower; BenchLM says it cannot check this claim yet.",
+      "Claude Haiku 5.5 is $0.10 input and $0.50 output per million tokens for prompts under 100K tokens; above 100K it is $0.50/$2.50. The author summarizes the two models as within 20% on price.",
+      "Inception reports Mercury 3 generates 1,068 tokens per second on NVIDIA GPUs. BenchLM has no outside lab run and does not assign a score. Unranked, not low.",
+      "DeepSeek's deepseek-flash endpoint received the 1017 upgrade on October 17, according to the newsletter. This paragraph does not describe the Bailian endpoint.",
+      "From the archive: August 2025 ranks were rebuilt with that day's scoring code, which predates BenchAlign v5. The author says compare names, not scores. GPT-5 (high), ranked #1 then, is unranked in the current board.",
+      "Sponsored: Wispr Flow captures your reasoning and turns speech into prompts. Try it free. Sponsor an issue to reach readers."
+    ],
+    "links": [
+      "https://benchlm.ai/models/minimax-m3-1-flash?utm_source=newsletter&utm_medium=email&utm_campaign=weekly-2026-10-21&utm_content=minimax_profile",
+      "https://benchlm.ai/models/mercury-3?utm_source=newsletter&utm_medium=email&utm_campaign=weekly-2026-10-21&utm_content=mercury_profile"
+    ],
+    "link_status": "正文提及的链接；本测试未读取网页"
+  },
+  "baseline": [
+    {
+      "id": "F1",
+      "statement": "BenchLM在10月14日快照中将Argon列为#6、Estimated；这是一条历史记录。",
+      "research_id": "R1",
+      "checked_at": "2026-10-15T10:00:00+08:00"
+    }
+  ],
+  "history": [
+    {
+      "id": "R1",
+      "topic": "BenchLM上周Argon排名及证据范围",
+      "summary": "记录10月14日的历史快照，不代表10月20日当前榜单。",
+      "body_loaded": false
+    },
+    {
+      "id": "R2",
+      "topic": "百炼计划于10月27日切换DeepSeek默认模型快照",
+      "summary": "百炼通知：deepseek-v4.1-flash计划10月27日切换到1017快照，计费项和价格不变。与DeepSeek自营端点不同。",
+      "body_loaded": false
+    }
+  ],
+  "interests": [
+    { "id": "P1", "focus": "模型API成本比较，需区分输入输出、缓存和长上下文档位" },
+    { "id": "P2", "focus": "模型评测证据质量和榜单变化，区分厂商主张与独立结果" }
+  ],
+  "today": {
+    "date": "2026-10-21",
+    "timezone": "Asia/Shanghai",
+    "completed_research_ids": []
+  },
+  "daily_research": { "enabled": false, "items": [] }
+}
