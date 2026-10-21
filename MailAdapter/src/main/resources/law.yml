@@ -1,0 +1,3 @@
+name: MailAdapter
+main: com.nekoyu.universe.MailAdapter.MailAdapter
+version: 1.0
