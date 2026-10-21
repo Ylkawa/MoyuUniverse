@@ -1,5 +1,6 @@
 target/
 /tmp/
+/docs/
 data/AIChat/graph-embeddings/
 data/AIChat/graph-icons/
 log/
