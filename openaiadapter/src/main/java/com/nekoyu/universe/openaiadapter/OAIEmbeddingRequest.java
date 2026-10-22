@@ -6,4 +6,6 @@ import java.util.List;
 public class OAIEmbeddingRequest {
     String model;
     List<String> input = new ArrayList<>();
+    /** OpenAI-compatible output dimensions; omitted when the caller uses the model default. */
+    Integer dimensions;
 }
