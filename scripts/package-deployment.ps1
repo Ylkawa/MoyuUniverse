@@ -1,4 +1,4 @@
-param(
+﻿param(
     [string] $Maven = 'mvn.cmd',
     [string] $Java = 'java',
     [string] $ReleaseId = (Get-Date -Format 'yyyyMMdd-HHmmss'),
