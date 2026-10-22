@@ -68,3 +68,47 @@ Windows classpath 分隔符用 `;`。不要继续使用只含 `java -jar Univers
 IDEA 的旧 Artifacts 合并配置与这个布局不同。发布统一使用本脚本，不再用旧的 extracted-dir 合并依赖；本地 IDEA artifact 已调整为仅业务输出，单独 Build Artifacts 不负责生成 lib。
 
 2026-10-21 构建验证：13 个业务 JAR、103 个共享依赖（lib 约 63.88 MiB）；9 个法则和 3 个插件入口链接通过，2143 个图标校验通过。同一工件再次打包，update-plan 的 Upload/Remove 均为空；移除 PostgreSQL 驱动的反例能被校验拒绝。Windows 启动脚本通过替身 Java 验证工作目录与参数；Linux 脚本尚未在 Linux 主机执行。未运行或切换生产实例。
+
+## 法则并发启动与超时
+
+法则按依赖关系并发推进，不再等待全部法则完成某一阶段。主进程等待启动报告后持续运行；失败或超时的法则不会自动重试。
+
+`Config.properties` 支持以下可选配置，单位为秒，必须为正整数；旧配置缺少字段时使用这些默认值：
+
+```properties
+LawLoadTimeoutSeconds=30
+LawPrepareTimeoutSeconds=120
+LawStartTimeoutSeconds=120
+LawStopTimeoutSeconds=10
+```
+
+加载计时包含静态初始化和构造，准备计时覆盖 `prepare()`，启动计时覆盖 `readiness()`、`run()` 与显式就绪信号。等待依赖不消耗当前法则的阶段配额。停止计时还包含等待同一法则正在执行的方法退出，以免不响应中断的法则阻塞整个退出过程。元数据扫描在执行插件代码前完成，不属于插件阶段超时。
+
+`law.yml` 示例：
+
+```yaml
+name: MyLaw
+main: example.MyLaw
+# 必须安装；准备成功后才准备当前法则，运行就绪后才启动当前法则。
+dependencies: [RequiredLaw]
+# 可选的准备顺序，不增加 JAR 类可见性；缺失或失败时继续。
+prepareAfter: [OpenAIAdapter, DashScopeAdapter]
+```
+
+两种边共同检查循环依赖；同名 JAR 全部拒绝。`Law.Dependencies` 已弃用，非空时加载失败并提示迁移到 YAML。AIChat 默认等待已安装的 OpenAIAdapter、DashScopeAdapter 准备结束；使用其他 Provider 法则时，需将其法则名补充到 AIChat 的 `prepareAfter`。该字段使用法则名，不是 ProviderId。
+
+`LawsManager.startLawsAsync()` 启动一次并返回 `StartupReport`，包含每个法则的最终启动状态、原因、报告时生命周期方法是否仍在执行，以及拒绝的 JAR。调用方使用新入口替代旧的 `loadLaws()/prepareLaws()/enableLaws()` 三段调用。停止使用 `stopLawsAsync()` 或阻塞包装 `stopLaws()`；`termination()` 用于等待宿主停止，不能当作插件代码全部退出的证明。
+
+默认 `run()` 正常返回即就绪。内部异步初始化或长期阻塞的法则可以覆盖以下方法，返回稳定的完成信号，只有服务真正可用时才完成它；失败使用 `completeExceptionally`。管理器在 `run()` 前调用该方法，信号等待受启动超时约束：
+
+```java
+private final CompletableFuture<Void> ready = new CompletableFuture<>();
+@Override public CompletionStage<Void> readiness() { return ready; }
+// 在 run() 中初始化服务，成功后 ready.complete(null)。
+```
+
+管理器维护 `isPrepared/isRunning/ableToRun` 兼容视图，法则不应自行写入这些字段。生命周期方法在该法则的类加载器上下文下执行。插件工作线程为 daemon，宿主主线程独立保持运行。
+
+超时表示停止等待并请求中断，不能保证代码已经停止。迟到完成不会被管理器接受为成功或启动下游，但插件仍可能修改共享对象。同一实例的停止操作排在正在执行的方法之后；停止超时后其他法则继续清理，类加载器只在该实例的方法与清理真正结束后关闭。插件自己创建的线程、外部连接和已注册对象仍由插件的 `stop()` 负责释放；本次不提供跨进程隔离或副作用回滚。
+
+启动日志包含阶段及耗时，只有达到就绪条件才记录“启动成功”；最后输出成功、失败、超时和依赖不可用结果。部署验收应结合实际数据库、Provider 和消息通道检查，不以离线测试替代真实连接验证。

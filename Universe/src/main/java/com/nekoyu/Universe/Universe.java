@@ -60,6 +60,10 @@ public class Universe {
             properties.load(new FileReader("./Config.properties"));
         } catch (FileNotFoundException e) {
             properties.put("Debug", "false");
+            properties.setProperty("LawLoadTimeoutSeconds", "30");
+            properties.setProperty("LawPrepareTimeoutSeconds", "120");
+            properties.setProperty("LawStartTimeoutSeconds", "120");
+            properties.setProperty("LawStopTimeoutSeconds", "10");
             try (FileOutputStream fos = new FileOutputStream("./Config.properties")) {
                 properties.store(fos, "Moyu Universe Main Config");
             } catch (IOException ex) {
@@ -120,22 +124,16 @@ public class Universe {
             UniverseChannel.load();
         }
 
-        // 加载宇宙法则
-        LawsManager = new LawsManager();
-        LawsManager.loadLaws();
-        LawsManager.prepareLaws();
-        LawsManager.enableLaws();
-        logger.info("宇宙法则加载完毕.");
-        System.gc();
-
-        //程序退出动作
-        Runtime.getRuntime().addShutdownHook(new Thread(() -> { 
+        // Register cleanup before any plugin code runs.
+        LawsManager = new LawsManager(Path.of("laws"), com.nekoyu.Universe.LawsLoader.LawsManager.Timeouts.from(properties));
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
             logger.info("Exiting");
             LawsManager.stopLaws();
-            if (!cacheDir.exists()) return;
-
-            cleanCache(cacheDir);
-        }));
+            if (cacheDir.exists()) cleanCache(cacheDir);
+        }, "Universe-shutdown"));
+        // Independent branches advance concurrently; wait only for the bounded startup report.
+        LawsManager.startLawsAsync().join();
+        LawsManager.termination().join();
     }
 
     private static void cleanCache(File cacheDir) {

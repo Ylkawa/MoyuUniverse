@@ -9,6 +9,7 @@ public class LawCFG {
     String version;
     String main;
     List<String> dependencies;
+    List<String> prepareAfter;
     URL url;
     boolean loaded = false;
     boolean loadAble = true;
@@ -44,4 +45,7 @@ public class LawCFG {
     public void setDependencies(List<String> dependencies) {
         this.dependencies = dependencies;
     }
+
+    public List<String> getPrepareAfter() { return prepareAfter; }
+    public void setPrepareAfter(List<String> prepareAfter) { this.prepareAfter = prepareAfter; }
 }
