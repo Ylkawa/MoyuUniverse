@@ -7,6 +7,19 @@ import java.util.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 class RetrievalSelectionTest {
+    @Test void mergingQueryResultsRetainsEveryFactsSourceUrls() {
+        var first = new KnowledgeStore.KnowledgeSource(1, "https://a.invalid", "A", "Q", "Answer", 0.9f, Long.MAX_VALUE);
+        var second = new KnowledgeStore.KnowledgeSource(2, "https://b.invalid", "B", "Q", "Answer", 0.85f, Long.MAX_VALUE);
+        var a = document(1, new KnowledgeStore.KnowledgeMatch("Q", "Answer", 0.9f, 0.95f, List.of(first)));
+        var b = document(1, new KnowledgeStore.KnowledgeMatch("Q", "Answer", 0.85f, 0.8f, List.of(second)));
+        var hits = new RetrievalSelection.KnowledgeHits();
+        hits.add(0, List.of(a));
+        hits.add(1, List.of(b));
+        assertEquals(List.of("https://a.invalid", "https://b.invalid"), hits.facts(1).get(0).urls());
+        assertEquals(List.of("https://a.invalid", "https://b.invalid"), hits.selected().get(0).urls());
+        assertEquals(0.9f, hits.facts(1).get(0).confidence(), "more URLs do not automatically increase confidence");
+        assertEquals(List.of("https://a.invalid"), a.urls(), "aggregation must not mutate source results");
+    }
     static KnowledgeStore.KnowledgeMatch fact(String question, String conclusion, float score) {
         return new KnowledgeStore.KnowledgeMatch(question, conclusion, 0.9f, score);
     }

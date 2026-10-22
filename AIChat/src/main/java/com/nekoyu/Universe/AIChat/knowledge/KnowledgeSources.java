@@ -59,6 +59,17 @@ record KnowledgeSources(List<KnowledgeSources.Source> sources) {
         return parse(output).sources();
     }
 
+    static int parseMatchIndex(String output, int candidateCount) {
+        JsonObject root = object(output, Set.of("match_index"));
+        var value = root.get("match_index");
+        if (!value.isJsonPrimitive() || !value.getAsJsonPrimitive().isNumber())
+            throw new IllegalArgumentException("Expected integer match_index");
+        java.math.BigDecimal number = value.getAsBigDecimal();
+        int index = number.intValueExact();
+        if (index < -1 || index >= candidateCount) throw new IllegalArgumentException("Match index outside candidates");
+        return index;
+    }
+
     private static JsonObject object(String output, Set<String> fields) {
         var value = JsonParser.parseString(output);
         if (!value.isJsonObject() || !value.getAsJsonObject().keySet().equals(fields))

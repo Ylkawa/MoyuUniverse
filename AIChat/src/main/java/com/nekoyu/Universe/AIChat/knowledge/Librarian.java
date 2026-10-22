@@ -272,11 +272,17 @@ public class Librarian {
         var results = store.search(question);
         if (results.isEmpty()) return "（本地知识库无相关内容）";
         StringBuilder text = new StringBuilder();
-        for (var result : results)
-            text.append("[来源: ").append(result.url).append("]\n标题: ").append(result.title)
-                    .append("\n问题: ").append(result.bestQuery).append("\n结论: ").append(result.bestConclusion)
-                    .append("\n置信度: ").append(result.bestConfidence).append("\n相关度: ").append(result.bestScore)
-                    .append("\n完整内容: ").append(result.content).append("\n\n");
+        for (var result : results) {
+            text.append("标题: ").append(result.title).append("\n");
+            for (var fact : result.factMatches()) {
+                text.append("问题: ").append(fact.question()).append("\n结论: ").append(fact.conclusion())
+                        .append("\n来源URL: ").append(fact.urls().isEmpty() ? result.urls() : fact.urls())
+                        .append("\n置信度: ").append(fact.confidence()).append("\n相关度: ").append(fact.score()).append("\n");
+                for (var source : fact.sources())
+                    text.append("来源陈述: ").append(source.url()).append("：").append(source.conclusion()).append("\n");
+            }
+            text.append("主来源完整内容: ").append(result.content).append("\n\n");
+        }
         return text.toString();
     }
 

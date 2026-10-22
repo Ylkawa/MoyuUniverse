@@ -41,6 +41,12 @@ public final class StructuredOutputs {
                 .required("conflict"), true);
     }
 
+    public static ResponseFormat factMatch() {
+        return ResponseFormat.jsonSchema("knowledge_fact_match", object()
+                .property("match_index", JsonSchema.integer().description("完整表达同一事实的候选下标，从0开始；没有则为-1"))
+                .required("match_index"), true);
+    }
+
     public static ResponseFormat ingestion() {
         JsonSchema source = object().property("url", JsonSchema.string())
                 .property("title", JsonSchema.string()).property("content", JsonSchema.string())

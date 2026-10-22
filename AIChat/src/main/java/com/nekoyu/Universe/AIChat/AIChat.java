@@ -1423,11 +1423,15 @@ public class AIChat extends Law {
         shown = 0;
         for (KnowledgeStore.KnowledgeResult hit : knowledgeHits.selected()) {
             shown++;
-            ret.append("- 标题：").append(hit.title).append("；来源：").append(hit.url).append("\n");
+            ret.append("- 标题：").append(hit.title).append("\n");
             for (KnowledgeStore.KnowledgeMatch fact : knowledgeHits.facts(hit.documentId)) {
                 ret.append("  匹配问题：").append(fact.question())
                         .append("；结论：").append(fact.conclusion())
-                        .append("；相似度：").append(fact.score()).append("\n");
+                        .append("；相似度：").append(fact.score())
+                        .append("；来源URL：").append(fact.urls().isEmpty() ? hit.urls() : fact.urls()).append("\n");
+                for (KnowledgeStore.KnowledgeSource source : fact.sources()) {
+                    ret.append("    来源陈述：").append(source.url()).append("：").append(source.conclusion()).append("\n");
+                }
             }
             if (hit.content != null && !hit.content.isBlank()) {
                 ret.append("  来源摘要：")
