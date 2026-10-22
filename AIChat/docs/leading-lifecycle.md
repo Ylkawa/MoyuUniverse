@@ -23,13 +23,3 @@ leading 输出包含 `add`、`update`、`delete`、`memory_queries`、`knowledge
 leading 失败或 JSON 无效时，明确呼叫兜底回复，普通消息静默并保留证据；单纯工具反馈不兜底播报。此前已批准且正在等待工具的回复意图继续保留。退出最多补处理一次，仍失败则记录未完成状态并关闭，不无限重试。运行中关闭 topic 后返回的 leading 结果不再执行写入或回复；已经提交给存储的请求不保证能撤销。
 
 动态帖文保留原触发、Memory 启用条件和点赞行为，复用同一 leading 核心；不建立活跃聊天、不执行检索、不自动回复。
-
-## 验证
-
-`UnifiedLeadingTest` 使用确定性时钟、模型/存储替身及真实会话入口，覆盖调度、路由、生命周期、记忆重试、双库检索注入和旧入口回归。运行：
-
-```text
-mvn -o -pl AIChat,AIChat-Web,AIChat-NetTools,AIChat-ImageEdit -am -Dtest=UnifiedLeadingTest -Dsurefire.failIfNoSpecifiedTests=false test
-```
-
-这些测试不连接真实模型、Qdrant、MySQL 或生产消息通道；真实模型的对话对象判断及真实存储验收需要运行配置和服务。
