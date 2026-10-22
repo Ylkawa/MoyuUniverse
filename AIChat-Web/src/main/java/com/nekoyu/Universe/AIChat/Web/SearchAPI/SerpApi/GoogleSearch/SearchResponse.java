@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.Map;
 
 public class SearchResponse {
+    public String error;
     public SearchMetadata search_metadata;
     public SearchParameters search_parameters;
     public SearchInformation search_information;
