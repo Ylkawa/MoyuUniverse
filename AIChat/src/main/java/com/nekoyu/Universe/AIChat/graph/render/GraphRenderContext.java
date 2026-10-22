@@ -84,9 +84,40 @@ public final class GraphRenderContext implements AutoCloseable {
         for (Line line : lines) { line.layout().draw(graphics, x, y + line.layout().getAscent()); y += line.height(); }
     }
     public static void box(Graphics2D graphics, float x, float y, float width, float height) {
+        box(graphics, x, y, width, height, Color.WHITE);
+    }
+    public static void box(Graphics2D graphics, float x, float y, float width, float height, Color fill) {
         var shape = new RoundRectangle2D.Float(x, y, width, height, 16, 16);
-        graphics.setColor(Color.WHITE); graphics.fill(shape);
+        graphics.setColor(fill); graphics.fill(shape);
+        texture(graphics, shape, .48f);
         graphics.setColor(BORDER); graphics.setStroke(new BasicStroke(1.5f)); graphics.draw(shape);
+    }
+    /** One bundled RGBA raster, center-cropped with a uniform scale; never stretch or tile. */
+    public static void texture(Graphics2D graphics, java.awt.Shape shape, float opacity) {
+        BufferedImage image = TextureHolder.IMAGE;
+        var bounds = shape.getBounds2D();
+        double scale = Math.max(bounds.getWidth() / image.getWidth(), bounds.getHeight() / image.getHeight());
+        var copy = (Graphics2D) graphics.create();
+        try {
+            copy.clip(shape);
+            copy.setComposite(java.awt.AlphaComposite.SrcOver.derive(opacity));
+            var transform = java.awt.geom.AffineTransform.getTranslateInstance(
+                    bounds.getCenterX() - image.getWidth() * scale / 2,
+                    bounds.getCenterY() - image.getHeight() * scale / 2);
+            transform.scale(scale, scale);
+            copy.drawImage(image, transform, null);
+        } finally { copy.dispose(); }
+    }
+    private static final class TextureHolder {
+        static final BufferedImage IMAGE = load();
+        private static BufferedImage load() {
+            try (var input = GraphRenderContext.class.getResourceAsStream("/graph/textures/circle-lines-alpha.png")) {
+                if (input == null) throw new IOException("Missing graph background texture");
+                var image = ImageIO.read(input);
+                if (image == null || !image.getColorModel().hasAlpha()) throw new IOException("Graph texture must be RGBA");
+                return image;
+            } catch (IOException e) { throw new IllegalStateException("Cannot load graph background texture", e); }
+        }
     }
     public static void quality(Graphics2D graphics) {
         graphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
@@ -176,6 +207,7 @@ public final class GraphRenderContext implements AutoCloseable {
     }
     public void header(Graphics2D graphics, String title, String type, int page, int count, int canvasHeight, GraphPage.HeaderStyle style) throws IOException {
         graphics.setColor(BACKGROUND); graphics.fillRect(0, 0, width, canvasHeight);
+        texture(graphics, new java.awt.geom.Rectangle2D.Float(0, 0, width, canvasHeight), .35f);
         var heading = text(title, bodyWidth(), 32, true);
         if (heading.size() > 2) throw new IOException("Graph title is too long for the page header");
         String category = switch (type.toLowerCase(java.util.Locale.ROOT)) {

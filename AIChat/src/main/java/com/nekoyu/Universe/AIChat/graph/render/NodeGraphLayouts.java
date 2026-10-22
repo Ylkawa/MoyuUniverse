@@ -110,9 +110,8 @@ final class NodeGraphLayouts {
                 }
                 for (Caption caption : captions) GraphRenderContext.drawText(graphics, caption.text(), caption.area().x + 4, caption.area().y + 2, GraphRenderContext.MUTED);
                 for (Box box : snapshot) {
-                    GraphRenderContext.box(graphics, box.x(), box.y(), NODE_WIDTH, box.height());
                     boolean prominent = box.node().id().equals(focalId);
-                    if (prominent) { graphics.setColor(GraphRenderContext.SOFT); graphics.fillRoundRect((int) box.x() + 1, (int) box.y() + 1, NODE_WIDTH - 2, (int) box.height() - 2, 16, 16); }
+                    GraphRenderContext.box(graphics, box.x(), box.y(), NODE_WIDTH, box.height(), prominent ? GraphRenderContext.SOFT : java.awt.Color.WHITE);
                     String slot = "node:" + box.node().id();
                     c.slotIcon(graphics, slot, matches.get(slot), box.x() + 18, box.y() + (box.height() - 34) / 2, 34);
                     float textY = box.y() + (box.height() - GraphRenderContext.textHeight(box.text())) / 2;

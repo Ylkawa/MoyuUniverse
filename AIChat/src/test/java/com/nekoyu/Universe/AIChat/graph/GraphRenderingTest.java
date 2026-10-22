@@ -69,9 +69,10 @@ class GraphRenderingTest {
                 for (var item : output) if (item instanceof ImageField image) {
                     published.add(image); File file = mountedFile(image); assertNotNull(file);
                     var png = ImageIO.read(file); assertEquals(1440, png.getWidth()); assertTrue(png.getHeight() >= 320 && png.getHeight() <= 2000);
-                    assertEquals(GraphRenderContext.BACKGROUND.getRGB(), png.getRGB(0, 0));
+                    var corner = new java.awt.Color(png.getRGB(0, 0));
+                    assertTrue(corner.getRed() > 220 && corner.getGreen() > 220 && corner.getBlue() > 220);
                     long colored = 0; for (int y = GraphRenderContext.TOP; y < png.getHeight() - 56; y += 2) for (int x = 40; x < 1400; x += 2)
-                        if (png.getRGB(x, y) != GraphRenderContext.BACKGROUND.getRGB()) colored++;
+                        if (new java.awt.Color(png.getRGB(x, y)).getRed() < 180) colored++;
                     assertTrue(colored > 500, "Graph body is blank"); png.flush();
                     Path preview = Path.of("target", "graph-render-preview", type + "-" + (++page) + ".png");
                     Files.createDirectories(preview.getParent()); Files.copy(file.toPath(), preview, java.nio.file.StandardCopyOption.REPLACE_EXISTING);

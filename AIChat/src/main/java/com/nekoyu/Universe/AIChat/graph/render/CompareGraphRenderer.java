@@ -129,6 +129,7 @@ public final class CompareGraphRenderer implements GraphRenderer {
         float bottom = table.top() + table.headerHeight() + (float) table.rows().stream().mapToDouble(Fragment::height).sum();
         g.setColor(Color.WHITE); g.fill(new java.awt.geom.Rectangle2D.Float(left, table.top(), c.bodyWidth(), bottom - table.top()));
         g.setColor(HEADER); g.fill(new java.awt.geom.Rectangle2D.Float(left, table.top(), c.bodyWidth(), table.headerHeight()));
+        GraphRenderContext.texture(g, new java.awt.geom.Rectangle2D.Float(left, table.top(), c.bodyWidth(), table.headerHeight()), .22f);
         var metric = c.text("对比维度", table.metricWidth() - PAD * 2, 25, true);
         centered(g, metric, left, table.top() + (table.headerHeight() - GraphRenderContext.textHeight(metric)) / 2, table.metricWidth());
         float x = left + table.metricWidth();
@@ -150,6 +151,7 @@ public final class CompareGraphRenderer implements GraphRenderer {
                 g.setColor(GraphRenderContext.BACKGROUND);
                 g.fill(new java.awt.geom.Rectangle2D.Float(left, y, c.bodyWidth(), row.height()));
             }
+            GraphRenderContext.texture(g, new java.awt.geom.Rectangle2D.Float(left, y, c.bodyWidth(), row.height()), .18f);
             x = left;
             if (row.continuation()) {
                 g.setColor(GraphRenderContext.MUTED); g.setFont(c.font(15, false)); g.drawString("续", x + PAD, y + 21);
