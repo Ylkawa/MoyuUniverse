@@ -2,6 +2,8 @@ package com.nekoyu.Universe.API.MessageChannel;
 
 import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.Multimap;
+import com.google.common.collect.Multimaps;
+import com.nekoyu.Universe.Utils.ListenerSnapshots;
 import com.nekoyu.Universe.API.MessageChannel.Features.Administration;
 import com.nekoyu.Universe.API.MessageChannel.Features.PostChat;
 import com.nekoyu.Universe.API.MessageChannel.Features.SessionChat;
@@ -17,10 +19,10 @@ import java.util.regex.Pattern;
 
 public class MessageChannelManager {
     static int MESSAGE_LIST_MAX_SIZE = 20;
-    static public Map<String, MessageChannel> MessageChannels = new HashMap<>();
-    static Multimap<String, MCMListener> sessionListeners = ArrayListMultimap.create();
-    static Multimap<String, MCEListener> eventListeners = ArrayListMultimap.create();
-    static Multimap<String, MCPListener> postListeners = ArrayListMultimap.create();
+    static public Map<String, MessageChannel> MessageChannels = new java.util.concurrent.ConcurrentHashMap<>();
+    static Multimap<String, MCMListener> sessionListeners = Multimaps.synchronizedMultimap(ArrayListMultimap.create());
+    static Multimap<String, MCEListener> eventListeners = Multimaps.synchronizedMultimap(ArrayListMultimap.create());
+    static Multimap<String, MCPListener> postListeners = Multimaps.synchronizedMultimap(ArrayListMultimap.create());
     public static Logger logger = LoggerFactory.getLogger(MessageChannelManager.class);
     static Logger messagingLogger = LoggerFactory.getLogger("Messaging");
     static Map<String, MessageList> messageHistory = new HashMap<>();
@@ -92,8 +94,9 @@ public class MessageChannelManager {
             messageList.add(mcm);
             messageList.clean(MESSAGE_LIST_MAX_SIZE);
 
-            for (String regex : sessionListeners.keySet()) {
-                if (Pattern.matches(regex, mcm.sessionId)) for (MCMListener mcmL : sessionListeners.get(regex)) {
+            var sessionListenersSnapshot = ListenerSnapshots.copy(sessionListeners);
+            for (String regex : sessionListenersSnapshot.keySet()) {
+                if (Pattern.matches(regex, mcm.sessionId)) for (MCMListener mcmL : sessionListenersSnapshot.get(regex)) {
                     try {
                         mcmL.onMessage(mcm);
                     } catch (Exception e) {
@@ -120,8 +123,9 @@ public class MessageChannelManager {
                 preview
         );
 
-        for (String regex : postListeners.keySet()) {
-            if (Pattern.matches(regex, mcp.sessionId)) for (MCPListener mcpL : postListeners.get(regex)) {
+        var postListenersSnapshot = ListenerSnapshots.copy(postListeners);
+        for (String regex : postListenersSnapshot.keySet()) {
+            if (Pattern.matches(regex, mcp.sessionId)) for (MCPListener mcpL : postListenersSnapshot.get(regex)) {
                 try {
                     mcpL.onMessage(mcp);
                 } catch (Exception e) {
@@ -142,8 +146,9 @@ public class MessageChannelManager {
             logger.info("{}[会话改名] {}({}) -> {}", sessionNameChangeEvent.messageChannel.ID, sessionNameChangeEvent.previousName, sessionNameChangeEvent.session.getLocationId(), sessionNameChangeEvent.newName);
         }
 
-        for (String regex : eventListeners.keySet()) {
-            if (Pattern.matches(regex, event.eventId)) for (MCEListener mceL : eventListeners.get(regex)) {
+        var eventListenersSnapshot = ListenerSnapshots.copy(eventListeners);
+        for (String regex : eventListenersSnapshot.keySet()) {
+            if (Pattern.matches(regex, event.eventId)) for (MCEListener mceL : eventListenersSnapshot.get(regex)) {
                 try {
                     mceL.onEvent(event);
                 } catch (Exception e) {

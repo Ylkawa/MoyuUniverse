@@ -22,7 +22,7 @@ public class Universe {
     static public Logger logger = LoggerFactory.getLogger(Universe.class);
     static public Properties universeChannelProp = new Properties();
     static public LawsManager LawsManager;
-    static public Map<String, Object> Providers = new HashMap<>();
+    static public Map<String, Object> Providers = new java.util.concurrent.ConcurrentHashMap<>();
     static public Solver pictureSolver = null;
     static public Solver voiceSolver = null;
 

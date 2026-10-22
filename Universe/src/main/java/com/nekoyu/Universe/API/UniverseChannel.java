@@ -2,6 +2,8 @@ package com.nekoyu.Universe.API;
 
 import com.google.common.collect.ArrayListMultimap;
 import com.google.common.collect.Multimap;
+import com.google.common.collect.Multimaps;
+import com.nekoyu.Universe.Utils.ListenerSnapshots;
 import com.google.gson.Gson;
 import com.google.gson.JsonSyntaxException;
 import com.sun.net.httpserver.HttpHandler;
@@ -30,14 +32,14 @@ public class UniverseChannel {
     private static WebSocketServer wsServer;
     private static int wsPort;
     private static int httpPort;
-    private static final Multimap<String, UniverseListener> internalListeners = ArrayListMultimap.create();
-    private static final Multimap<String, UniverseListener> wildcardInternalListeners = ArrayListMultimap.create();
-    private static final Multimap<String, String> externalListeners = ArrayListMultimap.create();
-    private static final Multimap<String, String> wildcardExternalListeners = ArrayListMultimap.create();
-    private static final Multimap<String, WebSocket> clientGroup = ArrayListMultimap.create();
+    private static final Multimap<String, UniverseListener> internalListeners = Multimaps.synchronizedMultimap(ArrayListMultimap.create());
+    private static final Multimap<String, UniverseListener> wildcardInternalListeners = Multimaps.synchronizedMultimap(ArrayListMultimap.create());
+    private static final Multimap<String, String> externalListeners = Multimaps.synchronizedMultimap(ArrayListMultimap.create());
+    private static final Multimap<String, String> wildcardExternalListeners = Multimaps.synchronizedMultimap(ArrayListMultimap.create());
+    private static final Multimap<String, WebSocket> clientGroup = Multimaps.synchronizedMultimap(ArrayListMultimap.create());
     private static String token = null;
     private static final Logger logger = LoggerFactory.getLogger(UniverseChannel.class);
-    private static final Map<String, WebSocket> clientList = new HashMap<>();
+    private static final Map<String, WebSocket> clientList = new ConcurrentHashMap<>();
     private static HttpServer httpServer = null;
     private static final Map<String, File> fileMounting = new ConcurrentHashMap<>();
     private static final Map<String, CachedFile> remoteUrlCachedFile = new ConcurrentHashMap<>();
@@ -98,8 +100,8 @@ public class UniverseChannel {
             @Override
             public void onClose(WebSocket conn, int code, String reason, boolean remote) {
                 String id = ((HashMap) conn.getAttachment()).get("ID").toString();
-                externalListeners.entries().removeIf(entry -> entry.getValue().equals(id));
-                wildcardExternalListeners.entries().removeIf(entry -> entry.getValue().equals(id));
+                synchronized (externalListeners) { externalListeners.entries().removeIf(entry -> entry.getValue().equals(id)); }
+                synchronized (wildcardExternalListeners) { wildcardExternalListeners.entries().removeIf(entry -> entry.getValue().equals(id)); }
                 logger.info("{} 断开了连接 {}: {}", conn.getRemoteSocketAddress(), code, reason);
             }
 
@@ -113,14 +115,7 @@ public class UniverseChannel {
                     sender.local = false;
                     UniverseChannelMessage ucm = new Gson().fromJson(rawContent, UniverseChannelMessage.class);
                     if (ucm.tag != null && ucm.args != null) {
-                        for (UniverseListener listener : internalListeners.get(ucm.tag)) {
-                            listener.onMessage(sender, ucm.message, ucm.args, rawContent);
-                        }
-                        for (var entry : wildcardInternalListeners.entries()) {
-                            if (matchesTag(entry.getKey(), ucm.tag)) {
-                                entry.getValue().onMessage(sender, ucm.message, ucm.args, rawContent);
-                            }
-                        }
+                        dispatchInternal(sender, ucm, rawContent);
                     } else {
                         logger.warn("{} 发送的消息不规范，不会被处理", sender.ID);
                     }
@@ -225,6 +220,19 @@ public class UniverseChannel {
         }
     }
 
+    static void dispatchInternal(Planet sender, UniverseChannelMessage message, String rawContent) {
+        var exact = ListenerSnapshots.copy(internalListeners);
+        var wildcard = ListenerSnapshots.copy(wildcardInternalListeners);
+        for (UniverseListener listener : exact.get(message.tag)) {
+            listener.onMessage(sender, message.message, message.args, rawContent);
+        }
+        for (var entry : wildcard.entries()) {
+            if (matchesTag(entry.getKey(), message.tag)) {
+                entry.getValue().onMessage(sender, message.message, message.args, rawContent);
+            }
+        }
+    }
+
     public static void registerListener(String tag, UniverseListener universeListener) {
         if (isWildcardTag(tag)) {
             wildcardInternalListeners.put(tag, universeListener);
@@ -243,8 +251,8 @@ public class UniverseChannel {
 
     public static void broadcast(String tag, UniverseChannelMessage ucm) {
         String json = new Gson().toJson(ucm);
-        Set<String> targets = new HashSet<>(externalListeners.get(tag));
-        for (var entry : wildcardExternalListeners.entries()) {
+        Set<String> targets = new HashSet<>(ListenerSnapshots.copy(externalListeners).get(tag));
+        for (var entry : ListenerSnapshots.copy(wildcardExternalListeners).entries()) {
             if (matchesTag(entry.getKey(), tag)) {
                 targets.add(entry.getValue());
             }
