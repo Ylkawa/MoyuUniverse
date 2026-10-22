@@ -29,7 +29,7 @@ public final class GraphRuntime implements AutoCloseable {
                         || settings.embeddingDimension != bundle.index().descriptor().space().dimension()) throw new IOException("Embedding model differs from bundled vectors");
                 resolver = new ProviderResolver(settings, bundle);
                 iconsEnabled = true;
-                org.slf4j.LoggerFactory.getLogger(GraphRuntime.class).info("Graph 图标包就绪：icons={}，space={}，旧包身份迁移={}",
+                org.slf4j.LoggerFactory.getLogger(GraphRuntime.class).debug("Graph 图标包就绪：icons={}，space={}，旧包身份迁移={}",
                         bundle.catalog().icons().size(), bundle.index().descriptor().space(), !bundle.storedSpace().equals(bundle.index().descriptor().space()));
             } catch (IOException | RuntimeException e) {
                 org.slf4j.LoggerFactory.getLogger(GraphRuntime.class).warn("Graph 图标状态：BUNDLE_UNAVAILABLE，继续无图标绘图，原因={}", e.toString());
@@ -63,7 +63,7 @@ public final class GraphRuntime implements AutoCloseable {
                         throw new IOException("Registered Provider space differs from bundled vectors: expected=" + bundle.index().descriptor().space() + ", actual=" + delegate.space());
                     var cached = new CachedEmbeddingProvider(delegate.space(), Path.of("data/AIChat/graph-embeddings/text"), () -> delegate, bundle.storedSpace());
                     matcher = new GraphMatchService(cached, bundle.index(), bundle.catalog());
-                    org.slf4j.LoggerFactory.getLogger(GraphRuntime.class).info("Graph 图标 Provider 就绪：provider={}，space={}", settings.embeddingProvider, delegate.space());
+                    org.slf4j.LoggerFactory.getLogger(GraphRuntime.class).debug("Graph 图标 Provider 就绪：provider={}，space={}", settings.embeddingProvider, delegate.space());
                 } catch (IOException | RuntimeException e) {
                     org.slf4j.LoggerFactory.getLogger(GraphRuntime.class).warn("Graph 图标状态：PROVIDER_UNAVAILABLE，provider={}，Provider 调用=0，原因={}", settings.embeddingProvider, e.toString());
                     return null;

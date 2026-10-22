@@ -15,6 +15,9 @@
 
     <Loggers>
         <Logger name="com.zaxxer.hikari" level="warn"/> <!-- HikariCP不是调试目标，所以过滤掉 -->
+        <Logger name="io.netty" level="info"/>
+        <Logger name="io.grpc.netty" level="info"/>
+        <Logger name="io.qdrant.client" level="info"/>
 
         <Root level="info">
             <AppenderRef ref="Console"/>

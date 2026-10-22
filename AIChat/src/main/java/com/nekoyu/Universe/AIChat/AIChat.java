@@ -522,7 +522,7 @@ public class AIChat extends Law {
             graphRuntime = com.nekoyu.Universe.AIChat.graph.GraphRuntime.open(settings);
             registerMarkDecoupler("graph", graphRuntime.decoupler());
             SkillRegistry.register(graphRuntime.skill());
-            logger.info("Graph decoupler ready: list, compare, timeline, tree, flow, relation");
+            logger.debug("Graph decoupler ready: list, compare, timeline, tree, flow, relation");
         } catch (IOException | RuntimeException e) {
             logger.error("Graph decoupler initialization failed; graph XML will remain as text", e);
         }

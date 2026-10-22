@@ -26,7 +26,7 @@ public class OnebotAdapter extends Law {
 
     @Override
     public boolean prepare() {
-        logger.info("正在准备 Onebot 组件");
+        logger.debug("正在准备 Onebot 组件");
         // 确保 config/Onebot 文件夹存在
         File configDir = new File("./config/Onebot/");
         if (!configDir.exists()) {
@@ -81,7 +81,7 @@ public class OnebotAdapter extends Law {
                                 }
                             }
                             ocs.add(oc);
-                            logger.info("已载入 Onebot 配置 {}", oc.ID);
+                            logger.debug("已载入 Onebot 配置 {}", oc.ID);
                         } catch (FileNotFoundException e) {
                             throw new RuntimeException(e);
                         } catch (URISyntaxException e) {
@@ -100,7 +100,7 @@ public class OnebotAdapter extends Law {
     @Override
     public void run() {
         if (isReady) for (OnebotChannel oc : ocs) {
-            logger.info("正在加载{}", oc.ID);
+            logger.debug("正在加载{}", oc.ID);
             oc.load();
         }
     }
