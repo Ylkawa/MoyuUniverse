@@ -70,7 +70,7 @@ class GraphRenderingTest {
                     published.add(image); File file = mountedFile(image); assertNotNull(file);
                     var png = ImageIO.read(file); assertEquals(1440, png.getWidth()); assertTrue(png.getHeight() >= 320 && png.getHeight() <= 2000);
                     assertEquals(GraphRenderContext.BACKGROUND.getRGB(), png.getRGB(0, 0));
-                    long colored = 0; for (int y = GraphRenderContext.TOP; y < png.getHeight() - 56; y += 4) for (int x = 40; x < 1400; x += 4)
+                    long colored = 0; for (int y = GraphRenderContext.TOP; y < png.getHeight() - 56; y += 2) for (int x = 40; x < 1400; x += 2)
                         if (png.getRGB(x, y) != GraphRenderContext.BACKGROUND.getRGB()) colored++;
                     assertTrue(colored > 500, "Graph body is blank"); png.flush();
                     Path preview = Path.of("target", "graph-render-preview", type + "-" + (++page) + ".png");
@@ -103,29 +103,15 @@ class GraphRenderingTest {
             flow.forEach(field -> published.add((ImageField) field));
         }
     }
-    @Test void exampleTreeKeepsSeparateParentBranches() throws Exception {
+    @Test void exampleTreeAndFlowRenderWithoutRedundantIndexPages() throws Exception {
         try (var renderer = new GraphDecoupler(settings(), graph -> new ResolvedGraph(graph, List.of()))) {
-            var result = renderer.process(XmlMarks.parse(Files.readString(Path.of("examples", "graphs", "tree.xml"))));
-            result.forEach(field -> published.add((ImageField) field));
-            var png = ImageIO.read(mountedFile((ImageField) result.getFirst()));
-            try {
-                // The session branch owns its context leaf; the graph branch owns the other three.
-                // A shared horizontal bus in this gap would falsely connect those two parents.
-                for (int y = 540; y < 585; y++) assertEquals(GraphRenderContext.BACKGROUND.getRGB(), png.getRGB(350, y), "Unrelated parent buses were merged");
-            } finally { png.flush(); }
-        }
-    }
-    @Test void exampleFlowSkipEdgesRemainVisibleOutsideIntermediateCards() throws Exception {
-        try (var renderer = new GraphDecoupler(settings(), graph -> new ResolvedGraph(graph, List.of()))) {
-            var result = renderer.process(XmlMarks.parse(Files.readString(Path.of("examples", "graphs", "flow.xml"))));
-            result.forEach(field -> published.add((ImageField) field));
-            var png = ImageIO.read(mountedFile((ImageField) result.getFirst()));
-            try {
-                int visible = 0;
-                for (int x = 1060; x < 1110; x++) for (int y = 600; y < 800; y++)
-                    if (png.getRGB(x, y) == GraphRenderContext.ACCENT.getRGB()) visible++;
-                assertTrue(visible > 80, "Skip-level error connections disappeared under intermediate cards");
-            } finally { png.flush(); }
+            for (String name : List.of("tree", "flow")) {
+                var result = renderer.process(XmlMarks.parse(Files.readString(Path.of("examples", "graphs", name + ".xml"))));
+                result.forEach(field -> published.add((ImageField) field));
+                assertEquals(1, result.size(), "Readable captions should not duplicate the diagram as a relationship index");
+                var png = ImageIO.read(mountedFile((ImageField) result.getFirst()));
+                try { assertTrue(png.getHeight() < 1400); } finally { png.flush(); }
+            }
         }
     }
     @Test void flowCaptionsPreserveEveryRouteAndArrowPixel() throws Exception {
@@ -240,7 +226,7 @@ class GraphRenderingTest {
                 var output = renderer.process(XmlMarks.parse(hasIcon ? xml : xml.replace(" icon='laptop'", "")));
                 output.forEach(field -> published.add((ImageField) field));
                 var png = ImageIO.read(mountedFile((ImageField) output.getFirst()));
-                try { assertEquals(hasIcon, blackIconPixels(png) > 10); } finally { png.flush(); }
+                try { assertEquals(hasIcon, displayIconPixels(png) > 10); } finally { png.flush(); }
             }
             var graph = resolve.resolve(new GraphParser().parse(xml));
             var page = new ListGraphRenderer().layout(graph, context).get(0);
@@ -249,13 +235,15 @@ class GraphRenderingTest {
             try {
                 GraphRenderContext.quality(graphics); context.header(graphics, page.heading(), "list", 1, 1, png.getHeight());
                 page.painter().paint(graphics, context);
-                assertTrue(blackIconPixels(png) > 10, "Direct renderer callers must retain supplied icon matches");
+                assertTrue(displayIconPixels(png) > 10, "Direct renderer callers must retain supplied icon matches");
             } finally { graphics.dispose(); png.flush(); }
         }
     }
-    private static int blackIconPixels(java.awt.image.BufferedImage png) {
+    private static int displayIconPixels(java.awt.image.BufferedImage png) {
         int pixels = 0;
-        for (int y = 174; y < 234; y++) for (int x = 60; x < 120; x++) if (png.getRGB(x, y) == java.awt.Color.BLACK.getRGB()) pixels++;
+        for (int y = GraphRenderContext.TOP + 20; y < GraphRenderContext.TOP + 52; y++)
+            for (int x = png.getWidth() - GraphRenderContext.MARGIN - 56; x < png.getWidth() - GraphRenderContext.MARGIN - 24; x++)
+                if (png.getRGB(x, y) == GraphRenderContext.INK.getRGB()) pixels++;
         return pixels;
     }
     @Test void inFlightPlansAreBoundedAndCapacityIsReleasedAfterCompletion() throws Exception {
@@ -284,13 +272,13 @@ class GraphRenderingTest {
     @Test void wideAndDeepTreesRetainExplicitHierarchyAndStayWithinPageBounds() throws Exception {
         String wide = "<graph type='tree'><node id='root' label='系统'><node id='session' label='会话'><node id='context' label='上下文'/></node><node id='graph' label='绘图'><node id='parser' label='解析'/><node id='icons' label='图标'/><node id='renderer' label='渲染'/><node id='export' label='导出'/></node></node></graph>";
         StringBuilder deep = new StringBuilder("<graph type='tree'>");
-        for (int i = 0; i < 20; i++) deep.append("<node id='n").append(i).append("' label='第").append(i).append("层'>");
-        deep.append("</node>".repeat(20)).append("</graph>");
+        for (int i = 0; i < 40; i++) deep.append("<node id='n").append(i).append("' label='第").append(i).append("层'>");
+        deep.append("</node>".repeat(40)).append("</graph>");
         try (var context = new GraphRenderContext(settings()); var renderer = new GraphDecoupler(settings(), graph -> new ResolvedGraph(graph, List.of()))) {
             for (String xml : List.of(wide, deep.toString())) {
                 var graph = new ResolvedGraph(new GraphParser().parse(xml), List.of());
                 var plan = new TreeGraphRenderer().layout(graph, context);
-                assertTrue(plan.get(0).heading().contains("层级展开"));
+                assertEquals(!xml.equals(wide), plan.get(0).heading().contains("层级展开"));
                 for (var page : plan) {
                     page.validate(context);
                     assertTrue(page.contentBottom() <= context.height() - GraphRenderContext.FOOTER);

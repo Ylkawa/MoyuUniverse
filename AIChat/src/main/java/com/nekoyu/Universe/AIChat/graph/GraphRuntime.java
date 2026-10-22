@@ -88,6 +88,7 @@ public final class GraphRuntime implements AutoCloseable {
                 用完整的 <graph type="..." title="可选标题">...</graph> 生成图表图片。
                 主助手明确选择 type：list、compare、timeline、tree、flow、relation。不要推断或省略 type。
                 list：<line>文字</line>。
+                list/timeline 的多行内容可将简短标题放在第一行，后面换行填写正文；不要为了排版重复内容或添加空白。
                 compare：对象为列、对比维度为行，禁止使用旧 line 格式或把两个对象的值合并到同一单元格。
                 先声明至少两个 <object id="唯一编号" label="对象名称"/>，再声明至少一条
                 <row label="对比维度"><cell object="对象编号">该对象在此维度的内容</cell>...</row>。
@@ -100,6 +101,7 @@ public final class GraphRuntime implements AutoCloseable {
                 tree：一个根 <node id="唯一编号" label="文字"><node id="子编号" label="文字"/></node>，可以嵌套。
                 flow/relation：平铺 <node id="编号" label="文字"/> 和 <edge from="编号" to="编号" label="可选关系"/>；
                 edge 的端点必须存在。relation 可用 directed="true" 指定有向连接，默认无向；flow 始终有向。
+                node 的 label 写供读者阅读的名称，id 仅用于连接引用，不需要在 label 中重复。
                 XML 属性里的引号与 &、< 要转义，正文里的 &、< 也要转义。不要在 graph 内嵌入其他功能标签。
                 长图会分页返回多张图片。最多 %d 项/节点、%d 条边、%d 个字符、%d 页；
                 compare 的 object、row、cell 均计入项数预算；对象和维度 label 不超过 400 字符。

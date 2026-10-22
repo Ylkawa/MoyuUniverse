@@ -22,6 +22,8 @@ public final class GraphExampleGenerator {
         Files.createDirectories(output);
         Map<String, IconResource> resources = demoIcons(output.resolve("icons"));
         GraphSettings settings = new GraphSettings(); settings.outputDirectory = output.resolve("working").toString();
+        if (args.length > 2) settings.width = Integer.parseInt(args[2]);
+        if (args.length > 3) settings.pageHeight = Integer.parseInt(args[3]);
         String address = UniverseChannel.getOutboundHttpAddress();
         UniverseChannel.setOutboundHttpAddress("http://127.0.0.1:8080");
         StringBuilder index = new StringBuilder("# 六种图表效果示例\n\n数据为演示设定，图标使用固定本地素材，未调用 embedding 服务。\n\n");

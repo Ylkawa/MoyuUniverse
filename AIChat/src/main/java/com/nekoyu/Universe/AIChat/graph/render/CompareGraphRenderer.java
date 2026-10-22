@@ -9,8 +9,8 @@ import java.util.List;
 
 /** 对象固定为列、维度固定为行；分页和行高在查询图标之前完整确定。 */
 public final class CompareGraphRenderer implements GraphRenderer {
-    private static final int PAD = 16;
-    private static final Color HEADER = new Color(0xe8eff6);
+    private static final int PAD = 20;
+    private static final Color HEADER = GraphRenderContext.SOFT;
     record Column(GraphSpec.CompareObject object, List<GraphRenderContext.Line> label, float width) {}
     record Fragment(List<List<GraphRenderContext.Line>> cells, float height, boolean continuation) {}
     record Table(List<Column> columns, List<Fragment> rows, float metricWidth, float top, float headerHeight) {}
@@ -79,7 +79,7 @@ public final class CompareGraphRenderer implements GraphRenderer {
         float used = 0;
         for (var row : graph.rows()) {
             List<List<GraphRenderContext.Line>> wrapped = new ArrayList<>();
-            wrapped.add(context.text(row.label(), metricWidth - PAD * 2, 25, true));
+            wrapped.add(context.text(row.label(), metricWidth - PAD * 2, 23, true));
             for (int i = 0; i < columns.size(); i++) {
                 String value = row.cells().get(i).text();
                 wrapped.add(context.text(value.isBlank() ? "—" : value, columns.get(i).width() - PAD * 2, 24, false));
@@ -144,7 +144,12 @@ public final class CompareGraphRenderer implements GraphRenderer {
         }
         float y = table.top() + table.headerHeight();
         horizontal(g, left, y, c.bodyWidth());
+        int rowNumber = 0;
         for (var row : table.rows()) {
+            if (rowNumber++ % 2 == 1) {
+                g.setColor(GraphRenderContext.BACKGROUND);
+                g.fill(new java.awt.geom.Rectangle2D.Float(left, y, c.bodyWidth(), row.height()));
+            }
             x = left;
             if (row.continuation()) {
                 g.setColor(GraphRenderContext.MUTED); g.setFont(c.font(15, false)); g.drawString("续", x + PAD, y + 21);
@@ -157,10 +162,8 @@ public final class CompareGraphRenderer implements GraphRenderer {
             y += row.height(); horizontal(g, left, y, c.bodyWidth());
         }
         g.setColor(GraphRenderContext.BORDER); g.setStroke(new java.awt.BasicStroke(1.5f));
-        x = left; g.draw(new java.awt.geom.Line2D.Float(x, table.top(), x, bottom)); x += table.metricWidth();
+        x = left + table.metricWidth();
         g.draw(new java.awt.geom.Line2D.Float(x, table.top(), x, bottom));
-        for (var column : table.columns()) { x += column.width(); g.draw(new java.awt.geom.Line2D.Float(x, table.top(), x, bottom)); }
-        horizontal(g, left, table.top(), c.bodyWidth());
     }
     private static void horizontal(Graphics2D g, float x, float y, float width) {
         g.setColor(GraphRenderContext.BORDER); g.setStroke(new java.awt.BasicStroke(1.5f));

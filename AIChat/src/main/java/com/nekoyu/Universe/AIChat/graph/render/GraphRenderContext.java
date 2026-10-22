@@ -25,11 +25,12 @@ import java.util.List;
 import java.util.Map;
 
 public final class GraphRenderContext implements AutoCloseable {
-    public static final Color BACKGROUND = new Color(0xf3f6fa);
-    public static final Color INK = new Color(0x203148);
-    public static final Color MUTED = new Color(0x63768c);
-    public static final Color ACCENT = new Color(0x167b91);
-    public static final Color BORDER = new Color(0xdce5ee);
+    public static final Color BACKGROUND = new Color(0xfafbf9);
+    public static final Color INK = new Color(0x233e43);
+    public static final Color MUTED = new Color(0x647879);
+    public static final Color ACCENT = new Color(0x237b72);
+    public static final Color BORDER = new Color(0xdbe5e1);
+    public static final Color SOFT = new Color(0xeaf2ee);
     public static final int MARGIN = 40, TOP = 156, FOOTER = 56;
     private static final long ICON_CACHE_BYTES = 32L * 1024 * 1024;
     private final LinkedHashMap<IconResource, BufferedImage> icons = new LinkedHashMap<>(16, .75f, true);
@@ -83,7 +84,7 @@ public final class GraphRenderContext implements AutoCloseable {
         for (Line line : lines) { line.layout().draw(graphics, x, y + line.layout().getAscent()); y += line.height(); }
     }
     public static void box(Graphics2D graphics, float x, float y, float width, float height) {
-        var shape = new RoundRectangle2D.Float(x, y, width, height, 20, 20);
+        var shape = new RoundRectangle2D.Float(x, y, width, height, 16, 16);
         graphics.setColor(Color.WHITE); graphics.fill(shape);
         graphics.setColor(BORDER); graphics.setStroke(new BasicStroke(1.5f)); graphics.draw(shape);
     }
@@ -102,7 +103,10 @@ public final class GraphRenderContext implements AutoCloseable {
     public void bindIcons(ResolvedGraph graph) { bindings = matches(graph); }
     public void clearIcons() { bindings = Map.of(); }
     public boolean visibleIcon(String slot) {
-        var match = bindings.get(slot);
+        return visibleIcon(slot, null);
+    }
+    public boolean visibleIcon(String slot, ResolvedGraph.IconMatch fallback) {
+        var match = bindings.getOrDefault(slot, fallback);
         return match != null && match.status() != ResolvedGraph.Status.UNAVAILABLE;
     }
     public void slotIcon(Graphics2D graphics, String slot, ResolvedGraph.IconMatch fallback, float x, float y, int size) throws IOException {
@@ -133,7 +137,7 @@ public final class GraphRenderContext implements AutoCloseable {
                     var parameters = reader.getDefaultReadParam();
                     int sample = Math.max(1, (Math.max(reader.getWidth(0), reader.getHeight(0)) + 95) / 96);
                     parameters.setSourceSubsampling(sample, sample, 0, 0);
-                    image = reader.read(0, parameters);
+                    image = transparentMonochrome(reader.read(0, parameters));
                 } finally { reader.dispose(); }
             }
             long bytes = (long) image.getWidth() * image.getHeight() * 4;
@@ -150,22 +154,43 @@ public final class GraphRenderContext implements AutoCloseable {
         var lines = text(title, bodyWidth(), 32, true);
         if (lines.size() > 2 || textHeight(lines) > TOP - 52) throw new IOException("Graph title is too long for the page header");
     }
+    /** Display-only treatment of black-on-white index thumbnails; source assets and vectors stay intact. */
+    static BufferedImage transparentMonochrome(BufferedImage source) {
+        for (int y = 0; y < source.getHeight(); y++) for (int x = 0; x < source.getWidth(); x++) {
+            int rgb = source.getRGB(x, y), r = (rgb >>> 16) & 255, g = (rgb >>> 8) & 255, b = rgb & 255;
+            if (Math.max(r, Math.max(g, b)) - Math.min(r, Math.min(g, b)) > 2) return source;
+        }
+        var display = new BufferedImage(source.getWidth(), source.getHeight(), BufferedImage.TYPE_INT_ARGB);
+        for (int y = 0; y < source.getHeight(); y++) for (int x = 0; x < source.getWidth(); x++) {
+            int rgb = source.getRGB(x, y), alpha = (rgb >>> 24) * (255 - (rgb & 255)) / 255;
+            display.setRGB(x, y, (alpha << 24) | (INK.getRGB() & 0xffffff));
+        }
+        source.flush(); return display;
+    }
     public void header(Graphics2D graphics, String title, String type, int page, int count, int canvasHeight) throws IOException {
         header(graphics, title, type, page, count, canvasHeight, GraphPage.HeaderStyle.STANDARD);
     }
     public float compactBodyTop(String title) throws IOException {
         validateHeader(title);
-        return 68 + textHeight(text(title, bodyWidth(), 32, true));
+        return 84 + textHeight(text(title, bodyWidth(), 32, true));
     }
     public void header(Graphics2D graphics, String title, String type, int page, int count, int canvasHeight, GraphPage.HeaderStyle style) throws IOException {
         graphics.setColor(BACKGROUND); graphics.fillRect(0, 0, width, canvasHeight);
         var heading = text(title, bodyWidth(), 32, true);
         if (heading.size() > 2) throw new IOException("Graph title is too long for the page header");
-        drawText(graphics, heading, MARGIN, 24, INK);
-        int accentY = style == GraphPage.HeaderStyle.COMPACT ? (int) compactBodyTop(title) - 28 : 128;
-        graphics.setColor(ACCENT); graphics.fillRoundRect(MARGIN, accentY, 64, 4, 4, 4);
-        graphics.setColor(MUTED); graphics.setFont(font(17, false));
-        graphics.drawString(type + "  ·  " + page + " / " + count, MARGIN, canvasHeight - 24);
+        String category = switch (type.toLowerCase(java.util.Locale.ROOT)) {
+            case "list" -> "清单"; case "compare" -> "对比"; case "timeline" -> "时间线";
+            case "tree" -> "层级结构"; case "flow" -> "流程"; default -> "关系网络";
+        };
+        graphics.setColor(ACCENT); graphics.setFont(font(16, true)); graphics.drawString(category, MARGIN, 31);
+        drawText(graphics, heading, MARGIN, 48, INK);
+        int lineY = style == GraphPage.HeaderStyle.COMPACT ? (int) compactBodyTop(title) - 20 : Math.max(TOP - 24, (int) textHeight(heading) + 60);
+        graphics.setColor(BORDER); graphics.setStroke(new BasicStroke(1)); graphics.drawLine(MARGIN, lineY, width - MARGIN, lineY);
+        if (count > 1) {
+            String pagination = String.format(java.util.Locale.ROOT, "%02d / %02d", page, count);
+            graphics.setColor(MUTED); graphics.setFont(font(16, false));
+            graphics.drawString(pagination, width - MARGIN - graphics.getFontMetrics().stringWidth(pagination), canvasHeight - 24);
+        }
     }
     @Override public void close() { clearIcons(); icons.values().forEach(BufferedImage::flush); icons.clear(); iconBytes = 0; }
 }
