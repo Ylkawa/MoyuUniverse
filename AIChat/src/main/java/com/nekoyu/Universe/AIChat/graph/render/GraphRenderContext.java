@@ -89,7 +89,7 @@ public final class GraphRenderContext implements AutoCloseable {
     public static void box(Graphics2D graphics, float x, float y, float width, float height, Color fill) {
         var shape = new RoundRectangle2D.Float(x, y, width, height, 16, 16);
         graphics.setColor(fill); graphics.fill(shape);
-        texture(graphics, shape, .48f);
+        texture(graphics, shape, .30f);
         graphics.setColor(BORDER); graphics.setStroke(new BasicStroke(1.5f)); graphics.draw(shape);
     }
     /** One bundled RGBA raster, center-cropped with a uniform scale; never stretch or tile. */
@@ -115,6 +115,15 @@ public final class GraphRenderContext implements AutoCloseable {
                 if (input == null) throw new IOException("Missing graph background texture");
                 var image = ImageIO.read(input);
                 if (image == null || !image.getColorModel().hasAlpha()) throw new IOException("Graph texture must be RGBA");
+                // Fade continuously toward the reading area; retain the source asset unchanged.
+                // Cache once rather than allocating a mask for every card.
+                for (int y = 0; y < image.getHeight(); y++) for (int x = 0; x < image.getWidth(); x++) {
+                    int pixel = image.getRGB(x, y);
+                    double t = Math.max(0, Math.min(1, (x / (double) (image.getWidth() - 1) - .35) / .65));
+                    double fade = t * t * (3 - 2 * t);
+                    int alpha = (int) Math.round((pixel >>> 24) * fade);
+                    image.setRGB(x, y, (alpha << 24) | (pixel & 0xffffff));
+                }
                 return image;
             } catch (IOException e) { throw new IllegalStateException("Cannot load graph background texture", e); }
         }
@@ -207,7 +216,7 @@ public final class GraphRenderContext implements AutoCloseable {
     }
     public void header(Graphics2D graphics, String title, String type, int page, int count, int canvasHeight, GraphPage.HeaderStyle style) throws IOException {
         graphics.setColor(BACKGROUND); graphics.fillRect(0, 0, width, canvasHeight);
-        texture(graphics, new java.awt.geom.Rectangle2D.Float(0, 0, width, canvasHeight), .35f);
+        texture(graphics, new java.awt.geom.Rectangle2D.Float(0, 0, width, canvasHeight), .24f);
         var heading = text(title, bodyWidth(), 32, true);
         if (heading.size() > 2) throw new IOException("Graph title is too long for the page header");
         String category = switch (type.toLowerCase(java.util.Locale.ROOT)) {
