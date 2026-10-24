@@ -137,11 +137,13 @@ public class KnowledgeStore {
                             CHECK (status IN ('running', 'completed', 'failed')),
                         report text,
                         last_request jsonb,
+                        evidence jsonb,
                         error text,
                         created_at timestamptz NOT NULL DEFAULT now(),
                         finished_at timestamptz
                     )
                     """);
+            statement.execute("ALTER TABLE aichat.research_task ADD COLUMN IF NOT EXISTS evidence jsonb");
         }
         logger.info("Research tasks table ready: aichat.research_task");
     }

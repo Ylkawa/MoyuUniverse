@@ -54,11 +54,11 @@ public final class ResearchStore {
         try (Connection connection = dataSource.getConnection();
              PreparedStatement statement = connection.prepareStatement("""
                      INSERT INTO aichat.research_task
-                         (id, topic, question, status, report, last_request, created_at, finished_at)
-                     VALUES (?, ?, ?, 'completed', ?, ?::jsonb, ?, ?)
+                         (id, topic, question, status, report, last_request, evidence, created_at, finished_at)
+                     VALUES (?, ?, ?, 'completed', ?, ?::jsonb, ?::jsonb, ?, ?)
                      ON CONFLICT (id) DO UPDATE SET
                          topic = EXCLUDED.topic, question = EXCLUDED.question, status = 'completed',
-                         report = EXCLUDED.report, last_request = EXCLUDED.last_request,
+                         report = EXCLUDED.report, last_request = EXCLUDED.last_request, evidence = EXCLUDED.evidence,
                          error = NULL, finished_at = EXCLUDED.finished_at
                      """)) {
             statement.setObject(1, research.id());
@@ -67,8 +67,9 @@ public final class ResearchStore {
             statement.setString(4, research.report());
             JsonObject request = research.lastRequest();
             statement.setString(5, request == null ? null : request.toString());
-            statement.setObject(6, Instant.ofEpochMilli(research.createdAt()).atOffset(ZoneOffset.UTC));
-            statement.setObject(7, Instant.ofEpochMilli(research.completedAt()).atOffset(ZoneOffset.UTC));
+            statement.setString(6, GSON.toJson(research.evidence()));
+            statement.setObject(7, Instant.ofEpochMilli(research.createdAt()).atOffset(ZoneOffset.UTC));
+            statement.setObject(8, Instant.ofEpochMilli(research.completedAt()).atOffset(ZoneOffset.UTC));
             statement.executeUpdate();
         } catch (SQLException error) {
             throw new IOException("Research report archive failed", error);
@@ -94,7 +95,7 @@ public final class ResearchStore {
         List<Researches> results = new ArrayList<>();
         try (Connection connection = dataSource.getConnection();
              PreparedStatement statement = connection.prepareStatement("""
-                     SELECT id, topic, question, report, last_request, created_at, finished_at
+                     SELECT id, topic, question, report, last_request, evidence, created_at, finished_at
                      FROM aichat.research_task
                      WHERE id = ? AND status = 'completed' AND report IS NOT NULL AND finished_at IS NOT NULL
                      """)) {
@@ -109,8 +110,12 @@ public final class ResearchStore {
                     String report = row.getString("report");
                     String json = row.getString("last_request");
                     JsonObject request = json == null ? null : JsonParser.parseString(json).getAsJsonObject();
+                    String evidenceJson = row.getString("evidence");
+                    // 新归档精确保留观察目录；显式空对象不能回退到上下文并扩张来源。
+                    Map<String, String> evidence = evidenceJson == null
+                            ? restoreEvidence(row.getString("question"), report, request) : parseEvidence(evidenceJson);
                     results.add(new Researches(id, row.getString("topic"), row.getString("question"), report,
-                            restoreEvidence(row.getString("question"), report, request),
+                            evidence,
                             row.getObject("created_at", OffsetDateTime.class).toInstant().toEpochMilli(),
                             row.getObject("finished_at", OffsetDateTime.class).toInstant().toEpochMilli(), request));
                 }
@@ -173,7 +178,22 @@ public final class ResearchStore {
         return request;
     }
 
-    /** 从原请求恢复来源观察记录，不把报告里模型自行生成的网址变成已观察的证据。 */
+    private static Map<String, String> parseEvidence(String json) throws IOException {
+        try {
+            Map<String, String> result = new LinkedHashMap<>();
+            for (var entry : JsonParser.parseString(json).getAsJsonObject().entrySet()) {
+                var value = entry.getValue();
+                if (!value.isJsonPrimitive() || !value.getAsJsonPrimitive().isString())
+                    throw new IllegalArgumentException("Expected evidence text");
+                result.put(entry.getKey(), value.getAsString());
+            }
+            return result;
+        } catch (RuntimeException error) {
+            throw new IOException("Invalid archived research evidence", error);
+        }
+    }
+
+    /** 兼容旧归档：仅恢复原始问题与工具观察，不把系统拼装的历史 user 材料当作原始来源。 */
     static Map<String, String> restoreEvidence(String question, String report, JsonObject request) {
         ResearchEvidence evidence = new ResearchEvidence(question);
         if (request != null && request.has("messages")) {
@@ -190,7 +210,6 @@ public final class ResearchStore {
                 message.tool_call_id = json.has("tool_call_id") ? json.get("tool_call_id").getAsString() : null;
                 message.tool_calls = GSON.fromJson(json.get("tool_calls"), Tool_call[].class);
                 messages.add(message);
-                if ("user".equals(message.role)) evidence.observe("历史请求输入材料，未在本轮重新核查：\n" + text);
             }
             evidence.observeTools(messages);
         }

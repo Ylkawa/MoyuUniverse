@@ -44,7 +44,7 @@ class ResearchStoreTest {
         assertEquals(first.completedAt(), loaded.completedAt());
         assertEquals(first.report(), loaded.report());
         assertEquals(first.lastRequest(), loaded.lastRequest());
-        assertTrue(loaded.evidence().get(URL).contains("只有摘要"));
+        assertEquals(first.evidence(), loaded.evidence(), "来源证据须原样往返，不从对话重新推测");
         assertEquals(0.6f, f.lastSearch.getScoreThreshold());
         assertEquals(3, f.lastSearch.getLimit());
     }
@@ -101,8 +101,79 @@ class ResearchStoreTest {
         var row = f.rows.values().stream().filter(r -> "新版主题".equals(r.get("topic"))).findFirst().orElseThrow();
         JsonObject snapshot = com.google.gson.JsonParser.parseString((String) row.get("last_request")).getAsJsonObject();
         assertEquals("offline-research", snapshot.get("model").getAsString());
+        assertEquals(Set.of("model", "messages", "tools", "options"), snapshot.keySet(),
+                "证据目录独立存储，不改变逻辑模型请求");
         assertTrue(snapshot.getAsJsonArray("messages").toString().contains("旧版报告"));
         assertFalse(snapshot.toString().contains("新版完整报告"), "保存的是最后一次请求，而非响应后的上下文");
+    }
+
+    @Test void historicalReportCannotCreateObservedEvidenceAcrossArchiveRoundTrips() throws Exception {
+        Fixture f = new Fixture();
+        String invented = "https://invented.invalid/not-observed";
+        Researches previous = new Researches("历史主题", "原始问题中没有链接", "历史模型报告引用了 " + invented,
+                Map.of(), 1000);
+        f.store.archiveResearch(previous);
+        f.hits = List.of(previous.id());
+        assertTrue(f.store.searchResearches("历史主题").get(0).evidence().isEmpty());
+        var cfg = config(null);
+        cfg.enableAsyncUpdate = false;
+        Librarian librarian = new Librarian(provider((messages, request) -> {
+            assertTrue(messages.stream().anyMatch(m -> "user".equals(m.role)
+                    && m.toString().contains("历史模型报告引用了 " + invented)));
+            return response("本轮报告沿用了历史链接 " + invented, "stop");
+        }), cfg, question -> "", result -> fail("知识更新已关闭"), f.store);
+
+        librarian.search("本轮主题", "本轮问题也没有链接");
+        UUID currentId = f.rows.keySet().stream().filter(id -> !id.equals(previous.id())).findFirst().orElseThrow();
+        f.hits = List.of(currentId);
+        Researches loaded = f.store.searchResearches("本轮主题").get(0);
+        assertTrue(loaded.lastRequest().getAsJsonArray("messages").toString().contains(invented));
+        assertEquals("{}", f.rows.get(currentId).get("evidence"), "显式空证据与旧记录 NULL 分开存储");
+        assertTrue(loaded.evidence().isEmpty(), "系统加入 user 上下文的历史报告不能扩张已观察来源");
+    }
+
+    @Test void legacyNullEvidenceRestoresOnlyOriginalQuestionAndRealTools() throws Exception {
+        Fixture f = new Fixture();
+        String inputUrl = "https://example.invalid/input", invented = "https://invented.invalid/history";
+        Message history = new Message("历史模型报告引用 " + invented);
+        history.role = "user";
+        Message call = new Message("助手自行生成的链接 " + invented);
+        call.role = "assistant";
+        Tool_call tool = new Tool_call();
+        tool.id = "read-legacy";
+        tool.function.name = "read";
+        tool.function.arguments = "{\"url\":\"" + URL + "\"}";
+        call.tool_calls = new Tool_call[]{tool};
+        Message result = new Message("真实工具返回的来源摘要");
+        result.role = "tool";
+        result.tool_call_id = tool.id;
+        JsonObject request = ResearchStore.snapshotRequest("test", List.of(history, call, result), List.of(),
+                new CompletionsRequest());
+        Researches legacy = new Researches(UUID.randomUUID(), "旧主题", "原始输入提供 " + inputUrl,
+                "报告引用 " + inputUrl + " " + URL + " " + invented, Map.of(), 1, 2, request);
+        f.store.archiveResearch(legacy);
+        f.rows.get(legacy.id()).put("evidence", null); // 模拟迁移前没有独立证据字段的记录。
+        f.hits = List.of(legacy.id());
+
+        Researches loaded = f.store.searchResearches("旧主题").get(0);
+        assertEquals(Set.of(inputUrl, URL), loaded.evidence().keySet());
+        assertTrue(loaded.evidence().get(inputUrl).contains("输入提供的材料，未核对原文"));
+        assertTrue(loaded.evidence().get(URL).contains("真实工具返回的来源摘要"));
+        assertEquals(request, loaded.lastRequest());
+    }
+
+    @Test void explicitEmptyOrInvalidEvidenceNeverFallsBackToRequest() throws Exception {
+        Fixture f = new Fixture();
+        Message source = new Message("输入来源 " + URL);
+        source.role = "user";
+        JsonObject request = ResearchStore.snapshotRequest("test", List.of(source), List.of(), new CompletionsRequest());
+        Researches research = new Researches(UUID.randomUUID(), "主题", "原始问题含 " + URL,
+                "报告含 " + URL, Map.of(), 1, 2, request);
+        f.store.archiveResearch(research);
+        f.hits = List.of(research.id());
+        assertTrue(f.store.searchResearches("主题").get(0).evidence().isEmpty(), "{} 不按旧记录恢复来源");
+        f.rows.get(research.id()).put("evidence", "{\"" + URL + "\":123}");
+        assertThrows(IOException.class, () -> f.store.searchResearches("主题"), "损坏的目录不得回退扩张来源");
     }
 
     @Test void snapshotIsIndependentAndOnlyObservedSourcesAreRestored() {
@@ -192,7 +263,7 @@ class ResearchStoreTest {
                         assertTrue(sql.contains("?::jsonb"));
                         UUID id = (UUID) parameters.get(1);
                         Map<String, Object> row = new HashMap<>();
-                        String[] names = {"id", "topic", "question", "report", "last_request", "created_at", "finished_at"};
+                        String[] names = {"id", "topic", "question", "report", "last_request", "evidence", "created_at", "finished_at"};
                         for (int i = 0; i < names.length; i++) row.put(names[i], parameters.get(i + 1));
                         row.put("status", "completed");
                         rows.put(id, row);
