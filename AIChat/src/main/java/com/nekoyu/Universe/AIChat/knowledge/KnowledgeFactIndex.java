@@ -20,6 +20,11 @@ final class KnowledgeFactIndex {
     @FunctionalInterface interface Matcher {
         int select(KnowledgeQueryParser.Entry incoming, List<Candidate> candidates) throws IOException;
     }
+    @FunctionalInterface interface ConflictChecker {
+        boolean conflicts(KnowledgeQueryParser.Entry incoming, Candidate ownOld) throws IOException;
+    }
+
+    private record FactPoint(Common.PointId id, Map<String, Value> payload, Candidate claim) {}
 
     private final QdrantClient client;
     private final String collection, vectorName;
@@ -40,46 +45,87 @@ final class KnowledgeFactIndex {
     /** Serialized by the store, including synchronous callers; failed writes never trigger source removal. */
     void replace(long documentId, String url, String title, List<KnowledgeQueryParser.Entry> entries,
                  List<List<Float>> vectors, long now) throws IOException {
+        update(documentId, url, title, entries, vectors, now, null);
+    }
+
+    /** A research fragment updates only claims it explicitly contradicts, leaving unrelated support intact. */
+    void merge(long documentId, String url, String title, List<KnowledgeQueryParser.Entry> entries,
+               List<List<Float>> vectors, long now, ConflictChecker conflictChecker) throws IOException {
+        update(documentId, url, title, entries, vectors, now, Objects.requireNonNull(conflictChecker));
+    }
+
+    private void update(long documentId, String url, String title, List<KnowledgeQueryParser.Entry> entries,
+                        List<List<Float>> vectors, long now, ConflictChecker conflictChecker) throws IOException {
         if (entries.size() != vectors.size()) throw new IOException("Fact embedding count mismatch");
         List<Points.RetrievedPoint> previous = documentPoints(documentId);
+        Set<Common.PointId> obsolete = new HashSet<>();
+        Map<Common.PointId, Map<String, Value>> current = new LinkedHashMap<>();
+        for (var point : previous) {
+            current.put(point.getId(), point.getPayloadMap());
+            if (conflictChecker == null) {
+                obsolete.add(point.getId());
+                continue;
+            }
+            // Decide every removal before writing anything. An unavailable classifier cannot remove support.
+            for (var source : sources(point.getPayloadMap())) {
+                if (source.documentId() != documentId) continue;
+                var ownOld = new Candidate(source.question(), source.conclusion());
+                for (var incoming : entries) {
+                    if (sameClaim(incoming, ownOld)) continue;
+                    if (conflictChecker.conflicts(incoming, ownOld)) obsolete.add(point.getId());
+                }
+            }
+        }
         Set<Common.PointId> retained = new HashSet<>();
         for (int i = 0; i < entries.size(); i++) {
             var entry = entries.get(i);
             var incoming = new KnowledgeStore.KnowledgeSource(documentId, url, title, entry.question(),
                     entry.conclusion(), entry.confidence(), now + entry.ttlDays() * 86_400_000L);
+            List<FactPoint> eligible = new ArrayList<>();
+            Set<Common.PointId> seen = new HashSet<>();
+            // A source can renew its own expired fact. Also include points written earlier in this batch.
+            for (var point : current.entrySet()) {
+                for (var source : sources(point.getValue())) {
+                    if (source.documentId() != documentId) continue;
+                    eligible.add(new FactPoint(point.getKey(), point.getValue(),
+                            new Candidate(source.question(), source.conclusion())));
+                    seen.add(point.getKey());
+                    break;
+                }
+            }
             List<Points.ScoredPoint> candidates = await(client.searchAsync(Points.SearchPoints.newBuilder()
                     .setCollectionName(collection).setVectorName(vectorName).addAllVector(vectors.get(i))
                     .setLimit(candidateLimit).setScoreThreshold(0.6f)
                     .setFilter(Common.Filter.newBuilder().addMust(range("ttl", now)))
                     .setWithPayload(Points.WithPayloadSelector.newBuilder().setEnable(true)).build()));
-            List<Points.ScoredPoint> eligible = new ArrayList<>();
-            List<Candidate> claims = new ArrayList<>();
             for (var candidate : candidates) {
+                if (!seen.add(candidate.getId())) continue;
                 var active = activeSources(candidate.getPayloadMap(), now);
                 if (active.isEmpty()) continue;
                 // The current live representative, rather than an expired source, determines equivalence.
                 var representative = active.get(0);
-                eligible.add(candidate);
-                claims.add(new Candidate(representative.question(), representative.conclusion()));
+                eligible.add(new FactPoint(candidate.getId(), candidate.getPayloadMap(),
+                        new Candidate(representative.question(), representative.conclusion())));
             }
+            List<Candidate> claims = eligible.stream().map(FactPoint::claim).toList();
             int selected = -1;
             for (int c = 0; c < claims.size(); c++) {
-                if (entry.question().equals(claims.get(c).question()) && entry.conclusion().equals(claims.get(c).conclusion())) {
+                if (sameClaim(entry, claims.get(c))) {
                     selected = c;
                     break;
                 }
             }
             if (selected < 0 && !claims.isEmpty()) selected = matcher.select(entry, List.copyOf(claims));
             if (selected < -1 || selected >= eligible.size()) throw new IOException("Invalid knowledge match index");
-            Points.ScoredPoint match = selected < 0 ? null : eligible.get(selected);
+            FactPoint match = selected < 0 ? null : eligible.get(selected);
             Common.PointId id = match == null
-                    ? Common.PointId.newBuilder().setUuid(UUID.randomUUID().toString()).build() : match.getId();
+                    ? Common.PointId.newBuilder().setUuid(UUID.randomUUID().toString()).build() : match.id();
             List<KnowledgeStore.KnowledgeSource> merged = match == null
-                    ? new ArrayList<>() : new ArrayList<>(sources(match.getPayloadMap()));
+                    ? new ArrayList<>() : new ArrayList<>(sources(match.payload()));
             merged.removeIf(s -> s.documentId() == documentId || s.url().equals(url));
             merged.add(incoming);
             // Keep old canonical text/vector together until its source is removed or expires.
-            Map<String, Value> payload = payload(match == null ? Map.of() : match.getPayloadMap(), merged, now);
+            Map<String, Value> payload = payload(match == null ? Map.of() : match.payload(), merged, now);
             if (match == null) {
                 await(client.upsertAsync(Points.UpsertPoints.newBuilder().setCollectionName(collection).setWait(true)
                         .addPoints(Points.PointStruct.newBuilder().setId(id)
@@ -88,18 +134,34 @@ final class KnowledgeFactIndex {
             } else {
                 await(client.setPayloadAsync(collection, payload, List.of(id), true, null, null));
             }
+            current.put(id, payload);
             retained.add(id);
         }
         // Do not delete a shared point when just one document changes its statement.
         for (var point : previous) {
-            if (retained.contains(point.getId())) continue;
-            var remaining = new ArrayList<>(sources(point.getPayloadMap()));
+            if (!obsolete.contains(point.getId()) || retained.contains(point.getId())) continue;
+            var latest = current.get(point.getId());
+            var remaining = new ArrayList<>(sources(latest));
             remaining.removeIf(s -> s.documentId() == documentId);
             if (remaining.isEmpty()) await(client.deleteAsync(Points.DeletePoints.newBuilder()
                     .setCollectionName(collection).setWait(true).setPoints(Points.PointsSelector.newBuilder()
                             .setPoints(Points.PointsIdsList.newBuilder().addIds(point.getId()))).build()));
-            else await(client.setPayloadAsync(collection, payload(point.getPayloadMap(), remaining, now), List.of(point.getId()), true, null, null));
+            else await(client.setPayloadAsync(collection, payload(latest, remaining, now), List.of(point.getId()), true, null, null));
         }
+    }
+
+    List<KnowledgeStore.KnowledgeSource> documentSources(long documentId) throws IOException {
+        List<KnowledgeStore.KnowledgeSource> result = new ArrayList<>();
+        for (var point : documentPoints(documentId)) {
+            for (var source : sources(point.getPayloadMap())) {
+                if (source.documentId() == documentId) result.add(source);
+            }
+        }
+        return List.copyOf(result);
+    }
+
+    private static boolean sameClaim(KnowledgeQueryParser.Entry incoming, Candidate existing) {
+        return incoming.question().equals(existing.question()) && incoming.conclusion().equals(existing.conclusion());
     }
 
     List<KnowledgeStore.KnowledgeSource> sources(Map<String, Value> payload) throws IOException {

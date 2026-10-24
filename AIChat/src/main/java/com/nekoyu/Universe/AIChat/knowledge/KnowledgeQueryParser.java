@@ -18,6 +18,15 @@ final class KnowledgeQueryParser {
     record Entry(String question, String conclusion, float confidence, int ttlDays) {}
 
     static List<Entry> parse(String output, int limit) {
+        return parse(output, limit, false);
+    }
+
+    /** Production indexing must not mistake malformed output for an explicit empty result. */
+    static List<Entry> parseStrict(String output, int limit) {
+        return parse(output, limit, true);
+    }
+
+    private static List<Entry> parse(String output, int limit, boolean strict) {
         if (limit <= 0) throw new IllegalArgumentException("Question limit must be positive");
         JsonArray items;
         try {
@@ -35,14 +44,23 @@ final class KnowledgeQueryParser {
         List<Entry> result = new ArrayList<>();
         Set<String> seenQuestions = new HashSet<>();
         for (JsonElement element : items) {
-            if (!element.isJsonObject()) continue;
+            if (!element.isJsonObject()) {
+                if (strict) throw new IllegalArgumentException("Expected knowledge item object");
+                continue;
+            }
             JsonObject item = element.getAsJsonObject();
-            if (!item.keySet().equals(Set.of("question", "conclusion", "confidence", "ttl_days"))) continue;
+            if (!item.keySet().equals(Set.of("question", "conclusion", "confidence", "ttl_days"))) {
+                if (strict) throw new IllegalArgumentException("Knowledge item fields do not match contract");
+                continue;
+            }
             String question = string(item.get("question"), 300);
             String conclusion = string(item.get("conclusion"), 1000);
             Float confidence = confidence(item.get("confidence"));
             Integer ttlDays = ttlDays(item.get("ttl_days"));
-            if (question == null || conclusion == null || confidence == null || ttlDays == null) continue;
+            if (question == null || conclusion == null || confidence == null || ttlDays == null) {
+                if (strict) throw new IllegalArgumentException("Invalid knowledge item values");
+                continue;
+            }
             if (!seenQuestions.add(question.toLowerCase(Locale.ROOT))) continue;
             result.add(new Entry(question, conclusion, confidence, ttlDays));
             if (result.size() >= limit) break;

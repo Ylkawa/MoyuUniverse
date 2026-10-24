@@ -12,21 +12,17 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.util.*;
 import java.util.function.Consumer;
-import java.util.function.Function;
 
 /** 短上下文入库编排，模型与研究分离，失败不影响研究工具的回调。 */
 final class KnowledgeIngestion {
     private static final Logger logger = LoggerFactory.getLogger(KnowledgeIngestion.class);
     private final LLMProvider provider;
     private final String model;
-    private final Function<String, String> existing;
     private final Consumer<KnowledgeSources.Source> index;
 
-    KnowledgeIngestion(LLMProvider provider, String model, Function<String, String> existing,
-                       Consumer<KnowledgeSources.Source> index) {
+    KnowledgeIngestion(LLMProvider provider, String model, Consumer<KnowledgeSources.Source> index) {
         this.provider = provider;
         this.model = model;
-        this.existing = existing;
         this.index = index;
     }
 
@@ -61,8 +57,9 @@ final class KnowledgeIngestion {
                     continue;
                 }
                 try {
-                    String old = existing.apply(source.url());
-                    if (old == null || isConflicting(old, source.content())) index.accept(source);
+                    // A research result is a partial observation, not a replacement page.
+                    // Existing SQL content says nothing about completed indexing or new facts.
+                    index.accept(source);
                 } catch (RuntimeException error) { logger.error("来源入库失败: {}", source.url(), error); }
             }
         } catch (Exception error) { logger.error("研究报告入库编排失败", error); }
@@ -84,8 +81,7 @@ final class KnowledgeIngestion {
             var response = context.runTurn(provider, model, null, request, new ToolLoopOptions(), null);
             return KnowledgeSources.parseConflict(StructuredOutputs.content(response));
         } catch (Exception error) {
-            logger.warn("Conflict detection failed, defaulting to re-index", error);
-            return true;
+            throw new IOException("Cannot determine whether source facts conflict", error);
         }
     }
 

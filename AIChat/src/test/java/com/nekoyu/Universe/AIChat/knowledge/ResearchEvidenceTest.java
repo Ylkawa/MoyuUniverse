@@ -50,7 +50,7 @@ class ResearchEvidenceTest {
         var model = provider((messages, request) -> response(new KnowledgeSources(sources).toJson(), "stop"));
         List<KnowledgeSources.Source> indexed = new ArrayList<>();
 
-        new KnowledgeIngestion(model, "offline-ingestion", url -> null, indexed::add)
+        new KnowledgeIngestion(model, "offline-ingestion", indexed::add)
                 .ingest("研究角色归属", REPORT, observedEvidence().forReport(REPORT));
 
         assertEquals(URLS, indexed.stream().map(KnowledgeSources.Source::url).toList());

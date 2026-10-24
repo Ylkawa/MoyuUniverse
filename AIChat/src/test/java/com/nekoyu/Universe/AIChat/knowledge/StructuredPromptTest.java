@@ -83,7 +83,7 @@ public class StructuredPromptTest {
 
             provider.clear();
             provider.output = "{\"conflict\":false}";
-            assertFalse(new KnowledgeIngestion(provider, "offline", url -> null, source -> {})
+            assertFalse(new KnowledgeIngestion(provider, "offline", source -> {})
                     .isConflicting("旧资料", "新资料"));
             String conflictPrompt = assertPrompt(provider.calls.get(0), provider.options.get(0).responseFormat);
             assertTrue(conflictPrompt.contains("{\"conflict\":true}") && conflictPrompt.contains("{\"conflict\":false}"));

@@ -40,6 +40,7 @@ public class KnowledgeStore {
     private final DocumentArchive documentArchive;
     private final ResearchStore researchStore;
     private final KnowledgeFactIndex factIndex;
+    private final KnowledgeIngestion ingestion;
     private final int dimension;
     private final int queryCount;
     private final int candidateLimit;
@@ -51,18 +52,35 @@ public class KnowledgeStore {
     private final BlockingQueue<IndexTask> indexQueue = new LinkedBlockingQueue<>();
 
     public KnowledgeStore(Config.Qdrant qdrantCfg, Config.KnowledgeStore ksCfg, HikariDataSource dataSource) throws IOException {
+        this(ksCfg, dataSource, createClient(qdrantCfg),
+                embeddingProvider(ksCfg.embeddingProvider), llmProvider(ksCfg.llmProvider));
+        try {
+            initCollection();
+            initTable();
+        } catch (InterruptedException | ExecutionException | SQLException e) {
+            throw new IOException(e);
+        }
+        new Thread(() -> {
+            while (true) {
+                try {
+                    processNextIndexTask();
+                } catch (InterruptedException e) {
+                    break;
+                } catch (Exception e) {
+                    logger.error("Async index failed; a subsequent research observation can retry", e);
+                }
+            }
+        }, "KnowledgeStore-AsyncIndex").start();
+    }
+
+    /** Service dependencies can be supplied without opening connections or starting a worker. */
+    KnowledgeStore(Config.KnowledgeStore ksCfg, HikariDataSource dataSource, QdrantClient client,
+                   Embedding embedding, LLMProvider llmProvider) {
         this.dataSource = dataSource;
         this.documentArchive = new DocumentArchive(dataSource, ksCfg.documentsTable);
-        try {
-            embedding = (Embedding) Universe.Providers.get(ksCfg.embeddingProvider);
-        } catch (ClassCastException e) {
-            throw new IOException("Embedding provider not found: " + ksCfg.embeddingProvider);
-        }
-        try {
-            llmProvider = (LLMProvider) Universe.Providers.get(ksCfg.llmProvider);
-        } catch (ClassCastException e) {
-            throw new IOException("LLM provider not found: " + ksCfg.llmProvider);
-        }
+        this.client = client;
+        this.embedding = embedding;
+        this.llmProvider = llmProvider;
         llmModel = ksCfg.llmModel;
         dimension = ksCfg.dimension;
         queryCount = Math.max(1, ksCfg.queryCount);
@@ -71,36 +89,37 @@ public class KnowledgeStore {
         embeddingBatchSize = ksCfg.embeddingBatchSize;
         defaultTtlDays = ksCfg.defaultTtlDays;
 
-        try {
-            var builder = QdrantGrpcClient.newBuilder(qdrantCfg.address, qdrantCfg.port, qdrantCfg.encryptedConnection);
-            if (qdrantCfg.secretKey != null) builder.withApiKey(qdrantCfg.secretKey);
-            client = new QdrantClient(builder.build());
-            collection = ksCfg.collection;
-            vectorName = ksCfg.vectorName;
-            documentsTable = DocumentArchive.sqlName(ksCfg.documentsTable);
-            initCollection();
-            initTable();
-            researchStore = new ResearchStore(dataSource, client, embedding, collection + "_research",
-                    vectorName, ksCfg.embeddingModel, dimension);
-        } catch (InterruptedException | ExecutionException | SQLException e) {
-            throw new IOException(e);
-        }
+        collection = ksCfg.collection;
+        vectorName = ksCfg.vectorName;
+        documentsTable = DocumentArchive.sqlName(ksCfg.documentsTable);
+        researchStore = new ResearchStore(dataSource, client, embedding, collection + "_research",
+                vectorName, ksCfg.embeddingModel, dimension);
         factIndex = new KnowledgeFactIndex(client, collection, vectorName, candidateLimit,
                 id -> new KnowledgeSource(id, getDocumentUrl(id), getDocumentTitle(id), "", "", 0, 0),
                 this::matchFact);
+        ingestion = new KnowledgeIngestion(llmProvider, llmModel,
+                source -> indexQueue.offer(new IndexTask(source.url(), source.title(), source.content(), true)));
+    }
 
-        new Thread(() -> {
-            while (true) {
-                try {
-                    IndexTask task = indexQueue.take();
-                    indexDocumentInternal(task.url, task.title, task.content);
-                } catch (InterruptedException e) {
-                    break;
-                } catch (Exception e) {
-                    logger.error("Async index failed", e);
-                }
-            }
-        }, "KnowledgeStore-AsyncIndex").start();
+    private static QdrantClient createClient(Config.Qdrant cfg) {
+        var builder = QdrantGrpcClient.newBuilder(cfg.address, cfg.port, cfg.encryptedConnection);
+        if (cfg.secretKey != null) builder.withApiKey(cfg.secretKey);
+        return new QdrantClient(builder.build());
+    }
+
+    private static Embedding embeddingProvider(String id) throws IOException {
+        if (Universe.Providers.get(id) instanceof Embedding provider) return provider;
+        throw new IOException("Embedding provider not found: " + id);
+    }
+
+    private static LLMProvider llmProvider(String id) throws IOException {
+        if (Universe.Providers.get(id) instanceof LLMProvider provider) return provider;
+        throw new IOException("LLM provider not found: " + id);
+    }
+
+    void processNextIndexTask() throws IOException, InterruptedException {
+        IndexTask task = indexQueue.take();
+        indexDocumentInternal(task.url, task.title, task.content, task.partial);
     }
 
     private void initCollection() throws InterruptedException, ExecutionException {
@@ -149,7 +168,7 @@ public class KnowledgeStore {
     }
 
     public void indexDocument(String url, String title, String content) {
-        indexQueue.offer(new IndexTask(url, title, content));
+        indexQueue.offer(new IndexTask(url, title, content, false));
     }
 
     public ResearchStore researchStore() {
@@ -158,25 +177,25 @@ public class KnowledgeStore {
 
     /** 研究结束后使用知识库自己的模型编排，研究模型不负责结构化提取。 */
     void ingestResearch(String question, String report, Map<String, String> evidence) {
-        new KnowledgeIngestion(llmProvider, llmModel, url -> {
-            Long id = getDocumentIdByUrl(url);
-            return id == null ? null : getDocumentContent(id);
-        }, source -> indexDocument(source.url(), source.title(), source.content())).ingest(question, report, evidence);
+        ingestion.ingest(question, report, evidence);
     }
 
     public void indexDocumentSync(String url, String title, String content) throws IOException {
-        indexDocumentInternal(url, title, content);
+        indexDocumentInternal(url, title, content, false);
     }
 
-    private synchronized void indexDocumentInternal(String url, String title, String content) throws IOException {
+    private synchronized void indexDocumentInternal(String url, String title, String content, boolean partial) throws IOException {
         long start = System.currentTimeMillis();
         logger.info("Indexing document: url={}, contentLen={}", url, content.length());
 
-        long documentId = upsertDocument(url, title, content);
-        if (documentId < 0) {
-            logger.error("Failed to upsert document for url={}", url);
-            return;
+        Long existingId;
+        try {
+            existingId = partial ? findDocumentIdByUrl(url) : null;
+        } catch (SQLException error) {
+            throw new IOException("Cannot find research source document", error);
         }
+        // A partial observation must not overwrite the archive of the facts it did not discuss.
+        long documentId = existingId == null ? upsertDocument(url, title, content) : existingId;
 
         List<String> chunks = chunkContent(content);
         logger.info("Document split into {} chunk(s)", chunks.size());
@@ -208,16 +227,9 @@ public class KnowledgeStore {
         }
 
         logger.info("Generated {} queries total, computing embeddings in batches", allQueries.size());
-        List<List<Float>> vectors;
-        try {
-            vectors = batchEmbed(allQueries);
-        } catch (Exception e) {
-            logger.error("Embedding failed for url={}", url, e);
-            return;
-        }
+        List<List<Float>> vectors = batchEmbed(allQueries);
         if (vectors.size() != allQueries.size()) {
-            logger.error("Embedding count mismatch: expected={}, got={}", allQueries.size(), vectors.size());
-            return;
+            throw new IOException("Embedding count mismatch: expected=" + allQueries.size() + ", got=" + vectors.size());
         }
 
         long now = System.currentTimeMillis();
@@ -225,19 +237,28 @@ public class KnowledgeStore {
         for (int i = 0; i < allQueries.size(); i++) {
             facts.add(new KnowledgeQueryParser.Entry(allQueries.get(i), allConclusions.get(i), allConfidences.get(i), allTtls.get(i)));
         }
-        factIndex.replace(documentId, url, title, facts, vectors, now);
+        if (partial) {
+            factIndex.merge(documentId, url, title, facts, vectors, now,
+                    (incoming, old) -> ingestion.isConflicting(old.question() + "\n" + old.conclusion(),
+                            incoming.question() + "\n" + incoming.conclusion()));
+            String summary = factIndex.documentSources(documentId).stream()
+                    .map(source -> "问题：" + source.question() + "\n来源陈述：" + source.conclusion())
+                    .distinct().collect(java.util.stream.Collectors.joining("\n\n"));
+            upsertDocument(url, title, "研究来源事实摘要（不是网页全文；有效期以知识索引为准）：\n" + summary);
+        } else {
+            factIndex.replace(documentId, url, title, facts, vectors, now);
+        }
 
         logger.info("Index complete: url={}, documentId={}, chunks={}, queries={}, elapsed={}ms",
                 url, documentId, chunks.size(), allQueries.size(), System.currentTimeMillis() - start);
     }
 
-    private long upsertDocument(String url, String title, String content) {
+    private long upsertDocument(String url, String title, String content) throws IOException {
         try {
             return documentArchive.upsert(url, sha256(url), title, content, System.currentTimeMillis());
         } catch (SQLException e) {
-            logger.error("Failed to upsert document for url={}", url, e);
+            throw new IOException("Failed to upsert document for url=" + url, e);
         }
-        return -1;
     }
 
     public String getDocumentContent(long documentId) {
@@ -362,6 +383,15 @@ public class KnowledgeStore {
     }
 
     public Long getDocumentIdByUrl(String url) {
+        try {
+            return findDocumentIdByUrl(url);
+        } catch (SQLException e) {
+            logger.error("getDocumentIdByUrl failed for url={}", url, e);
+            return null;
+        }
+    }
+
+    private Long findDocumentIdByUrl(String url) throws SQLException {
         String sql = "SELECT id FROM " + documentsTable + " WHERE url_hash = ?";
         try (Connection conn = dataSource.getConnection();
              PreparedStatement pstmt = conn.prepareStatement(sql)) {
@@ -369,8 +399,6 @@ public class KnowledgeStore {
             try (ResultSet rs = pstmt.executeQuery()) {
                 if (rs.next()) return rs.getLong(1);
             }
-        } catch (SQLException e) {
-            logger.error("getDocumentIdByUrl failed for url={}", url, e);
         }
         return null;
     }
@@ -402,12 +430,11 @@ public class KnowledgeStore {
         assistant.setChatContext(queryContext(content, queryCount));
         CompletionsResponse resp = assistant.completions(null);
         try {
-            List<KnowledgeQueryParser.Entry> results = KnowledgeQueryParser.parse(StructuredOutputs.content(resp), queryCount);
+            List<KnowledgeQueryParser.Entry> results = KnowledgeQueryParser.parseStrict(StructuredOutputs.content(resp), queryCount);
             logger.debug("Generated {} query-conclusion pairs for content (len={})", results.size(), content.length());
             return results;
         } catch (IllegalArgumentException e) {
-            logger.warn("Invalid knowledge query JSON for content length {}", content.length(), e);
-            return List.of();
+            throw new IOException("Invalid knowledge query JSON for content length " + content.length(), e);
         }
     }
 
@@ -601,11 +628,13 @@ public class KnowledgeStore {
         final String url;
         final String title;
         final String content;
+        final boolean partial;
 
-        IndexTask(String url, String title, String content) {
+        IndexTask(String url, String title, String content, boolean partial) {
             this.url = url;
             this.title = title;
             this.content = content;
+            this.partial = partial;
         }
     }
 

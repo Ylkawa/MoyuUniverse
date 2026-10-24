@@ -139,6 +139,122 @@ class KnowledgeFactIndexTest {
         assertEquals(NOW - 100, f.only().getPayloadOrThrow("created_at").getIntegerValue());
     }
 
+    @Test void researchFragmentUpdatesOnlyConflictingOwnSupportAndKeepsUnrelatedFacts() throws Exception {
+        Fixture f = new Fixture();
+        var oldA = fact("Model v1 limit?", "100", 30);
+        var factB = fact("Model v1 platform?", "Linux", 30);
+        f.index.replace(1, url(1), "Source 1", List.of(oldA, factB), List.of(VECTOR, VECTOR), NOW);
+        f.replace(2, oldA, NOW + 1);
+
+        f.index.merge(1, url(1), "Source 1", List.of(fact("Model v1 limit?", "200", 30)),
+                List.of(VECTOR), NOW + 2, KnowledgeFactIndexTest::sameQuestionDifferentAnswer);
+
+        assertEquals(3, f.points.size());
+        assertEquals(List.of(url(2)), f.sources(f.byConclusion("100")).stream()
+                .map(KnowledgeStore.KnowledgeSource::url).toList(), "another URL still supports the old fact");
+        assertEquals(List.of("200", "Linux"), f.index.documentSources(1).stream()
+                .map(KnowledgeStore.KnowledgeSource::conclusion).sorted().toList());
+        assertEquals(List.of("100"), f.index.documentSources(2).stream()
+                .map(KnowledgeStore.KnowledgeSource::conclusion).toList());
+    }
+
+    @Test void researchFragmentCanAppendWithoutReplacingExistingFacts() throws Exception {
+        Fixture f = new Fixture();
+        var a = fact("Question A?", "Answer A", 30);
+        var b = fact("Question B?", "Answer B", 30);
+        f.index.replace(1, url(1), "Source 1", List.of(a, b), List.of(VECTOR, VECTOR), NOW);
+
+        f.index.merge(1, url(1), "Source 1", List.of(fact("Question C?", "Answer C", 30)),
+                List.of(VECTOR), NOW + 1, (incoming, ownOld) -> false);
+
+        assertEquals(3, f.points.size());
+        assertEquals(List.of("Answer A", "Answer B", "Answer C"), f.index.documentSources(1).stream()
+                .map(KnowledgeStore.KnowledgeSource::conclusion).sorted().toList());
+    }
+
+    @Test void failedConflictDecisionCannotWriteOrRemoveAnyFact() throws Exception {
+        Fixture f = new Fixture();
+        f.replace(1, fact("Model v1 limit?", "100", 30), NOW);
+        var before = Map.copyOf(f.points);
+
+        assertThrows(IOException.class, () -> f.index.merge(1, url(1), "Source 1",
+                List.of(fact("Model v1 limit?", "200", 30)), List.of(VECTOR), NOW + 1,
+                (incoming, ownOld) -> { throw new IOException("offline classifier unavailable"); }));
+
+        assertEquals(before, f.points);
+    }
+
+    @Test void researchBatchWriteFailureKeepsOldFactsAndRetryConverges() throws Exception {
+        Fixture f = new Fixture();
+        var oldA = fact("Question A?", "Old A", 30);
+        var b = fact("Question B?", "Answer B", 30);
+        f.index.replace(1, url(1), "Source 1", List.of(oldA, b), List.of(VECTOR, VECTOR), NOW);
+        var entries = List.of(fact("Question A?", "New A", 30), fact("Question C?", "Answer C", 30));
+        f.writesUntilFailure = 1;
+
+        assertThrows(IOException.class, () -> f.index.merge(1, url(1), "Source 1", entries,
+                List.of(VECTOR, VECTOR), NOW + 1, KnowledgeFactIndexTest::sameQuestionDifferentAnswer));
+
+        assertEquals(3, f.points.size());
+        assertEquals(1, f.sources(f.byConclusion("Old A")).size());
+        var partiallyWrittenId = f.byConclusion("New A").getId();
+        f.writesUntilFailure = -1;
+        f.index.merge(1, url(1), "Source 1", entries, List.of(VECTOR, VECTOR), NOW + 2,
+                KnowledgeFactIndexTest::sameQuestionDifferentAnswer);
+
+        assertEquals(3, f.points.size());
+        assertEquals(partiallyWrittenId, f.byConclusion("New A").getId());
+        assertEquals(List.of("Answer B", "Answer C", "New A"), f.index.documentSources(1).stream()
+                .map(KnowledgeStore.KnowledgeSource::conclusion).sorted().toList());
+    }
+
+    @Test void relearningExpiredOwnFactRefreshesItsOriginalPoint() throws Exception {
+        Fixture f = new Fixture();
+        var entry = fact("Model v1 limit?", "100", 7);
+        f.replace(1, entry, NOW);
+        var original = f.only();
+        long later = NOW + 8 * 86_400_000L;
+
+        f.index.merge(1, url(1), "Source 1", List.of(entry), List.of(VECTOR), later,
+                (incoming, ownOld) -> { throw new AssertionError("identical facts cannot conflict"); });
+
+        assertEquals(original.getId(), f.only().getId());
+        assertEquals(original.getVectors(), f.only().getVectors());
+        assertEquals(NOW, f.only().getPayloadOrThrow("created_at").getIntegerValue());
+        assertEquals(later + 7 * 86_400_000L, f.index.documentSources(1).get(0).expiresAt());
+        f.replace(1, entry, later + 1);
+        assertEquals(original.getId(), f.only().getId(), "full rebuild also renews the existing fact");
+    }
+
+    @Test void equivalentEntriesInOneResearchBatchKeepLatestSupportAndOtherSources() throws Exception {
+        Fixture f = new Fixture();
+        var original = fact("Model v1 limit?", "100", 30);
+        f.replace(1, original, NOW);
+        f.replace(2, original, NOW + 1);
+        var id = f.only().getId();
+        f.matcher = (incoming, candidates) -> {
+            for (int i = 0; i < candidates.size(); i++)
+                if (incoming.conclusion().equals(candidates.get(i).conclusion())) return i;
+            return -1;
+        };
+        var entries = List.of(fact("What is the Model v1 limit?", "100", 7),
+                fact("How high is the Model v1 limit?", "100", 90));
+
+        f.index.merge(1, url(1), "Source 1", entries, List.of(VECTOR, VECTOR), NOW + 2,
+                (incoming, ownOld) -> false);
+
+        assertEquals(id, f.only().getId());
+        assertEquals(2, f.sources(f.only()).size());
+        assertEquals(entries.get(1).question(), f.index.documentSources(1).get(0).question());
+        assertEquals(NOW + 2 + 90 * 86_400_000L, f.index.documentSources(1).get(0).expiresAt());
+        assertEquals(NOW + 1 + 30 * 86_400_000L, f.index.documentSources(2).get(0).expiresAt());
+    }
+
+    private static boolean sameQuestionDifferentAnswer(KnowledgeQueryParser.Entry incoming,
+                                                       KnowledgeFactIndex.Candidate ownOld) {
+        return incoming.question().equals(ownOld.question()) && !incoming.conclusion().equals(ownOld.conclusion());
+    }
+
     @Test void matchSelectionRejectsOutOfRangeFractionalAndUnstructuredAnswers() {
         assertEquals(-1, KnowledgeSources.parseMatchIndex("{\"match_index\":-1}", 2));
         assertEquals(1, KnowledgeSources.parseMatchIndex("{\"match_index\":1}", 2));
@@ -155,7 +271,7 @@ class KnowledgeFactIndexTest {
     private static Value integer(long n) { return Value.newBuilder().setIntegerValue(n).build(); }
     private static List<String> strings(Value list) { return list.getListValue().getValuesList().stream().map(Value::getStringValue).toList(); }
 
-    private static class Fixture {
+    static class Fixture {
         final Map<Common.PointId, Points.PointStruct> points = new LinkedHashMap<>();
         boolean failWrite;
         int writesUntilFailure = -1;
@@ -163,9 +279,10 @@ class KnowledgeFactIndexTest {
         Points.ScrollPoints lastScroll;
         KnowledgeFactIndex.Matcher matcher = (incoming, candidates) -> -1;
         final KnowledgeFactIndex index;
+        final QdrantClient client;
 
         Fixture() {
-            var client = new QdrantClient(QdrantGrpcClient.newBuilder(new OfflineChannel(this), false, false).build());
+            client = new QdrantClient(QdrantGrpcClient.newBuilder(new OfflineChannel(this), false, false).build());
             index = new KnowledgeFactIndex(client, "knowledge-test", "vector", 10,
                     id -> new KnowledgeStore.KnowledgeSource(id, url(id), "Source " + id, "", "", 0, 0),
                     (entry, candidates) -> { matchCalls++; return matcher.select(entry, candidates); });
