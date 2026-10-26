@@ -43,8 +43,6 @@ public class VerifyDeployment {
                             }
                         }
                     }
-                    // Protobuf generated-code/runtime compatibility, without contacting Qdrant.
-                    Class.forName("io.qdrant.client.grpc.Points$PointStruct", true, loader).getMethod("getDefaultInstance").invoke(null);
                 }
             }
         }
@@ -67,7 +65,7 @@ public class VerifyDeployment {
                 }
             }
         }
-        System.out.println("Verified thin main + " + laws.size() + " law entry points + " + plugins + " plugin entry points; shared runtime libraries and protobuf compatible; no lifecycle/network started");
+        System.out.println("Verified thin main + " + laws.size() + " law entry points + " + plugins + " plugin entry points; shared runtime libraries linked; no lifecycle/network started");
     }
     static List<Path> jars(Path path) throws IOException {
         try (var stream = Files.list(path)) { return stream.filter(p -> p.toString().endsWith(".jar")).sorted().toList(); }

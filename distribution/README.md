@@ -61,7 +61,7 @@ Windows classpath 分隔符用 `;`。不要继续使用只含 `java -jar Univers
 
 ## 校验及边界
 
-脚本检查所有法则主类及 AIChat 插件主类在实际父子 loader 关系下的反射链接、插件类型一致性、业务 JAR 没有嵌入第三方 class、lib 不重复包含业务模块、库坐标不重复，并调用 Qdrant 生成类验证 protobuf 静态兼容性。随后校验既有图标资源。日志分别在 verification.log 和 icons-verification.log。
+脚本检查所有法则主类及 AIChat 插件主类在实际父子 loader 关系下的反射链接、插件类型一致性、业务 JAR 没有嵌入第三方 class、lib 不重复包含业务模块以及库坐标不重复。随后校验既有图标资源。日志分别在 verification.log 和 icons-verification.log。记忆和知识向量使用 PostgreSQL + pgvector，迁移及配置说明见 [向量迁移说明](../scripts/pgvector-migration.md)。
 
 这些检查不会执行主程序、法则构造/prepare 或插件 onEnable，不连接数据库、模型、Broker 或设备。首次实际启动后仍需检查已启用的业务链路。构建机用 JDK 17+；本次默认依赖集合含 HikariCP 7，运行环境需满足各库的 JDK 要求。
 

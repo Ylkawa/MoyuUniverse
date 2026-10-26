@@ -3,12 +3,6 @@ package com.nekoyu.Universe.AIChat.knowledge;
 import com.google.gson.JsonObject;
 import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.*;
 import com.nekoyu.Universe.API.Providers.LLMProvider.RespBodies.EmbeddingResponse;
-import io.grpc.*;
-import io.qdrant.client.QdrantClient;
-import io.qdrant.client.QdrantGrpcClient;
-import io.qdrant.client.grpc.Collections;
-import io.qdrant.client.grpc.Common;
-import io.qdrant.client.grpc.Points;
 import org.junit.jupiter.api.Test;
 
 import javax.sql.DataSource;
@@ -16,26 +10,21 @@ import java.io.IOException;
 import java.lang.reflect.*;
 import java.sql.*;
 import java.util.*;
-import java.util.concurrent.TimeUnit;
 
 import static com.nekoyu.Universe.AIChat.knowledge.LibrarianResearchTest.*;
 import static org.junit.jupiter.api.Assertions.*;
 
-/** Offline JDBC and gRPC interceptors: no database, Qdrant or embedding endpoint is contacted. */
+/** Offline JDBC regressions for reports, evidence and topic embeddings. */
 class ResearchStoreTest {
     private static final String URL = "https://example.invalid/source";
 
     @Test void archiveRoundTripKeepsIdTimesRequestAndObservedEvidence() throws Exception {
         Fixture f = new Fixture();
-        f.collectionExists = false;
         Researches first = research("原主题", "有来源的完整报告：" + URL);
         f.store.archiveResearch(first);
         f.store.archiveResearch(first);
         assertEquals(1, f.rows.size(), "重试同一次归档不创建新任务");
-        assertTrue(f.lastUpsert.getWait());
-        assertEquals(first.id().toString(), f.lastUpsert.getPoints(0).getId().getUuid());
-        assertEquals("research-test", f.lastUpsert.getCollectionName());
-        assertEquals(2, f.lastCreate.getVectorsConfig().getParamsMap().getMapOrThrow("vector").getSize());
+        assertEquals(first.id(), f.lastVectorId);
         f.hits = List.of(first.id());
         Researches loaded = f.store.searchResearches("不同表述的相似主题").get(0);
         assertEquals(List.of("原主题", "原主题", "不同表述的相似主题"), f.embedded);
@@ -45,8 +34,8 @@ class ResearchStoreTest {
         assertEquals(first.report(), loaded.report());
         assertEquals(first.lastRequest(), loaded.lastRequest());
         assertEquals(first.evidence(), loaded.evidence(), "来源证据须原样往返，不从对话重新推测");
-        assertEquals(0.6f, f.lastSearch.getScoreThreshold());
-        assertEquals(3, f.lastSearch.getLimit());
+        assertEquals(0.4, f.lastMaximumDistance, 0.00001);
+        assertTrue(f.lastSearchSql.contains("LIMIT 3"));
     }
 
     @Test void searchPreservesVectorOrderAndSkipsDuplicateMissingAndFailedRecords() throws Exception {
@@ -69,11 +58,11 @@ class ResearchStoreTest {
         f.failUpsert = true;
         assertThrows(IOException.class, () -> f.store.archiveResearch(research));
         assertEquals(research.report(), f.rows.get(research.id()).get("report"));
-        assertNotNull(f.lastUpsert);
-        f.lastUpsert = null;
+        assertNotNull(f.lastVectorId);
+        f.lastVectorId = null;
         f.failSql = true;
         assertThrows(IOException.class, () -> f.store.archiveResearch(research("另一主题", "另一报告")));
-        assertNull(f.lastUpsert);
+        assertNull(f.lastVectorId);
     }
 
     @Test void invalidEmbeddingNeverReachesVectorServiceButReportIsSaved() {
@@ -81,7 +70,7 @@ class ResearchStoreTest {
         f.embeddingValues = new double[]{Double.NaN, 1};
         assertThrows(IOException.class, () -> f.store.archiveResearch(research("主题", "报告")));
         assertEquals(1, f.rows.size());
-        assertNull(f.lastUpsert);
+        assertNull(f.lastVectorId);
     }
 
     @Test void librarianUsesStoreForHistoryAndArchivesItsFinalRequest() throws Exception {
@@ -225,10 +214,9 @@ class ResearchStoreTest {
         List<UUID> hits = List.of();
         double[] embeddingValues = {0.3, 0.7};
         boolean failSql, failUpsert;
-        boolean collectionExists = true;
-        Collections.CreateCollection lastCreate;
-        Points.UpsertPoints lastUpsert;
-        Points.SearchPoints lastSearch;
+        UUID lastVectorId;
+        String lastSearchSql;
+        double lastMaximumDistance;
         final ResearchStore store;
 
         Fixture() {
@@ -241,8 +229,7 @@ class ResearchStoreTest {
                     default -> throw new UnsupportedOperationException(m.getName());
                 });
             });
-            var grpc = QdrantGrpcClient.newBuilder(new OfflineChannel(this), false, false).build();
-            store = new ResearchStore(ds, new QdrantClient(grpc), request -> {
+            store = new ResearchStore(ds, request -> {
                 assertEquals("test-embedding", request.model);
                 assertEquals(2, request.dimension);
                 embedded.add(request.message.get(0).toString());
@@ -251,15 +238,21 @@ class ResearchStoreTest {
                 data.embedding = embeddingValues;
                 response.data.add(data);
                 return response;
-            }, "research-test", "vector", "test-embedding", 2);
+            }, "test-embedding", 2);
         }
 
         PreparedStatement statement(String sql) {
             Map<Integer, Object> parameters = new HashMap<>();
             return proxy(PreparedStatement.class, (object, method, args) -> {
                 switch (method.getName()) {
-                    case "setObject", "setString": parameters.put((Integer) args[0], args[1]); return null;
+                    case "setObject", "setString", "setDouble": parameters.put((Integer) args[0], args[1]); return null;
                     case "executeUpdate": {
+                        if (sql.startsWith("UPDATE")) {
+                            lastVectorId = (UUID) parameters.get(2);
+                            if (failUpsert) throw new SQLException("offline vector update failure");
+                            rows.get(lastVectorId).put("embedding", parameters.get(1));
+                            return 1;
+                        }
                         assertTrue(sql.contains("?::jsonb"));
                         UUID id = (UUID) parameters.get(1);
                         Map<String, Object> row = new HashMap<>();
@@ -271,12 +264,15 @@ class ResearchStoreTest {
                     }
                     case "executeQuery": {
                         assertTrue(sql.contains("status = 'completed'"));
-                        Map<String, Object> row = rows.get(parameters.get(1));
-                        boolean[] read = {false};
+                        lastSearchSql = sql;
+                        lastMaximumDistance = (Double) parameters.get(2);
+                        var selected = hits.stream().distinct().map(rows::get).filter(Objects::nonNull)
+                                .filter(row -> "completed".equals(row.get("status")) && row.get("embedding") != null)
+                                .limit(3).toList();
+                        int[] index = {-1};
                         return proxy(ResultSet.class, (r, m, a) -> switch (m.getName()) {
-                            case "next" -> { boolean present = !read[0] && row != null && "completed".equals(row.get("status"));
-                                read[0] = true; yield present; }
-                            case "getString", "getObject" -> row.get((String) a[0]);
+                            case "next" -> ++index[0] < selected.size();
+                            case "getString", "getObject" -> selected.get(index[0]).get((String) a[0]);
                             case "close" -> null;
                             default -> throw new UnsupportedOperationException(m.getName());
                         });
@@ -288,52 +284,4 @@ class ResearchStoreTest {
         }
     }
 
-    private static class OfflineChannel extends ManagedChannel {
-        private final Fixture fixture;
-        OfflineChannel(Fixture fixture) { this.fixture = fixture; }
-        @Override public String authority() { return "offline"; }
-        @Override public ManagedChannel shutdown() { return this; }
-        @Override public ManagedChannel shutdownNow() { return this; }
-        @Override public boolean isShutdown() { return false; }
-        @Override public boolean isTerminated() { return false; }
-        @Override public boolean awaitTermination(long timeout, TimeUnit unit) { return true; }
-        @Override public <ReqT, RespT> ClientCall<ReqT, RespT> newCall(MethodDescriptor<ReqT, RespT> method, CallOptions options) {
-            return new ClientCall<>() {
-                Listener<RespT> listener;
-                ReqT request;
-                @Override public void start(Listener<RespT> listener, Metadata headers) { this.listener = listener; }
-                @Override public void request(int count) {}
-                @Override public void cancel(String message, Throwable cause) {}
-                @Override public void sendMessage(ReqT message) { request = message; }
-                @SuppressWarnings("unchecked")
-                @Override public void halfClose() {
-                    Object response;
-                    if (request instanceof Collections.CollectionExistsRequest) {
-                        response = Collections.CollectionExistsResponse.newBuilder()
-                                .setResult(Collections.CollectionExists.newBuilder().setExists(fixture.collectionExists)).build();
-                    } else if (request instanceof Collections.CreateCollection create) {
-                        fixture.lastCreate = create;
-                        fixture.collectionExists = true;
-                        response = Collections.CollectionOperationResponse.newBuilder().setResult(true).build();
-                    } else if (request instanceof Points.UpsertPoints upsert) {
-                        fixture.lastUpsert = upsert;
-                        if (fixture.failUpsert) {
-                            listener.onClose(Status.UNAVAILABLE.withDescription("offline vector failure"), new Metadata());
-                            return;
-                        }
-                        response = Points.PointsOperationResponse.newBuilder().setResult(Points.UpdateResult.newBuilder()
-                                .setStatus(Points.UpdateStatus.Completed)).build();
-                    } else if (request instanceof Points.SearchPoints search) {
-                        fixture.lastSearch = search;
-                        var builder = Points.SearchResponse.newBuilder();
-                        for (UUID id : fixture.hits) builder.addResult(Points.ScoredPoint.newBuilder()
-                                .setId(Common.PointId.newBuilder().setUuid(id.toString())).setScore(0.9f));
-                        response = builder.build();
-                    } else throw new AssertionError("Unexpected offline RPC: " + method.getFullMethodName());
-                    listener.onMessage((RespT) response);
-                    listener.onClose(Status.OK, new Metadata());
-                }
-            };
-        }
-    }
 }

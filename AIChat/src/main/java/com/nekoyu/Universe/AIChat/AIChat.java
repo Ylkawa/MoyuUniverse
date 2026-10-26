@@ -215,10 +215,12 @@ public class AIChat extends Law {
                 logger.info("数据库连接成功");
             }
 
-            if (globalCfg.Qdrant != null) {
+            if (dataSource != null) {
                 if (globalCfg.Memory != null) {
-                    if (Universe.Providers.get(globalCfg.Annotator.embeddingProvider) instanceof Embedding embedding) {
-                        memory = new com.nekoyu.Universe.AIChat.Memory(globalCfg.Qdrant, globalCfg.Memory);
+                    String memoryProvider = globalCfg.Memory.embeddingProvider != null ? globalCfg.Memory.embeddingProvider
+                            : globalCfg.Annotator == null ? null : globalCfg.Annotator.embeddingProvider;
+                    if (Universe.Providers.get(memoryProvider) instanceof Embedding embedding) {
+                        memory = new com.nekoyu.Universe.AIChat.Memory(dataSource, globalCfg.Memory, embedding);
                         // 如果记忆可用，那么给主Agent提供主动查询记忆内容的方法
                         LLMFunction query_memory = LLMFunction.builder()
                                 .name("QueryMemory")
@@ -242,13 +244,8 @@ public class AIChat extends Law {
                                     }
                                     String question = o.get("Question").getAsString();
                                     try {
-                                        EmbeddingRequest request = new EmbeddingRequest();
-                                        MFChain mfc = new MFChain();
-                                        mfc.add(new TextField(question));
-                                        request.message.add(mfc);
-                                        EmbeddingResponse response = embedding.embedding(request);
                                         List<Float> vector = new ArrayList<>();
-                                        for (double a : response.data.get(0).embedding) {
+                                        for (double a : memory.embedding(question)) {
                                             vector.add((float) a);
                                         }
                                         List<Memory.Item> queryResult = memory.query(vector, locationIds);
@@ -265,10 +262,10 @@ public class AIChat extends Law {
                                 })
                                 .build();
                         llmFunctions.put("QueryMemory", query_memory);
-                    }
+                    } else throw new IllegalArgumentException("Memory.embeddingProvider must identify an embedding provider");
                 }
                 if (globalCfg.KnowledgeStore != null && dataSource != null) {
-                    knowledgeStore = new KnowledgeStore(globalCfg.Qdrant, globalCfg.KnowledgeStore, dataSource);
+                    knowledgeStore = new KnowledgeStore(globalCfg.KnowledgeStore, dataSource);
                     if (globalCfg.Librarian != null) {
                         librarian = new Librarian(knowledgeStore, globalCfg.Librarian);
                         llmFunctions.put("Librarian",

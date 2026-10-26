@@ -25,10 +25,10 @@ class KnowledgeStoreIngestionTest {
         f.failEmbedding = true;
         assertThrows(IOException.class, () -> f.learn(fact("A price?", "A costs 10")));
         assertEquals(1, f.sql.rows.size(), "keep the source archive even if embedding is unavailable");
-        assertTrue(f.qdrant.points.isEmpty());
+        assertTrue(f.vectors.points.isEmpty());
         f.failEmbedding = false;
         assertTimeoutPreemptively(Duration.ofSeconds(3), () -> f.learn(fact("A price?", "A costs 10")));
-        assertEquals(1, f.qdrant.points.size());
+        assertEquals(1, f.vectors.points.size());
         assertEquals(2, f.embeddingCalls);
         assertTrue(f.sql.content().contains("A costs 10"));
     }
@@ -58,11 +58,11 @@ class KnowledgeStoreIngestionTest {
         f.knowledgeOutput = "{\"items\":[{\"question\":\"invalid missing fields\"}]}";
         assertThrows(IOException.class, f::submit);
         assertEquals(before, f.sql.content());
-        assertEquals(2, f.qdrant.points.size());
+        assertEquals(2, f.vectors.points.size());
         f.knowledgeOutput = "{\"items\":[]}";
         assertDoesNotThrow(f::submit);
         assertEquals(before, f.sql.content(), "explicit empty extraction is a successful non-destructive no-op");
-        assertEquals(2, f.qdrant.points.size());
+        assertEquals(2, f.vectors.points.size());
     }
 
     @Test void sqlAndEmbeddingCountFailuresPropagateInsteadOfReturningSuccess() throws Exception {
@@ -72,7 +72,7 @@ class KnowledgeStoreIngestionTest {
         f.sql.fail = false;
         f.emptyEmbedding = true;
         assertThrows(IOException.class, () -> f.learn(fact("A price?", "A costs 10")));
-        assertTrue(f.qdrant.points.isEmpty());
+        assertTrue(f.vectors.points.isEmpty());
     }
 
     private static Map<String, Object> fact(String question, String conclusion) {
@@ -80,7 +80,7 @@ class KnowledgeStoreIngestionTest {
     }
 
     private static class Fixture {
-        final KnowledgeFactIndexTest.Fixture qdrant = new KnowledgeFactIndexTest.Fixture();
+        final KnowledgeFactIndexTest.Fixture vectors = new KnowledgeFactIndexTest.Fixture();
         final Sql sql = new Sql();
         final KnowledgeStore store;
         boolean failEmbedding, emptyEmbedding, failConflict;
@@ -91,7 +91,7 @@ class KnowledgeStoreIngestionTest {
         Fixture() {
             var cfg = new Config.KnowledgeStore();
             cfg.dimension = 2;
-            store = new KnowledgeStore(cfg, sql, qdrant.client, request -> {
+            store = new KnowledgeStore(cfg, sql, vectors.table, request -> {
                 embeddingCalls++;
                 if (failEmbedding) throw new IOException("offline embedding failure");
                 var result = new EmbeddingResponse();
@@ -127,7 +127,7 @@ class KnowledgeStoreIngestionTest {
         }
         Set<String> conclusions() {
             Set<String> result = new HashSet<>();
-            qdrant.points.values().forEach(p -> result.add(p.getPayloadOrThrow("conclusion").getStringValue()));
+            vectors.points.values().forEach(p -> result.add(p.payload().get("conclusion").getAsString()));
             return result;
         }
     }

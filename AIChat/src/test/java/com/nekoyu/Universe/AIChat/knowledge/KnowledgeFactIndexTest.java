@@ -1,20 +1,15 @@
 package com.nekoyu.Universe.AIChat.knowledge;
 
-import io.grpc.*;
-import io.qdrant.client.QdrantClient;
-import io.qdrant.client.QdrantGrpcClient;
-import io.qdrant.client.grpc.Common;
-import io.qdrant.client.grpc.JsonWithInt.Value;
-import io.qdrant.client.grpc.Points;
 import org.junit.jupiter.api.Test;
 
 import java.io.IOException;
+import com.google.gson.*;
+import com.nekoyu.Universe.AIChat.VectorTableFixture;
 import java.util.*;
-import java.util.concurrent.TimeUnit;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-/** Exercises the real Qdrant client requests against an in-memory gRPC channel; no live services. */
+/** Fact merging and source lifetime regressions against the storage boundary; JDBC is tested separately. */
 class KnowledgeFactIndexTest {
     private static final long NOW = 1_790_000_000_000L;
     private static final List<Float> VECTOR = List.of(0.3f, 0.7f);
@@ -25,13 +20,13 @@ class KnowledgeFactIndexTest {
         var first = f.only();
         f.replace(2, fact("Model A price in region R on date D?", "$2/$10", 30), NOW + 1);
         var merged = f.only();
-        assertEquals(first.getId(), merged.getId());
-        assertEquals(first.getVectors(), merged.getVectors());
+        assertEquals(first.id(), merged.id());
+        assertEquals(first.embedding(), merged.embedding());
         assertEquals(2, f.sources(merged).size());
-        assertEquals(List.of(url(1), url(2)), strings(merged.getPayloadOrThrow("source_urls")));
-        assertEquals(2, merged.getPayloadOrThrow("document_ids").getListValue().getValuesCount());
-        assertEquals(0.85, merged.getPayloadOrThrow("confidence").getDoubleValue(), 0.0001);
-        assertEquals(NOW, merged.getPayloadOrThrow("created_at").getIntegerValue());
+        assertEquals(List.of(url(1), url(2)), strings(merged.payload().get("source_urls")));
+        assertEquals(2, merged.payload().get("document_ids").getAsJsonArray().size());
+        assertEquals(0.85, merged.payload().get("confidence").getAsDouble(), 0.0001);
+        assertEquals(NOW, merged.payload().get("created_at").getAsLong());
         assertEquals(NOW + 7 * 86_400_000L, f.sources(merged).get(0).expiresAt());
         assertEquals(NOW + 1 + 30 * 86_400_000L, f.sources(merged).get(1).expiresAt());
         assertEquals(0, f.matchCalls, "exact duplicates need no model round trip");
@@ -58,7 +53,7 @@ class KnowledgeFactIndexTest {
         assertEquals(2, f.points.size());
         var old = f.byConclusion("$2/$10");
         assertEquals(List.of(url(2)), f.sources(old).stream().map(KnowledgeStore.KnowledgeSource::url).toList());
-        assertEquals(2, old.getPayloadOrThrow("document_id").getIntegerValue());
+        assertEquals(2, old.payload().get("document_id").getAsLong());
         f.replace(2, fact("Model A price?", "$4/$20", 30), NOW + 3);
         assertEquals(1, f.points.size(), "last obsolete source removal deletes only the unsupported fact");
         assertEquals(2, f.sources(f.only()).size());
@@ -72,7 +67,7 @@ class KnowledgeFactIndexTest {
         f.replace(2, entry, NOW + 2);
         assertEquals(1, f.points.size());
         assertEquals(2, f.sources(f.only()).size());
-        assertEquals(2, f.lastScroll.getFilter().getShould(1).getField().getMatch().getInteger());
+        assertEquals(2, f.table.lastDocumentId);
     }
 
     @Test void expiryOfOneSourceDoesNotHideOrRefreshAnotherSource() throws Exception {
@@ -80,12 +75,12 @@ class KnowledgeFactIndexTest {
         f.replace(1, fact("Model A price?", "$2/$10", 7), NOW);
         f.replace(2, fact("Model A price?", "$2/$10", 30), NOW + 1);
         long later = NOW + 8 * 86_400_000L;
-        assertEquals(List.of(url(2)), f.index.activeSources(f.only().getPayloadMap(), later).stream()
+        assertEquals(List.of(url(2)), f.index.activeSources(f.only().payload(), later).stream()
                 .map(KnowledgeStore.KnowledgeSource::url).toList());
         f.replace(3, fact("Model A price?", "$2/$10", 30), later);
         assertEquals(1, f.points.size());
-        assertEquals(2, f.only().getPayloadOrThrow("document_id").getIntegerValue());
-        assertEquals(List.of(url(2), url(3)), f.index.activeSources(f.only().getPayloadMap(), later).stream()
+        assertEquals(2, f.only().payload().get("document_id").getAsLong());
+        assertEquals(List.of(url(2), url(3)), f.index.activeSources(f.only().payload(), later).stream()
                 .map(KnowledgeStore.KnowledgeSource::url).toList());
         assertEquals(NOW + 7 * 86_400_000L, f.sources(f.only()).get(0).expiresAt());
     }
@@ -93,7 +88,7 @@ class KnowledgeFactIndexTest {
     @Test void partialBatchFailureRetainsOldFactsAndRetryConverges() throws Exception {
         Fixture f = new Fixture();
         f.replace(1, fact("Old question?", "Old answer", 30), NOW);
-        var oldId = f.only().getId();
+        var oldId = f.only().id();
         var entries = List.of(fact("New question A?", "New answer A", 30), fact("New question B?", "New answer B", 30));
         f.writesUntilFailure = 1;
         assertThrows(IOException.class, () -> f.index.replace(1, url(1), "Source 1", entries, List.of(VECTOR, VECTOR), NOW + 1));
@@ -109,7 +104,7 @@ class KnowledgeFactIndexTest {
     @Test void failedWriteOrInvalidMatchCannotRemovePreviouslyStoredSupport() throws Exception {
         Fixture f = new Fixture();
         f.replace(1, fact("Model A price?", "$2/$10", 30), NOW);
-        var oldId = f.only().getId();
+        var oldId = f.only().id();
         f.failWrite = true;
         assertThrows(IOException.class, () -> f.replace(1, fact("Model A price?", "$4/$20", 30), NOW + 1));
         assertTrue(f.points.containsKey(oldId));
@@ -125,18 +120,21 @@ class KnowledgeFactIndexTest {
 
     @Test void legacySingleDocumentPayloadUpgradesOnMergeWithoutChangingItsVectorOrId() throws Exception {
         Fixture f = new Fixture();
-        Common.PointId id = Common.PointId.newBuilder().setUuid(UUID.randomUUID().toString()).build();
-        var legacy = Points.PointStruct.newBuilder().setId(id)
-                .setVectors(io.qdrant.client.VectorsFactory.namedVectors(Map.of("vector", io.qdrant.client.VectorFactory.vector(VECTOR))))
-                .putPayload("document_id", integer(8)).putPayload("query", text("Model A price?"))
-                .putPayload("conclusion", text("$2/$10")).putPayload("confidence", Value.newBuilder().setDoubleValue(0.9).build())
-                .putPayload("ttl", integer(NOW + 86_400_000L)).putPayload("created_at", integer(NOW - 100)).build();
+        UUID id = UUID.randomUUID();
+        JsonObject payload = new JsonObject();
+        payload.addProperty("document_id", 8);
+        payload.addProperty("query", "Model A price?");
+        payload.addProperty("conclusion", "$2/$10");
+        payload.addProperty("confidence", 0.9);
+        payload.addProperty("ttl", NOW + 86_400_000L);
+        payload.addProperty("created_at", NOW - 100);
+        var legacy = new VectorTableFixture.Stored(id, VECTOR, payload);
         f.points.put(id, legacy);
         f.replace(9, fact("Model A price?", "$2/$10", 30), NOW);
-        assertEquals(id, f.only().getId());
-        assertEquals(legacy.getVectors(), f.only().getVectors());
-        assertEquals(List.of(url(8), url(9)), strings(f.only().getPayloadOrThrow("source_urls")));
-        assertEquals(NOW - 100, f.only().getPayloadOrThrow("created_at").getIntegerValue());
+        assertEquals(id, f.only().id());
+        assertEquals(legacy.embedding(), f.only().embedding());
+        assertEquals(List.of(url(8), url(9)), strings(f.only().payload().get("source_urls")));
+        assertEquals(NOW - 100, f.only().payload().get("created_at").getAsLong());
     }
 
     @Test void researchFragmentUpdatesOnlyConflictingOwnSupportAndKeepsUnrelatedFacts() throws Exception {
@@ -197,13 +195,13 @@ class KnowledgeFactIndexTest {
 
         assertEquals(3, f.points.size());
         assertEquals(1, f.sources(f.byConclusion("Old A")).size());
-        var partiallyWrittenId = f.byConclusion("New A").getId();
+        var partiallyWrittenId = f.byConclusion("New A").id();
         f.writesUntilFailure = -1;
         f.index.merge(1, url(1), "Source 1", entries, List.of(VECTOR, VECTOR), NOW + 2,
                 KnowledgeFactIndexTest::sameQuestionDifferentAnswer);
 
         assertEquals(3, f.points.size());
-        assertEquals(partiallyWrittenId, f.byConclusion("New A").getId());
+        assertEquals(partiallyWrittenId, f.byConclusion("New A").id());
         assertEquals(List.of("Answer B", "Answer C", "New A"), f.index.documentSources(1).stream()
                 .map(KnowledgeStore.KnowledgeSource::conclusion).sorted().toList());
     }
@@ -218,12 +216,12 @@ class KnowledgeFactIndexTest {
         f.index.merge(1, url(1), "Source 1", List.of(entry), List.of(VECTOR), later,
                 (incoming, ownOld) -> { throw new AssertionError("identical facts cannot conflict"); });
 
-        assertEquals(original.getId(), f.only().getId());
-        assertEquals(original.getVectors(), f.only().getVectors());
-        assertEquals(NOW, f.only().getPayloadOrThrow("created_at").getIntegerValue());
+        assertEquals(original.id(), f.only().id());
+        assertEquals(original.embedding(), f.only().embedding());
+        assertEquals(NOW, f.only().payload().get("created_at").getAsLong());
         assertEquals(later + 7 * 86_400_000L, f.index.documentSources(1).get(0).expiresAt());
         f.replace(1, entry, later + 1);
-        assertEquals(original.getId(), f.only().getId(), "full rebuild also renews the existing fact");
+        assertEquals(original.id(), f.only().id(), "full rebuild also renews the existing fact");
     }
 
     @Test void equivalentEntriesInOneResearchBatchKeepLatestSupportAndOtherSources() throws Exception {
@@ -231,7 +229,7 @@ class KnowledgeFactIndexTest {
         var original = fact("Model v1 limit?", "100", 30);
         f.replace(1, original, NOW);
         f.replace(2, original, NOW + 1);
-        var id = f.only().getId();
+        var id = f.only().id();
         f.matcher = (incoming, candidates) -> {
             for (int i = 0; i < candidates.size(); i++)
                 if (incoming.conclusion().equals(candidates.get(i).conclusion())) return i;
@@ -243,7 +241,7 @@ class KnowledgeFactIndexTest {
         f.index.merge(1, url(1), "Source 1", entries, List.of(VECTOR, VECTOR), NOW + 2,
                 (incoming, ownOld) -> false);
 
-        assertEquals(id, f.only().getId());
+        assertEquals(id, f.only().id());
         assertEquals(2, f.sources(f.only()).size());
         assertEquals(entries.get(1).question(), f.index.documentSources(1).get(0).question());
         assertEquals(NOW + 2 + 90 * 86_400_000L, f.index.documentSources(1).get(0).expiresAt());
@@ -267,97 +265,38 @@ class KnowledgeFactIndexTest {
         return new KnowledgeQueryParser.Entry(question, answer, 0.85f, days);
     }
     private static String url(long id) { return "https://source" + id + ".invalid/article"; }
-    private static Value text(String s) { return Value.newBuilder().setStringValue(s).build(); }
-    private static Value integer(long n) { return Value.newBuilder().setIntegerValue(n).build(); }
-    private static List<String> strings(Value list) { return list.getListValue().getValuesList().stream().map(Value::getStringValue).toList(); }
+    private static List<String> strings(JsonElement list) {
+        return list.getAsJsonArray().asList().stream().map(JsonElement::getAsString).toList();
+    }
 
     static class Fixture {
-        final Map<Common.PointId, Points.PointStruct> points = new LinkedHashMap<>();
+        final Map<UUID, VectorTableFixture.Stored> points;
         boolean failWrite;
         int writesUntilFailure = -1;
         int matchCalls;
-        Points.ScrollPoints lastScroll;
         KnowledgeFactIndex.Matcher matcher = (incoming, candidates) -> -1;
         final KnowledgeFactIndex index;
-        final QdrantClient client;
+        final VectorTableFixture table;
 
         Fixture() {
-            client = new QdrantClient(QdrantGrpcClient.newBuilder(new OfflineChannel(this), false, false).build());
-            index = new KnowledgeFactIndex(client, "knowledge-test", "vector", 10,
+            table = new VectorTableFixture() {
+                @Override protected void beforeWrite() throws IOException {
+                    if (failWrite || writesUntilFailure == 0) throw new IOException("offline write failure");
+                    if (writesUntilFailure > 0) writesUntilFailure--;
+                }
+            };
+            points = table.points;
+            index = new KnowledgeFactIndex(table, 10,
                     id -> new KnowledgeStore.KnowledgeSource(id, url(id), "Source " + id, "", "", 0, 0),
                     (entry, candidates) -> { matchCalls++; return matcher.select(entry, candidates); });
         }
         void replace(long id, KnowledgeQueryParser.Entry entry, long now) throws IOException {
             index.replace(id, url(id), "Source " + id, List.of(entry), List.of(VECTOR), now);
         }
-        Points.PointStruct only() { assertEquals(1, points.size()); return points.values().iterator().next(); }
-        Points.PointStruct byConclusion(String conclusion) {
-            return points.values().stream().filter(p -> p.getPayloadOrThrow("conclusion").getStringValue().equals(conclusion)).findFirst().orElseThrow();
+        VectorTableFixture.Stored only() { assertEquals(1, points.size()); return points.values().iterator().next(); }
+        VectorTableFixture.Stored byConclusion(String conclusion) {
+            return points.values().stream().filter(p -> p.payload().get("conclusion").getAsString().equals(conclusion)).findFirst().orElseThrow();
         }
-        List<KnowledgeStore.KnowledgeSource> sources(Points.PointStruct p) throws IOException { return index.sources(p.getPayloadMap()); }
-
-        Object rpc(Object request) {
-            if (request instanceof Points.SearchPoints search) {
-                var response = Points.SearchResponse.newBuilder();
-                long now = (long) search.getFilter().getMust(0).getField().getRange().getGte();
-                points.values().stream().filter(p -> p.getPayloadOrThrow("ttl").getIntegerValue() >= now)
-                        .limit(search.getLimit()).forEach(p -> response.addResult(Points.ScoredPoint.newBuilder()
-                                .setId(p.getId()).setScore(0.9f).putAllPayload(p.getPayloadMap())));
-                return response.build();
-            }
-            if (request instanceof Points.ScrollPoints scroll) {
-                lastScroll = scroll;
-                long doc = scroll.getFilter().getShould(0).getField().getMatch().getInteger();
-                var response = Points.ScrollResponse.newBuilder();
-                points.values().stream().filter(p -> p.getPayloadOrThrow("document_id").getIntegerValue() == doc
-                        || p.getPayloadMap().getOrDefault("document_ids", Value.getDefaultInstance()).getListValue()
-                        .getValuesList().stream().anyMatch(v -> v.getIntegerValue() == doc))
-                        .forEach(p -> response.addResult(Points.RetrievedPoint.newBuilder().setId(p.getId()).putAllPayload(p.getPayloadMap())));
-                return response.build();
-            }
-            if (request instanceof Points.UpsertPoints upsert) {
-                assertTrue(upsert.getWait());
-                upsert.getPointsList().forEach(p -> points.put(p.getId(), p));
-            } else if (request instanceof Points.SetPayloadPoints payload) {
-                assertTrue(payload.getWait());
-                for (var id : payload.getPointsSelector().getPoints().getIdsList())
-                    points.computeIfPresent(id, (key, p) -> p.toBuilder().putAllPayload(payload.getPayloadMap()).build());
-            } else if (request instanceof Points.DeletePoints delete) {
-                assertTrue(delete.getWait());
-                delete.getPoints().getPoints().getIdsList().forEach(points::remove);
-            } else throw new AssertionError("Unexpected offline RPC " + request.getClass());
-            return Points.PointsOperationResponse.newBuilder().setResult(Points.UpdateResult.newBuilder().setStatus(Points.UpdateStatus.Completed)).build();
-        }
-    }
-
-    private static class OfflineChannel extends ManagedChannel {
-        private final Fixture fixture;
-        OfflineChannel(Fixture fixture) { this.fixture = fixture; }
-        @Override public String authority() { return "offline"; }
-        @Override public ManagedChannel shutdown() { return this; }
-        @Override public ManagedChannel shutdownNow() { return this; }
-        @Override public boolean isShutdown() { return false; }
-        @Override public boolean isTerminated() { return false; }
-        @Override public boolean awaitTermination(long timeout, TimeUnit unit) { return true; }
-        @Override public <ReqT, RespT> ClientCall<ReqT, RespT> newCall(MethodDescriptor<ReqT, RespT> method, CallOptions options) {
-            return new ClientCall<>() {
-                Listener<RespT> listener;
-                ReqT request;
-                @Override public void start(Listener<RespT> listener, Metadata headers) { this.listener = listener; }
-                @Override public void request(int count) {}
-                @Override public void cancel(String message, Throwable cause) {}
-                @Override public void sendMessage(ReqT message) { request = message; }
-                @SuppressWarnings("unchecked") @Override public void halfClose() {
-                    boolean write = !(request instanceof Points.SearchPoints) && !(request instanceof Points.ScrollPoints);
-                    if (write && (fixture.failWrite || fixture.writesUntilFailure == 0)) {
-                        listener.onClose(Status.UNAVAILABLE, new Metadata());
-                        return;
-                    }
-                    if (write && fixture.writesUntilFailure > 0) fixture.writesUntilFailure--;
-                    listener.onMessage((RespT) fixture.rpc(request));
-                    listener.onClose(Status.OK, new Metadata());
-                }
-            };
-        }
+        List<KnowledgeStore.KnowledgeSource> sources(VectorTableFixture.Stored p) throws IOException { return index.sources(p.payload()); }
     }
 }

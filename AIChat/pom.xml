@@ -47,11 +47,6 @@
             <artifactId>HikariCP</artifactId>
             <version>7.0.2</version>
         </dependency>
-        <dependency>
-            <groupId>io.qdrant</groupId>
-            <artifactId>client</artifactId>
-            <version>1.18.1</version>
-        </dependency>
     </dependencies>
 
     <build>

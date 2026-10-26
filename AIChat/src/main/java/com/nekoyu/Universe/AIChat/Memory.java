@@ -1,560 +1,153 @@
 package com.nekoyu.Universe.AIChat;
 
+import com.google.gson.JsonObject;
 import com.nekoyu.Universe.AIChat.leading.MemoryStore;
-
 import com.nekoyu.Universe.API.MessageChannel.MFChain;
 import com.nekoyu.Universe.API.MessageChannel.MessageField.TextField;
 import com.nekoyu.Universe.API.Providers.LLMProvider.Embedding;
 import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.EmbeddingRequest;
-import com.nekoyu.Universe.API.Providers.LLMProvider.RespBodies.EmbeddingResponse;
-import com.nekoyu.Universe.API.Providers.Provider;
-import com.nekoyu.Universe.Universe;
-import io.qdrant.client.*;
-import io.qdrant.client.grpc.Common;
-import io.qdrant.client.grpc.Points;
-import io.qdrant.client.grpc.JsonWithInt.Value;
-import io.qdrant.client.grpc.Collections;
-import io.qdrant.client.grpc.Collections.PayloadSchemaType;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
+import javax.sql.DataSource;
 import java.io.IOException;
 import java.util.*;
-import java.util.concurrent.ExecutionException;
-
 import static com.nekoyu.Universe.Utils.Time.formatTimestamp;
-import static io.qdrant.client.VectorFactory.vector;
-import static io.qdrant.client.VectorsFactory.namedVectors;
 
 public class Memory implements MemoryStore {
     private final Embedding provider;
-    private final String collection;
-    private final Logger logger = LoggerFactory.getLogger(Memory.class);
-    private final QdrantClient client;
-    private final String vectorName;
+    private final PgVectorTable table;
+    private final int dimension;
+    private static final String VISIBLE = "COALESCE((payload->>'confidence')::float8, -1) >= 0";
 
-    public Memory(Config.Qdrant config, Config.Memory memCfg) throws IOException {
-        Provider provider = (Provider) Universe.Providers.get(config.provider);
-        if (provider instanceof Embedding embedding) this.provider = embedding;
-        else if (provider != null) throw new IllegalArgumentException("Provider must support Embedding");
-        else throw new IllegalArgumentException("Please specify a Embedding provider");
-        try {
-            var builder = QdrantGrpcClient.newBuilder(config.address, config.port, config.encryptedConnection);
-            if (config.secretKey != null) builder.withApiKey(config.secretKey);
-            client = new QdrantClient(builder.build());
-            collection = memCfg.collection;
-            vectorName = memCfg.vectorName;
-            boolean exists = client.collectionExistsAsync(collection).get();
-            if (!exists) {
-                logger.info("数据集 {} 不存在，将尝试自动创建.", collection);
-                // 创建 collection
-                client.createCollectionAsync(
-                        collection,
-                        Collections.VectorParams.newBuilder()
-                                .setSize(embedding("test").length) // 这里会发起一次 Embedding 以得到指定的模型的向量维度数
-                                .setDistance(Collections.Distance.Cosine)
-                                .build()
-                ).get();
+    public Memory(DataSource dataSource, Config.Memory config, Embedding provider) throws IOException {
+        this(provider, new PgVectorTable(dataSource, config.table, config.dimension), config.dimension);
+        table.initialize();
+    }
 
-                // createAt index
-                client.createPayloadIndexAsync(
-                        collection,
-                        "create_at",
-                        PayloadSchemaType.Integer,
-                        null, null, null, null
-                ).get();
-
-                // updateAt index
-                client.createPayloadIndexAsync(
-                        collection,
-                        "update_at",
-                        Collections.PayloadSchemaType.Integer,
-                        null, null, null, null
-                ).get();
-
-                // locationId index
-                client.createPayloadIndexAsync(
-                        collection,
-                        "location_id",
-                        Collections.PayloadSchemaType.Keyword,
-                        null, null, null, null
-                ).get();
-
-                // importance index
-                client.createPayloadIndexAsync(
-                        collection,
-                        "importance",
-                        Collections.PayloadSchemaType.Float,
-                        null, null, null, null
-                ).get();
-
-                logger.info("数据集已建立.");
-            }
-        } catch (InterruptedException | ExecutionException e) {
-            throw new RuntimeException(e);
-        }
+    Memory(Embedding provider, PgVectorTable table, int dimension) {
+        this.provider = Objects.requireNonNull(provider);
+        this.table = table;
+        this.dimension = dimension;
     }
 
     public List<Item> query(List<Float> queryVector, List<String> locationIds) {
+        List<String> locations = locations(locationIds);
+        List<Object> parameters = new ArrayList<>(locations);
         try {
-            Common.Condition notDeletedCondition = Common.Condition.newBuilder()
-                    .setField(
-                            Common.FieldCondition.newBuilder()
-                                    .setKey("confidence")
-                                    .setRange(
-                                            Common.Range.newBuilder()
-                                                    .setGte(0)
-                                                    .build()
-                                    )
-                                    .build()
-                    )
-                    .build();
-
-            Common.Filter.Builder filterBuilder = Common.Filter.newBuilder()
-                    .addMust(notDeletedCondition);
-
-            List<Common.Condition> locationConditions = locationIds.stream()
-                    .filter(id -> id != null && !id.isEmpty())
-                    .map(id -> Common.Condition.newBuilder()
-                            .setField(
-                                    Common.FieldCondition.newBuilder()
-                                            .setKey("location_id")
-                                            .setMatch(
-                                                    Common.Match.newBuilder()
-                                                            .setKeyword(id)
-                                                            .build()
-                                            )
-                                            .build()
-                            )
-                            .build()
-                    )
-                    .toList();
-
-            if (!locationConditions.isEmpty()) {
-                filterBuilder.addMust(
-                        Common.Condition.newBuilder()
-                                .setFilter(
-                                        Common.Filter.newBuilder()
-                                                .addAllShould(locationConditions)
-                                                .build()
-                                )
-                                .build()
-                );
-            }
-
-            List<Points.ScoredPoint> result = client.searchAsync(
-                    Points.SearchPoints.newBuilder()
-                            .setCollectionName(collection)
-                            .setVectorName(vectorName)
-                            .addAllVector(queryVector)
-                            .setFilter(filterBuilder.build())
-                            .setLimit(20)
-                            .setScoreThreshold(0.6f)
-                            .setWithPayload(
-                                    Points.WithPayloadSelector.newBuilder()
-                                            .setEnable(true)
-                                            .build()
-                            )
-                            .build()
-            ).get();
-
-            List<Item> items = new ArrayList<>();
-            for (Points.ScoredPoint point : result) {
-                Item item = new Item();
-                item.score = point.getScore();
-
-                if (point.hasId() && point.getId().hasUuid()) {
-                    item.id = UUID.fromString(point.getId().getUuid());
-                }
-
-                var payload = point.getPayloadMap();
-
-                if (payload.containsKey("content")) {
-                    item.content = payload.get("content").getStringValue();
-                }
-                if (payload.containsKey("create_at")) {
-                    item.createAt = payload.get("create_at").getIntegerValue();
-                }
-                if (payload.containsKey("update_at")) {
-                    item.updateAt = payload.get("update_at").getIntegerValue();
-                }
-                if (payload.containsKey("location_id")) {
-                    item.locationId = payload.get("location_id").getStringValue();
-                }
-                if (payload.containsKey("confidence")) {
-                    item.confidence = (float) payload.get("confidence").getDoubleValue();
-                }
-                if (payload.containsKey("importance")) {
-                    item.importance = (float) payload.get("importance").getDoubleValue();
-                }
-
-                items.add(item);
-            }
-
-            // 按综合得分排序：向量相似度 + importance + confidence
-            items.sort(RETRIEVAL_ORDER);
-
-            // 返回前 10 条
-            return items.stream().limit(10).toList();
-        } catch (InterruptedException | ExecutionException e) {
-            throw new RuntimeException(e);
-        }
+            return table.search(queryVector, VISIBLE + locationPredicate(locations), parameters, 20, 0.6)
+                    .stream().map(Memory::item).sorted(RETRIEVAL_ORDER).limit(10).toList();
+        } catch (IOException e) { throw new IllegalStateException("Memory search failed", e); }
     }
 
     public void insert(List<Item> items) {
         try {
-            List<Points.PointStruct> points = new ArrayList<>();
-
             for (Item item : items) {
-                // 自动生成 UUID
-                if (item.id == null) {
-                    item.id = UUID.randomUUID();
-                }
-                if (item.createAt == 0) item.createAt = System.currentTimeMillis();
-                item.updateAt = System.currentTimeMillis();
-                // embedding
-                double[] embedding = embedding(item.content);
-                List<Float> vector = new ArrayList<>();
-                for (double v : embedding) {
-                    vector.add((float) v);
-                }
-                // payload
-                Map<String, Value> payload = new HashMap<>();
-                payload.put(
-                        "content",
-                        Value.newBuilder()
-                                .setStringValue(item.content)
-                                .build()
-                );
-                payload.put(
-                        "create_at",
-                        Value.newBuilder()
-                                .setIntegerValue(item.createAt)
-                                .build()
-                );
-                payload.put(
-                        "update_at",
-                        Value.newBuilder()
-                                .setIntegerValue(item.updateAt)
-                                .build()
-                );
-                payload.put(
-                        "location_id",
-                        Value.newBuilder()
-                                .setStringValue(item.locationId)
-                                .build()
-                );
-                payload.put(
-                        "confidence",
-                        Value.newBuilder()
-                                .setDoubleValue(item.confidence)
-                                .build()
-                );
-                payload.put(
-                        "importance",
-                        Value.newBuilder()
-                                .setDoubleValue(item.importance)
-                                .build()
-                );
-                // point
-                Points.PointStruct point = Points.PointStruct.newBuilder()
-                        .setId(
-                                io.qdrant.client.grpc.Common.PointId.newBuilder()
-                                        .setUuid(String.valueOf(item.id))
-                                        .build()
-                        )
-                        .setVectors(namedVectors(Map.of(vectorName, vector(vector))))
-                        .putAllPayload(payload)
-                        .build();
-
-                points.add(point);
+                if (item.id == null) item.id = UUID.randomUUID();
+                long now = System.currentTimeMillis();
+                if (item.createAt == 0) item.createAt = now;
+                item.updateAt = now;
+                table.upsert(item.id, vector(embedding(item.content)), payload(item));
             }
-
-            client.upsertAsync(collection, points).get();
-
-        } catch (Exception e) {
-            throw new RuntimeException(e);
-        }
+        } catch (IOException e) { throw new IllegalStateException("Memory insert failed", e); }
     }
 
     public void update(UUID uuid, float confidence, float importance, String content) {
-        try {
-            double[] embedding = embedding(content);
-            List<Float> vector = new ArrayList<>();
-            for (double v : embedding) {
-                vector.add((float) v);
-            }
-
-            Map<String, Value> payload = new HashMap<>();
-            payload.put("update_at", ValueFactory.value(System.currentTimeMillis()));
-            payload.put("confidence", ValueFactory.value(confidence));
-            payload.put("importance", ValueFactory.value(importance));
-            payload.put("content", ValueFactory.value(content));
-
-            Points.PointVectors point = Points.PointVectors.newBuilder()
-                    .setId(PointIdFactory.id(uuid))
-                    .setVectors(namedVectors(Map.of(vectorName, vector(vector))))
-                    .build();
-
-            client.updateVectorsAsync(collection, List.of(point)).get();
-            client.setPayloadAsync(collection, payload, List.of(PointIdFactory.id(uuid)), true, null, null).get();
-        } catch (Exception e) {
-            throw new RuntimeException("Update memory failed: " + uuid, e);
-        }
+        JsonObject patch = new JsonObject();
+        patch.addProperty("update_at", System.currentTimeMillis());
+        patch.addProperty("confidence", confidence);
+        patch.addProperty("importance", importance);
+        patch.addProperty("content", content);
+        try { table.update(uuid, vector(embedding(content)), patch); }
+        catch (IOException e) { throw new IllegalStateException("Update memory failed: " + uuid, e); }
     }
 
-    /**
-     * 此方法不会真实删除数据，只会对已有数据进行隐藏（置信度改到-1.0）
-     */
+    /** Preserve hidden records for audit and possible recovery. */
     public void delete(UUID uuid) {
-        try {
-            client.setPayloadAsync(
-                    collection,
-                    Map.of(
-                            "confidence", ValueFactory.value(-1.0F)
-                    ),
-                    List.of(PointIdFactory.id(uuid)), // 确保 uuid 转换为了 UUID 对象
-                    true, // wait: 是否等待操作在服务端落盘后再返回
-                    null, // ordering: 排序保证，传 null 使用默认值
-                    null  // shardKey: 分片键，传 null 使用默认值
-            ).get();
-        } catch (Exception e) {
-            throw new RuntimeException("Delete memory failed: " + uuid, e);
-        }
+        JsonObject patch = new JsonObject();
+        patch.addProperty("confidence", -1.0);
+        try { table.payload(uuid, patch); }
+        catch (IOException e) { throw new IllegalStateException("Delete memory failed: " + uuid, e); }
     }
 
     public List<Item> getLastMemoryItems(List<String> locationIds, int limit) {
-        if (locationIds == null || locationIds.isEmpty()) {
-            return List.of();
-        }
-
-        List<Common.Condition> locationConditions = new ArrayList<>();
-
-        for (String locationId : locationIds) {
-            if (locationId != null) locationConditions.add(
-                    Common.Condition.newBuilder()
-                            .setField(
-                                    Common.FieldCondition.newBuilder()
-                                            .setKey("location_id")
-                                            .setMatch(
-                                                    Common.Match.newBuilder()
-                                                            .setKeyword(locationId)
-                                                            .build()
-                                            )
-                                            .build()
-                            ).build()
-            );
-        }
-
-        Common.Condition notDeletedCondition = Common.Condition.newBuilder()
-                .setField(
-                        Common.FieldCondition.newBuilder()
-                                .setKey("confidence")
-                                .setRange(
-                                        Common.Range.newBuilder()
-                                                .setGte(0)
-                                                .build()
-                                )
-                                .build()
-                )
-                .build();
-
-        Common.Filter filter = Common.Filter.newBuilder()
-                .addAllShould(locationConditions)
-                .addMust(notDeletedCondition)
-                .build();
-
+        List<String> locations = locations(locationIds);
+        if (locations.isEmpty() || limit <= 0) return List.of();
         try {
-            Points.ScrollResponse result = client.scrollAsync(
-                    Points.ScrollPoints.newBuilder()
-                            .setCollectionName(collection)
-                            .setFilter(filter)
-                            .setOrderBy(Points.OrderBy.newBuilder()
-                                    .setKey("create_at")
-                                    .setDirection(Points.Direction.Desc)
-                                    .build())
-                            .setLimit(limit)
-                            .setWithPayload(Points.WithPayloadSelector.newBuilder()
-                                    .setEnable(true)
-                                    .build())
-                            .build()
-            ).get();
-
-            List<Item> items = new ArrayList<>();
-
-            for (Points.RetrievedPoint point : result.getResultList()) {
-                Map<String, Value> payload = point.getPayloadMap();
-
-                Item item = new Item();
-
-                // id
-                if (point.getId().hasUuid()) {
-                    item.id = UUID.fromString(point.getId().getUuid());
-                } else if (point.getId().hasNum()) {
-                    item.id = UUID.fromString(String.valueOf(point.getId().getNum()));
-                }
-
-                // payload
-                item.content = payload.containsKey("content")
-                        ? payload.get("content").getStringValue()
-                        : null;
-
-                item.locationId = payload.containsKey("location_id")
-                        ? payload.get("location_id").getStringValue()
-                        : null;
-
-                item.createAt = payload.containsKey("create_at")
-                        ? payload.get("create_at").getIntegerValue()
-                        : 0L;
-
-                item.updateAt = payload.containsKey("update_at")
-                        ? payload.get("update_at").getIntegerValue()
-                        : 0L;
-
-                item.score = payload.containsKey("score")
-                        ? (float) payload.get("score").getDoubleValue()
-                        : 0F;
-
-                item.confidence = payload.containsKey("confidence")
-                        ? (float) payload.get("confidence").getDoubleValue()
-                        : 0F;
-
-                item.importance = payload.containsKey("importance")
-                        ? (float) payload.get("importance").getDoubleValue()
-                        : 0.5f;
-
-                items.add(item);
-            }
-
-            // 按 createAt 倒序
-            items.sort((a, b) -> Long.compare(b.createAt, a.createAt));
-
-            return items;
-        } catch (InterruptedException | ExecutionException e) {
-            throw new RuntimeException(e);
-        }
+            return table.list(VISIBLE + locationPredicate(locations), locations,
+                    "(payload->>'create_at')::bigint DESC NULLS LAST, id", limit).stream().map(Memory::item).toList();
+        } catch (IOException e) { throw new IllegalStateException("Recent memory lookup failed", e); }
     }
 
     public List<Item> getHighImportanceItems(List<String> locationIds, int limit, float minImportance) {
-        if (locationIds == null || locationIds.isEmpty()) {
-            return List.of();
-        }
-
-        List<Common.Condition> locationConditions = new ArrayList<>();
-        for (String locationId : locationIds) {
-            if (locationId != null) locationConditions.add(
-                    Common.Condition.newBuilder()
-                            .setField(
-                                    Common.FieldCondition.newBuilder()
-                                            .setKey("location_id")
-                                            .setMatch(
-                                                    Common.Match.newBuilder()
-                                                            .setKeyword(locationId)
-                                                            .build()
-                                            )
-                                            .build()
-                            ).build()
-            );
-        }
-
-        Common.Condition notDeletedCondition = Common.Condition.newBuilder()
-                .setField(
-                        Common.FieldCondition.newBuilder()
-                                .setKey("confidence")
-                                .setRange(
-                                        Common.Range.newBuilder()
-                                                .setGte(0)
-                                                .build()
-                                )
-                                .build()
-                )
-                .build();
-
-        Common.Condition importanceCondition = Common.Condition.newBuilder()
-                .setField(
-                        Common.FieldCondition.newBuilder()
-                                .setKey("importance")
-                                .setRange(
-                                        Common.Range.newBuilder()
-                                                .setGte(minImportance)
-                                                .build()
-                                )
-                                .build()
-                )
-                .build();
-
-        Common.Filter filter = Common.Filter.newBuilder()
-                .addAllShould(locationConditions)
-                .addMust(notDeletedCondition)
-                .addMust(importanceCondition)
-                .build();
-
+        List<String> locations = locations(locationIds);
+        if (locations.isEmpty() || limit <= 0) return List.of();
+        List<Object> parameters = new ArrayList<>(locations);
+        parameters.add(minImportance);
         try {
-            Points.ScrollResponse result = client.scrollAsync(
-                    Points.ScrollPoints.newBuilder()
-                            .setCollectionName(collection)
-                            .setFilter(filter)
-                            .setLimit(limit)
-                            .setWithPayload(Points.WithPayloadSelector.newBuilder()
-                                    .setEnable(true)
-                                    .build())
-                            .build()
-            ).get();
+            return table.list(VISIBLE + locationPredicate(locations) + " AND (payload->>'importance')::float8 >= ?",
+                    parameters, "((payload->>'importance')::float8 * 0.6 + (payload->>'confidence')::float8 * 0.4) DESC, id",
+                    limit).stream().map(Memory::item).toList();
+        } catch (IOException e) { throw new IllegalStateException("Important memory lookup failed", e); }
+    }
 
-            List<Item> items = new ArrayList<>();
-            for (Points.RetrievedPoint point : result.getResultList()) {
-                Map<String, Value> payload = point.getPayloadMap();
-                Item item = new Item();
+    private static List<String> locations(List<String> ids) {
+        return ids == null ? List.of() : ids.stream().filter(id -> id != null && !id.isBlank()).distinct().toList();
+    }
 
-                if (point.getId().hasUuid()) {
-                    item.id = UUID.fromString(point.getId().getUuid());
-                } else if (point.getId().hasNum()) {
-                    item.id = UUID.fromString(String.valueOf(point.getId().getNum()));
-                }
+    private static String locationPredicate(List<String> locations) {
+        return locations.isEmpty() ? "" : " AND payload->>'location_id' IN (" + String.join(",", Collections.nCopies(locations.size(), "?")) + ")";
+    }
 
-                item.content = payload.containsKey("content")
-                        ? payload.get("content").getStringValue()
-                        : null;
-                item.locationId = payload.containsKey("location_id")
-                        ? payload.get("location_id").getStringValue()
-                        : null;
-                item.createAt = payload.containsKey("create_at")
-                        ? payload.get("create_at").getIntegerValue()
-                        : 0L;
-                item.updateAt = payload.containsKey("update_at")
-                        ? payload.get("update_at").getIntegerValue()
-                        : 0L;
-                item.confidence = payload.containsKey("confidence")
-                        ? (float) payload.get("confidence").getDoubleValue()
-                        : 0F;
-                item.importance = payload.containsKey("importance")
-                        ? (float) payload.get("importance").getDoubleValue()
-                        : 0.5f;
+    static JsonObject payload(Item item) {
+        JsonObject payload = new JsonObject();
+        payload.addProperty("content", item.content);
+        payload.addProperty("create_at", item.createAt);
+        payload.addProperty("update_at", item.updateAt);
+        payload.addProperty("location_id", item.locationId);
+        payload.addProperty("confidence", item.confidence);
+        payload.addProperty("importance", item.importance);
+        return payload;
+    }
 
-                items.add(item);
-            }
+    static Item item(PgVectorTable.Point point) {
+        JsonObject payload = point.payload();
+        Item item = new Item();
+        item.id = point.id();
+        item.score = (float) point.score();
+        item.content = text(payload, "content");
+        item.locationId = text(payload, "location_id");
+        item.createAt = (long) number(payload, "create_at", 0);
+        item.updateAt = (long) number(payload, "update_at", 0);
+        item.confidence = (float) number(payload, "confidence", 0);
+        item.importance = (float) number(payload, "importance", 0.5);
+        return item;
+    }
 
-            // 按 importance 和 confidence 综合排序
-            items.sort((a, b) -> {
-                float scoreA = a.importance * 0.6f + a.confidence * 0.4f;
-                float scoreB = b.importance * 0.6f + b.confidence * 0.4f;
-                return Float.compare(scoreB, scoreA);
-            });
+    private static String text(JsonObject payload, String key) {
+        return !payload.has(key) || payload.get(key).isJsonNull() ? null : payload.get(key).getAsString();
+    }
 
-            return items;
-        } catch (InterruptedException | ExecutionException e) {
-            throw new RuntimeException(e);
-        }
+    private static double number(JsonObject payload, String key, double fallback) {
+        return !payload.has(key) || payload.get(key).isJsonNull() ? fallback : payload.get(key).getAsDouble();
+    }
+
+    private List<Float> vector(double[] values) throws IOException {
+        if (values == null) throw new IOException("Empty embedding");
+        List<Float> result = new ArrayList<>();
+        for (double value : values) result.add((float) value);
+        PgVectorTable.vector(result, dimension);
+        return result;
     }
 
     public double[] embedding(String text) throws IOException {
-        EmbeddingRequest embeddingRequest = new EmbeddingRequest();
-        MFChain mfc = new MFChain();
-        mfc.add(new TextField(text));
-        embeddingRequest.message.add(mfc);
-        EmbeddingResponse resp = provider.embedding(embeddingRequest);
-        if (resp == null || resp.data == null || resp.data.isEmpty()) throw new IOException("Empty response");
-        return resp.data.get(0).embedding;
+        EmbeddingRequest request = new EmbeddingRequest();
+        request.dimension = dimension;
+        MFChain input = new MFChain();
+        input.add(new TextField(text));
+        request.message.add(input);
+        var response = provider.embedding(request);
+        if (response == null || response.data == null || response.data.size() != 1 || response.data.get(0).embedding == null)
+            throw new IOException("Empty embedding response");
+        vector(response.data.get(0).embedding);
+        return response.data.get(0).embedding;
     }
 
     public static float retrievalScore(Item item) {

@@ -1,16 +1,13 @@
 package com.nekoyu.Universe.AIChat.knowledge;
 
 import com.google.gson.Gson;
+import com.nekoyu.Universe.AIChat.PgVectorTable;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.nekoyu.Universe.API.MessageChannel.MFChain;
 import com.nekoyu.Universe.API.MessageChannel.MessageField.TextField;
 import com.nekoyu.Universe.API.Providers.LLMProvider.Embedding;
 import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.*;
-import io.qdrant.client.QdrantClient;
-import io.qdrant.client.grpc.Collections;
-import io.qdrant.client.grpc.Common;
-import io.qdrant.client.grpc.Points;
 
 import javax.sql.DataSource;
 import java.io.IOException;
@@ -19,32 +16,28 @@ import java.time.Instant;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
 import java.util.*;
-import java.util.concurrent.*;
 
-import static io.qdrant.client.VectorFactory.vector;
-import static io.qdrant.client.VectorsFactory.namedVectors;
-
-/** 完整报告存 PostgreSQL；Qdrant 仅保存主题向量，以任务 UUID 关联。复用知识库连接，不持有独立线程。 */
+/** Reports, evidence and topic vectors share one PostgreSQL row and the existing connection pool. */
 public final class ResearchStore {
     private static final Gson GSON = new Gson();
     private final DataSource dataSource;
-    private final QdrantClient client;
+
     private final Embedding embedding;
-    private final String collection;
-    private final String vectorName;
+
     private final String embeddingModel;
     private final int dimension;
-    private boolean collectionReady;
+    private final String table;
 
-    ResearchStore(DataSource dataSource, QdrantClient client, Embedding embedding,
-                  String collection, String vectorName, String embeddingModel, int dimension) {
+    ResearchStore(DataSource dataSource, Embedding embedding, String embeddingModel, int dimension) {
+        this(dataSource, embedding, embeddingModel, dimension, "aichat.research_task");
+    }
+
+    ResearchStore(DataSource dataSource, Embedding embedding, String embeddingModel, int dimension, String table) {
         this.dataSource = dataSource;
-        this.client = client;
         this.embedding = embedding;
-        this.collection = collection;
-        this.vectorName = vectorName;
         this.embeddingModel = embeddingModel;
         this.dimension = dimension;
+        this.table = PgVectorTable.sqlName(table);
     }
 
     public void archiveResearch(Researches research) throws IOException {
@@ -53,14 +46,14 @@ public final class ResearchStore {
         // 先保存正文。向量服务失败不会丢失完整报告；同一对象重试使用同一个 UUID。
         try (Connection connection = dataSource.getConnection();
              PreparedStatement statement = connection.prepareStatement("""
-                     INSERT INTO aichat.research_task
+                     INSERT INTO %s
                          (id, topic, question, status, report, last_request, evidence, created_at, finished_at)
                      VALUES (?, ?, ?, 'completed', ?, ?::jsonb, ?::jsonb, ?, ?)
                      ON CONFLICT (id) DO UPDATE SET
                          topic = EXCLUDED.topic, question = EXCLUDED.question, status = 'completed',
                          report = EXCLUDED.report, last_request = EXCLUDED.last_request, evidence = EXCLUDED.evidence,
                          error = NULL, finished_at = EXCLUDED.finished_at
-                     """)) {
+                     """.formatted(table))) {
             statement.setObject(1, research.id());
             statement.setString(2, research.topic());
             statement.setString(3, research.question());
@@ -74,39 +67,37 @@ public final class ResearchStore {
         } catch (SQLException error) {
             throw new IOException("Research report archive failed", error);
         }
+        // Preserve the report even when its embedding provider fails; a retry updates the same row.
         List<Float> topicVector = embed(research.topic());
-        initCollection();
-        await(client.upsertAsync(Points.UpsertPoints.newBuilder()
-                .setCollectionName(collection).setWait(true)
-                .addPoints(Points.PointStruct.newBuilder()
-                        .setId(Common.PointId.newBuilder().setUuid(research.id().toString()))
-                        .setVectors(namedVectors(Map.of(vectorName, vector(topicVector)))))
-                .build()));
+        try (Connection c = dataSource.getConnection();
+             PreparedStatement s = c.prepareStatement("UPDATE " + table + " SET embedding=?::vector WHERE id=?")) {
+            s.setString(1, PgVectorTable.vector(topicVector, dimension));
+            s.setObject(2, research.id());
+            s.executeUpdate();
+        } catch (SQLException error) {
+            throw new IOException("Research vector archive failed", error);
+        }
     }
 
     public List<Researches> searchResearches(String topic) throws IOException {
         if (topic == null || topic.isBlank()) return List.of();
         List<Float> topicVector = embed(topic.strip());
-        initCollection();
-        List<Points.ScoredPoint> points = await(client.searchAsync(Points.SearchPoints.newBuilder()
-                .setCollectionName(collection).setVectorName(vectorName).addAllVector(topicVector)
-                .setLimit(3).setScoreThreshold(0.6f).build()));
-        if (points.isEmpty()) return List.of();
         List<Researches> results = new ArrayList<>();
         try (Connection connection = dataSource.getConnection();
              PreparedStatement statement = connection.prepareStatement("""
                      SELECT id, topic, question, report, last_request, evidence, created_at, finished_at
-                     FROM aichat.research_task
-                     WHERE id = ? AND status = 'completed' AND report IS NOT NULL AND finished_at IS NOT NULL
-                     """)) {
-            Set<UUID> seen = new HashSet<>();
-            for (var point : points) {
-                if (!point.getId().hasUuid()) continue;
-                UUID id = UUID.fromString(point.getId().getUuid());
-                if (!seen.add(id)) continue;
-                statement.setObject(1, id);
-                try (ResultSet row = statement.executeQuery()) {
-                    if (!row.next()) continue; // 已删除或尚未完成的任务不能成为历史材料。
+                     FROM %s
+                     WHERE status = 'completed' AND report IS NOT NULL AND finished_at IS NOT NULL
+                       AND embedding IS NOT NULL AND (embedding <=> ?::vector) <= ?
+                     ORDER BY embedding <=> ?::vector, id LIMIT 3
+                     """.formatted(table))) {
+            String literal = PgVectorTable.vector(topicVector, dimension);
+            statement.setString(1, literal);
+            statement.setDouble(2, 1 - 0.6);
+            statement.setString(3, literal);
+            try (ResultSet row = statement.executeQuery()) {
+                while (row.next()) {
+                    UUID id = row.getObject("id", UUID.class);
                     String report = row.getString("report");
                     String json = row.getString("last_request");
                     JsonObject request = json == null ? null : JsonParser.parseString(json).getAsJsonObject();
@@ -144,27 +135,6 @@ public final class ResearchStore {
             result.add(number);
         }
         return result;
-    }
-
-    private synchronized void initCollection() throws IOException {
-        if (collectionReady) return;
-        if (!await(client.collectionExistsAsync(collection)))
-            await(client.createCollectionAsync(collection, Map.of(vectorName, Collections.VectorParams.newBuilder()
-                    .setSize(dimension).setDistance(Collections.Distance.Cosine).build())));
-        collectionReady = true;
-    }
-
-    private static <T> T await(Future<T> future) throws IOException {
-        try {
-            return future.get(15, TimeUnit.SECONDS);
-        } catch (InterruptedException error) {
-            future.cancel(true);
-            Thread.currentThread().interrupt();
-            throw new IOException("Research index interrupted", error);
-        } catch (ExecutionException | TimeoutException error) {
-            future.cancel(true);
-            throw new IOException("Research index unavailable", error);
-        }
     }
 
     /** 记录 Provider 接口收到的逻辑请求；不包含凭据、回调对象或 Provider 私有的 HTTP 封装。 */

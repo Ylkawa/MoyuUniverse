@@ -3,6 +3,7 @@ package com.nekoyu.Universe.AIChat.knowledge;
 import com.nekoyu.Universe.AIChat.ChatAssistant;
 import com.nekoyu.Universe.AIChat.ChatContext;
 import com.nekoyu.Universe.AIChat.Config;
+import com.nekoyu.Universe.AIChat.PgVectorTable;
 import com.nekoyu.Universe.AIChat.StructuredOutputs;
 
 import com.nekoyu.Universe.API.MessageChannel.MFChain;
@@ -16,11 +17,6 @@ import com.nekoyu.Universe.API.Providers.LLMProvider.RespBodies.CompletionsRespo
 import com.nekoyu.Universe.API.Providers.LLMProvider.RespBodies.EmbeddingResponse;
 import com.nekoyu.Universe.Universe;
 import com.zaxxer.hikari.HikariDataSource;
-import io.qdrant.client.QdrantClient;
-import io.qdrant.client.QdrantGrpcClient;
-import io.qdrant.client.grpc.Collections;
-import io.qdrant.client.grpc.Common;
-import io.qdrant.client.grpc.Points;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -30,12 +26,11 @@ import java.util.*;
 import java.util.concurrent.*;
 
 public class KnowledgeStore {
-    private final QdrantClient client;
+    private final PgVectorTable vectorTable;
     private final HikariDataSource dataSource;
     private final Embedding embedding;
     private final LLMProvider llmProvider;
-    private final String collection;
-    private final String vectorName;
+
     private final String documentsTable;
     private final DocumentArchive documentArchive;
     private final ResearchStore researchStore;
@@ -51,15 +46,12 @@ public class KnowledgeStore {
     private final Logger logger = LoggerFactory.getLogger(KnowledgeStore.class);
     private final BlockingQueue<IndexTask> indexQueue = new LinkedBlockingQueue<>();
 
-    public KnowledgeStore(Config.Qdrant qdrantCfg, Config.KnowledgeStore ksCfg, HikariDataSource dataSource) throws IOException {
-        this(ksCfg, dataSource, createClient(qdrantCfg),
+    public KnowledgeStore(Config.KnowledgeStore ksCfg, HikariDataSource dataSource) throws IOException {
+        this(ksCfg, dataSource, new PgVectorTable(dataSource, ksCfg.factsTable, ksCfg.dimension),
                 embeddingProvider(ksCfg.embeddingProvider), llmProvider(ksCfg.llmProvider));
-        try {
-            initCollection();
-            initTable();
-        } catch (InterruptedException | ExecutionException | SQLException e) {
-            throw new IOException(e);
-        }
+        vectorTable.initialize();
+        try { initTable(); }
+        catch (SQLException e) { throw new IOException(e); }
         new Thread(() -> {
             while (true) {
                 try {
@@ -74,11 +66,11 @@ public class KnowledgeStore {
     }
 
     /** Service dependencies can be supplied without opening connections or starting a worker. */
-    KnowledgeStore(Config.KnowledgeStore ksCfg, HikariDataSource dataSource, QdrantClient client,
+    KnowledgeStore(Config.KnowledgeStore ksCfg, HikariDataSource dataSource, PgVectorTable vectorTable,
                    Embedding embedding, LLMProvider llmProvider) {
         this.dataSource = dataSource;
         this.documentArchive = new DocumentArchive(dataSource, ksCfg.documentsTable);
-        this.client = client;
+        this.vectorTable = vectorTable;
         this.embedding = embedding;
         this.llmProvider = llmProvider;
         llmModel = ksCfg.llmModel;
@@ -89,22 +81,13 @@ public class KnowledgeStore {
         embeddingBatchSize = ksCfg.embeddingBatchSize;
         defaultTtlDays = ksCfg.defaultTtlDays;
 
-        collection = ksCfg.collection;
-        vectorName = ksCfg.vectorName;
         documentsTable = DocumentArchive.sqlName(ksCfg.documentsTable);
-        researchStore = new ResearchStore(dataSource, client, embedding, collection + "_research",
-                vectorName, ksCfg.embeddingModel, dimension);
-        factIndex = new KnowledgeFactIndex(client, collection, vectorName, candidateLimit,
+        researchStore = new ResearchStore(dataSource, embedding, ksCfg.embeddingModel, dimension);
+        factIndex = new KnowledgeFactIndex(vectorTable, candidateLimit,
                 id -> new KnowledgeSource(id, getDocumentUrl(id), getDocumentTitle(id), "", "", 0, 0),
                 this::matchFact);
         ingestion = new KnowledgeIngestion(llmProvider, llmModel,
                 source -> indexQueue.offer(new IndexTask(source.url(), source.title(), source.content(), true)));
-    }
-
-    private static QdrantClient createClient(Config.Qdrant cfg) {
-        var builder = QdrantGrpcClient.newBuilder(cfg.address, cfg.port, cfg.encryptedConnection);
-        if (cfg.secretKey != null) builder.withApiKey(cfg.secretKey);
-        return new QdrantClient(builder.build());
     }
 
     private static Embedding embeddingProvider(String id) throws IOException {
@@ -120,25 +103,6 @@ public class KnowledgeStore {
     void processNextIndexTask() throws IOException, InterruptedException {
         IndexTask task = indexQueue.take();
         indexDocumentInternal(task.url, task.title, task.content, task.partial);
-    }
-
-    private void initCollection() throws InterruptedException, ExecutionException {
-        if (!client.collectionExistsAsync(collection).get()) {
-            Map<String, Collections.VectorParams> vectorParams = Map.of(
-                    vectorName,
-                    Collections.VectorParams.newBuilder()
-                            .setSize(dimension)
-                            .setDistance(Collections.Distance.Cosine)
-                            .build()
-            );
-            logger.info("Creating KnowledgeStore collection: {}", collection);
-            client.createCollectionAsync(collection, vectorParams).get();
-            client.createPayloadIndexAsync(collection, "document_id", Collections.PayloadSchemaType.Integer, null, null, null, null).get();
-            client.createPayloadIndexAsync(collection, "ttl", Collections.PayloadSchemaType.Integer, null, null, null, null).get();
-            logger.info("KnowledgeStore collection created: {}", collection);
-        }
-        // Existing collections also need the multi-source membership index on upgrade.
-        client.createPayloadIndexAsync(collection, "document_ids", Collections.PayloadSchemaType.Integer, null, null, null, null).get();
     }
 
     private void initTable() throws SQLException {
@@ -163,6 +127,9 @@ public class KnowledgeStore {
                     )
                     """);
             statement.execute("ALTER TABLE aichat.research_task ADD COLUMN IF NOT EXISTS evidence jsonb");
+            statement.execute("ALTER TABLE aichat.research_task ADD COLUMN IF NOT EXISTS embedding vector(" + dimension + ")");
+            statement.execute("CREATE INDEX IF NOT EXISTS research_task_embedding_idx ON aichat.research_task USING hnsw (embedding vector_cosine_ops)");
+            PgVectorTable.requireDimension(connection, "aichat.research_task", dimension);
         }
         logger.info("Research tasks table ready: aichat.research_task");
     }
@@ -313,35 +280,11 @@ public class KnowledgeStore {
         List<Float> vector = batchEmbed(List.of(question)).get(0);
 
         long now = System.currentTimeMillis();
-        Common.Condition ttlCondition = Common.Condition.newBuilder()
-                .setField(Common.FieldCondition.newBuilder()
-                        .setKey("ttl")
-                        .setRange(Common.Range.newBuilder().setGte(now).build())
-                        .build())
-                .build();
-        Common.Filter filter = Common.Filter.newBuilder().addMust(ttlCondition).build();
-
-        List<Points.ScoredPoint> result;
-        try {
-            result = client.searchAsync(
-                    Points.SearchPoints.newBuilder()
-                            .setCollectionName(collection)
-                            .addAllVector(vector)
-                            .setVectorName(vectorName)
-                            .setLimit(candidateLimit)
-                            // 与记忆库一致，低相关候选不进入上下文或工具结果。
-                            .setScoreThreshold(0.6f)
-                            .setFilter(filter)
-                            .setWithPayload(Points.WithPayloadSelector.newBuilder().setEnable(true).build())
-                            .build()
-            ).get();
-        } catch (InterruptedException | ExecutionException e) {
-            throw new IOException(e);
-        }
-
+        List<PgVectorTable.Point> result = vectorTable.search(vector, "(payload->>'ttl')::bigint >= ?",
+                List.of(now), candidateLimit, 0.6);
         Map<Long, KnowledgeResult> deduped = new LinkedHashMap<>();
         for (var point : result) {
-            var payload = point.getPayloadMap();
+            var payload = point.payload();
             List<KnowledgeSource> sources = factIndex.activeSources(payload, now);
             if (sources.isEmpty()) continue;
             KnowledgeSource primary = sources.get(0);
@@ -351,7 +294,7 @@ public class KnowledgeStore {
                 value.documentId = id;
                 return value;
             });
-            kr.addMatch(new KnowledgeMatch(primary.question(), primary.conclusion(), primary.confidence(), point.getScore(), sources));
+            kr.addMatch(new KnowledgeMatch(primary.question(), primary.conclusion(), primary.confidence(), (float) point.score(), sources));
         }
 
         List<KnowledgeResult> results = new ArrayList<>(deduped.values());

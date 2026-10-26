@@ -8,7 +8,6 @@ public class Config {
     String ProviderId = null;
 
     SQLConfig SQLConfig;
-    Qdrant Qdrant = null;
     Annotator Annotator = null;
     Memory Memory = null;
     KnowledgeStore KnowledgeStore = null;
@@ -28,14 +27,6 @@ public class Config {
         String password;
     }
 
-    public static class Qdrant {
-        public String address = "127.0.0.1";
-        public int port = 6334;
-        public boolean encryptedConnection = true;
-        public String secretKey = null;
-        public String provider = null;
-    }
-
     public static class Annotator {
         String provider = null;
         String embeddingProvider = null;
@@ -45,14 +36,13 @@ public class Config {
     }
 
     public static class Memory {
-        String collection = "moyu_universe_aic_memory";
-        String vectorName = "vector";
-        int dimension = 0;
+        public String table = "aichat.memory";
+        public String embeddingProvider = null;
+        public int dimension = 1024;
     }
 
     public static class KnowledgeStore {
-        public String collection = "moyu_universe_aic_ks";
-        public String vectorName = "vector";
+        public String factsTable = "aichat.knowledge_fact";
         public String documentsTable = "aichat.knowledge_document";
         public String embeddingProvider = null;
         public String embeddingModel = null;

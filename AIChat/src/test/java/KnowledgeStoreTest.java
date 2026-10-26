@@ -29,14 +29,10 @@ public class KnowledgeStoreTest {
             return;
         }
 
-        Config.Qdrant qdrantCfg = gson.fromJson("""
-                {"address":"127.0.0.1","port":6334,"encryptedConnection":false}
-                """, Config.Qdrant.class);
-
         Config.KnowledgeStore ksCfg = gson.fromJson("""
                 {
-                  "collection": "moyu_universe_aic_ks_test",
-                  "documentsTable": "ks_documents_test",
+                  "factsTable": "aichat_test.knowledge_fact",
+                  "documentsTable": "aichat_test.knowledge_document",
                   "embeddingProvider": "dashscope",
                   "dimension": 1024,
                   "llmProvider": "dashscope",
@@ -50,9 +46,9 @@ public class KnowledgeStoreTest {
                 """, Config.KnowledgeStore.class);
 
         try {
-            store = new KnowledgeStore(qdrantCfg, ksCfg, dataSource);
+            store = new KnowledgeStore(ksCfg, dataSource);
         } catch (Exception e) {
-            System.out.println("SKIP: Cannot connect to Qdrant or providers: " + e.getMessage());
+            System.out.println("SKIP: Cannot connect to PostgreSQL or providers: " + e.getMessage());
             dataSource.close();
             return;
         }
@@ -78,7 +74,7 @@ public class KnowledgeStoreTest {
             String content = "原神是由米哈游开发的开放世界冒险游戏。游戏于2020年9月28日全球同步上线。玩家扮演旅行者，在提瓦特大陆寻找失散的亲人。";
             store.indexDocumentSync(url, "原神简介", content);
             Thread.sleep(3000);
-            assertTrue("1. Short document indexed to PostgreSQL + Qdrant", store.hasDocument(url));
+            assertTrue("1. Short document indexed to PostgreSQL + pgvector", store.hasDocument(url));
         } catch (Exception e) {
             assertTrue("1. Short document indexed", false);
             System.out.println("   Error: " + e.getMessage());
