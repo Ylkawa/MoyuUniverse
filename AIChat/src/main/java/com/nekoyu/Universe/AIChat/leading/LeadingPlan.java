@@ -12,7 +12,7 @@ import java.util.Set;
 
 /** 前置模型调用经过校验且不产生副作用的结果。 */
 public final class LeadingPlan {
-    static final int MAX_QUERIES_PER_STORE = 2;
+    static final int MAX_QUERIES_PER_STORE = 6;
     private static final Set<String> FIELDS = Set.of("add", "update", "delete", "memory_queries", "knowledge_queries",
             "should_reply", "addressed_message_ids");
     boolean shouldReply;

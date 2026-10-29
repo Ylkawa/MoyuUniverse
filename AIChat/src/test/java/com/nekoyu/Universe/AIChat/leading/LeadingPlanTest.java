@@ -14,13 +14,15 @@ public class LeadingPlanTest {
                  "memory_queries":[{"question":"用户喜欢什么音乐？","location_id":"user:1"},
                                    {"question":"用户喜欢什么音乐？","location_id":"user:1"},
                                    {"question":"越权查询","location_id":"user:other"}],
-                 "knowledge_queries":["爵士乐何时起源？","爵士乐何时起源？","爵士乐有哪些风格？","第三个问题"]}
+                 "knowledge_queries":["爵士乐何时起源？","爵士乐何时起源？","爵士乐有哪些风格？","第三个问题","第四个问题","第五个问题","第六个问题","超出预算的问题"]}
                 """;
         LeadingPlan plan = parse(json, Set.of("user:1"), Set.of(1, 2));
         check(plan.additions.size() == 1, "reject unknown LocationId for writes");
         check(plan.updates.size() == 1 && plan.deletions.equals(java.util.List.of(2)), "reject invalid or conflicting ids");
         check(plan.memoryQueries.size() == 1, "dedupe queries and reject unknown scope");
-        check(plan.knowledgeQueries.size() == 2, "limit distinct knowledge queries");
+        check(plan.knowledgeQueries.equals(java.util.List.of("爵士乐何时起源？", "爵士乐有哪些风格？",
+                "第三个问题", "第四个问题", "第五个问题", "第六个问题")),
+                "preserve independent subquestions in priority order within budget");
         LeadingPlan nullable = parse("""
                 {"add":[],"update":[],"delete":[],
                  "memory_queries":[{"question":"会话的既有记忆是什么？","location_id":null}],"knowledge_queries":[]}
