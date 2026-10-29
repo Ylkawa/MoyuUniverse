@@ -141,35 +141,7 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
             public void onOpen(ServerHandshake serverHandshake) {
                 logger.info("{} 连接成功", ID);
 
-                syncRequest(new OBRequest("get_login_info"), response -> {
-                    OBResponse friendListReq = request(new OBRequest("get_friend_list"));
-                    JsonArray friendsList = friendListReq.data.getAsJsonArray();
-                    int friendCount = friendsList.size();
-                    friendsList.forEach(friend -> {
-                        JsonObject friendObj = friend.getAsJsonObject();
-                        QQAccount account = new QQAccount();
-                        account.setSex(friendObj.get("sex").getAsString());
-                        account.setId(friendObj.get("user_id").getAsString());
-                        account.setName(friendObj.get("nickname").getAsString());
-                        cachedSessions.put(account.getId(), account);
-                    });
-                    OBResponse groupListReq = request(new OBRequest("get_group_list"));
-                    JsonArray groupList = groupListReq.data.getAsJsonArray();
-                    int groupCount = groupList.size();
-                    groupList.forEach(group -> {
-                        JsonObject groupObj = group.getAsJsonObject();
-                        QQGroup groupInfo = new QQGroup();
-                        groupInfo.setName(groupObj.get("group_name").getAsString());
-                        groupInfo.setId(groupObj.get("group_id").getAsString());
-                        cachedSessions.put(groupInfo.getId(), groupInfo);
-                    });
-                    JsonObject responseData = response.data.getAsJsonObject();
-                    nickname = responseData.get("nickname").getAsString();
-                    accountId = responseData.get("user_id").getAsString();
-                    loginAccount = (QQAccount) getSession("user/" + accountId);
-                    mainColor = loginAccount.getColor();
-                    logger.info("{} 登录的 QQ号 为 {} ({}), {} 个好友  {} 个群聊", ID, nickname, accountId, friendCount, groupCount);
-                });
+                syncRequest(new OBRequest("get_login_info"), OnebotChannel.this::initializeConnection);
 
                 if (enableQZone) qZone = new QZone();
             }
@@ -483,8 +455,10 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
                 }
                 if (content.getAsJsonObject().get("echo") != null) {
                     OBResponse response = gson.fromJson(content, OBResponse.class);
-                    if (!response.echo.isEmpty()) {
-                        new Thread(() -> syncActions.remove(response.echo).callback(response)).start();
+                    if (response.echo != null && !response.echo.isEmpty()) {
+                        Callback callback = syncActions.remove(response.echo);
+                        // 已超时的请求可能晚到，不再调用已移除的回调。
+                        if (callback != null) new Thread(() -> callback.callback(response)).start();
                     }
                 }
             }
@@ -556,27 +530,130 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
     }
 
     private OBResponse request(OBRequest obr) {
-        if (!wsConnection.isOpen()) return null;
+        return request(obr, 0);
+    }
+
+    private OBResponse request(OBRequest obr, long timeoutSeconds) {
+        if (wsConnection == null || !wsConnection.isOpen()) {
+            throw new OBException(-1, "OneBot action " + obr.action + " failed: connection is closed");
+        }
 
         CountDownLatch latch = new CountDownLatch(1);
         final OBResponse[] obrResponse = new OBResponse[1];
 
-        syncRequest(obr, response -> {
-            obrResponse[0] = response;
-            latch.countDown();
-        });
-
         try {
-            latch.await();
+            syncRequest(obr, response -> {
+                obrResponse[0] = response;
+                latch.countDown();
+            });
+            if (timeoutSeconds > 0) {
+                if (!latch.await(timeoutSeconds, TimeUnit.SECONDS)) {
+                    throw new OBException(-1, "OneBot action " + obr.action + " timed out");
+                }
+            } else {
+                latch.await();
+            }
         } catch (InterruptedException e) {
-            logger.error(e.getMessage(), e);
+            Thread.currentThread().interrupt();
+            throw new OBException(-1, "OneBot action " + obr.action + " interrupted");
+        } finally {
+            if (obr.echo != null) syncActions.remove(obr.echo);
         }
 
-        if (obrResponse[0].status.equals("failed")) {
-            throw new OBException(obrResponse[0].retcode, obrResponse[0].message);
-        }
+        checkResponse(obr.action, obrResponse[0]);
 
         return obrResponse[0];
+    }
+
+    private void checkResponse(String action, OBResponse response) {
+        if ("failed".equals(response.status)) {
+            throw new OBException(response.retcode,
+                    "OneBot action " + action + " failed (retcode=" + response.retcode + "): " + response.message);
+        }
+    }
+
+    private void initializeConnection(OBResponse response) {
+        try {
+            checkResponse("get_login_info", response);
+            initializeLoginAccount(response.data.getAsJsonObject());
+        } catch (RuntimeException e) {
+            logger.error("{} OneBot 登录身份初始化失败", ID, e);
+            return;
+        }
+        int friendCount = loadFriends();
+        int groupCount = loadGroups();
+        try {
+            var color = loginAccount.getColor();
+            if (color != null) mainColor = color;
+        } catch (RuntimeException e) {
+            logger.warn("{} 获取账号主题色失败，继续使用默认颜色: {}", ID, e.getMessage());
+        }
+        logger.info("{} 登录的 QQ号 为 {} ({}), {} 个好友  {} 个群聊", ID, nickname, accountId,
+                friendCount < 0 ? "未知" : friendCount, groupCount < 0 ? "未知" : groupCount);
+    }
+
+    private void initializeLoginAccount(JsonObject data) {
+        accountId = data.get("user_id").getAsString();
+        nickname = optionalString(data, "nickname", accountId);
+        // get_login_info 已提供自身身份；无需依赖实现端对自身 get_stranger_info 的支持。
+        Session cachedSelf = cachedSessions.get(accountId);
+        QQAccount account = cachedSelf instanceof QQAccount cachedAccount ? cachedAccount : new QQAccount();
+        account.setId(accountId);
+        account.setName(nickname);
+        if (account.getSex() == null) account.setSex("unknown");
+        loginAccount = account;
+        cachedSessions.put(accountId, account);
+    }
+
+    private int loadFriends() {
+        try {
+            JsonArray friends = requestArray("get_friend_list");
+            for (JsonElement friend : friends) {
+                JsonObject data = friend.getAsJsonObject();
+                String id = data.get("user_id").getAsString();
+                Session cached = cachedSessions.get(id);
+                QQAccount account = cached instanceof QQAccount cachedAccount ? cachedAccount : new QQAccount();
+                account.setSex(optionalString(data, "sex", "unknown"));
+                account.setId(id);
+                account.setName(optionalString(data, "nickname", id));
+                cachedSessions.put(id, account);
+            }
+            return friends.size();
+        } catch (RuntimeException e) {
+            logger.warn("{} 获取好友列表失败，继续运行: {}", ID, e.getMessage());
+            return -1;
+        }
+    }
+
+    private int loadGroups() {
+        try {
+            JsonArray groups = requestArray("get_group_list");
+            for (JsonElement group : groups) {
+                JsonObject data = group.getAsJsonObject();
+                String id = data.get("group_id").getAsString();
+                QQGroup info = new QQGroup();
+                info.setId(id);
+                info.setName(optionalString(data, "group_name", id));
+                cachedSessions.put(id, info);
+            }
+            return groups.size();
+        } catch (RuntimeException e) {
+            logger.warn("{} 获取群列表失败，继续运行: {}", ID, e.getMessage());
+            return -1;
+        }
+    }
+
+    private JsonArray requestArray(String action) {
+        OBResponse response = request(new OBRequest(action), 5);
+        if (response.data == null || !response.data.isJsonArray()) {
+            throw new OBException(-1, "OneBot action " + action + " returned invalid data: expected an array");
+        }
+        return response.data.getAsJsonArray();
+    }
+
+    private String optionalString(JsonObject data, String field, String fallback) {
+        JsonElement value = data.get(field);
+        return value == null || value.isJsonNull() ? fallback : value.getAsString();
     }
 
     /**
@@ -613,24 +690,28 @@ public class OnebotChannel extends MessageChannel implements SessionChat, PostCh
                     obr.params.put("user_id", acc[1]);
                 }
             }
-            OBResponse resp = request(obr);
-            if (resp.status.equals("failed")) throw new RuntimeException("Request Failed");
-            switch (acc[0]) {
-                case "group" -> {
-                    var group = new QQGroup();
-                    group.setName(resp.data.getAsJsonObject().get("group_name").getAsString());
-                    group.setId(acc[1]);
-                    session = group;
-                }
-                case "user", "private" -> {
-                    var account = new QQAccount();
-                    account.setName(resp.data.getAsJsonObject().get("nickname").getAsString());
-                    account.setId(acc[1]);
-                    account.setSex(resp.data.getAsJsonObject().get("sex").getAsString());
-                    session = account;
-                }
+            if (acc[0].equals("group")) {
+                var group = new QQGroup();
+                group.setId(acc[1]);
+                session = group;
+            } else {
+                var account = new QQAccount();
+                account.setId(acc[1]);
+                account.setSex("unknown");
+                session = account;
             }
-            cachedSessions.put(acc[1], session);
+            session.setName(acc[1]);
+            try {
+                JsonObject data = request(obr, 5).data.getAsJsonObject();
+                session.setName(optionalString(data, acc[0].equals("group") ? "group_name" : "nickname", acc[1]));
+                if (session instanceof QQAccount account) {
+                    account.setSex(optionalString(data, "sex", "unknown"));
+                }
+            } catch (RuntimeException e) {
+                logger.warn("{} 获取会话 {} 的资料失败，使用 ID 继续运行: {}", ID, sessionId, e.getMessage());
+            }
+            Session existing = cachedSessions.putIfAbsent(acc[1], session);
+            if (existing != null) session = existing;
         }
         return session;
     }
