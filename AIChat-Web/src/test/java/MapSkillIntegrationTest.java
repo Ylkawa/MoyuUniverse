@@ -109,7 +109,8 @@ public class MapSkillIntegrationTest {
             assistant.completions(null);
             check(rounds.get() == 2 && apiCalls.get() == 2, "tool loop completes with district and weather queries");
             check(manager.deactivate("map") && manager.getActiveToolNames().isEmpty(), "deactivation removes active bindings");
-            check(topic.getChatContext().getBase().stream().noneMatch(m -> "map".equals(m.getMetainfo("skillId"))), "deactivation removes skill prompt");
+            check(topic.getChatContext().getBase().stream().anyMatch(m -> "map".equals(m.getMetainfo("skillId"))), "deactivation preserves the original skill entry");
+            check(topic.getChatContext().getMessageList().stream().anyMatch(m -> m.toString().contains("map 已停用")), "deactivation appends a state update");
             System.out.println("MapSkillIntegrationTest passed");
         } finally {
             for (String name : toolNames) { registry.removeAll(name); registry.putAll(name, previousTools.get(name)); }

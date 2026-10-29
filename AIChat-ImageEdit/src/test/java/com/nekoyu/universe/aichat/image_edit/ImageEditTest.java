@@ -199,7 +199,7 @@ public final class ImageEditTest {
             MCMessage attachment = new MCMessage();
             attachment.putMetainfo("role", "user");
             attachment.messageFields.add(new ImageField(new URL(address + "/source")));
-            topic.getChatContext().getBase().add(attachment);
+            topic.getChatContext().append(attachment);
             AtomicInteger rounds = new AtomicInteger();
             AtomicReference<String> finalMark = new AtomicReference<>();
             LLMProvider provider = new LLMProvider() {
@@ -320,7 +320,9 @@ public final class ImageEditTest {
                 LLMProvider provider = new LLMProvider() {
                     @Override public CompletionsResponse completions(String model, List<Message> messages, List<LLMFunction> functions,
                             CompletionsRequest request, BufferCallback callback) {
-                        check(functions.size() == 2, "registered skill tools reach actual replyTurn");
+                        check(functions.size() == 3 && functions.stream().map(f -> f.name).toList().containsAll(tools.keySet())
+                                        && functions.stream().filter(f -> "ManageSkills".equals(f.name)).count() == 1,
+                                "registered image tools and stable skill-management schema reach actual replyTurn");
                         var response = new CompletionsResponse();
                         var choice = new CompletionsResponse.Choice();
                         response.choices = new CompletionsResponse.Choice[]{choice};
@@ -421,11 +423,11 @@ public final class ImageEditTest {
                 .filter(m -> "tool".equals(m.getMetainfo("role"))).toList();
         check(toolResults.size() == 2 && toolResults.stream().allMatch(m -> m.retainedFiles.size() == 1),
                 "canonical tool results own images even with text-only API content");
-        var copyMessage = AIChat.class.getDeclaredMethod("copyTurnMessage", MCMessage.class);
-        copyMessage.setAccessible(true);
-        MCMessage copied = (MCMessage) copyMessage.invoke(null, toolResults.get(0));
-        check(copied.retainedFiles.get(0) == toolResults.get(0).retainedFiles.get(0), "turn persistence preserves file ownership");
-        check(!new Gson().toJson(copied).contains("retainedFiles"), "retained file owners are not serialized");
+        MCMessage snapshotMessage = topic.getOpenAIContext(null).getBase().stream()
+                .filter(m -> m == toolResults.get(0)).findFirst().orElseThrow();
+        check(snapshotMessage.retainedFiles.get(0) == toolResults.get(0).retainedFiles.get(0),
+                "request snapshots retain the canonical file owner without copying or rewriting the entry");
+        check(!new Gson().toJson(snapshotMessage).contains("retainedFiles"), "retained file owners are not serialized");
 
         var published = store.publish(fixture());
         ImageField owner = published.image();

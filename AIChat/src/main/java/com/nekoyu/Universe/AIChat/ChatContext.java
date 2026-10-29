@@ -37,6 +37,9 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.WeakHashMap;
+import java.util.HashSet;
+import java.util.Set;
+import java.util.function.Predicate;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
@@ -87,6 +90,14 @@ public class ChatContext implements Context {
     private volatile Map<Integer, String> activeImageQuotes = Map.of();
     private String systemPromptFirst = null;
     private String systemPromptLast = null;
+    /** 固定尾部不进入事件队列；每次推理接在可见事件之后。 */
+    private final MessageList tail = new MessageList();
+    private int historyStart;
+    private int inputBudget = Integer.MAX_VALUE;
+    private Predicate<MCMessage> protectedMessage = ignored -> false;
+    private Predicate<MCMessage> audience = ignored -> true;
+    private final Set<String> awaitingTools = new HashSet<>();
+    private final List<MCMessage> afterTools = new ArrayList<>();
 
     /** 新到达待批次处理的消息（用户触发消息与异步工具结果），静默去抖后统一触发回复 */
     private final Deque<MCMessage> pendingMsgs = new ArrayDeque<>();
@@ -117,7 +128,12 @@ public class ChatContext implements Context {
 
     /** 会话副本共享编号，但各自仅允许引用自己发送给模型的图片。 */
     ChatContext copyWithMessages(MessageList messages, Account account) {
-        return new ChatContext(messages, account, imageQuotes);
+        ChatContext copy = new ChatContext(messages, account, imageQuotes);
+        copy.historyStart = historyStart;
+        copy.inputBudget = inputBudget;
+        copy.protectedMessage = protectedMessage;
+        copy.audience = audience;
+        return copy;
     }
 
     public static ChatContext from(MessageList ml) {
@@ -138,6 +154,127 @@ public class ChatContext implements Context {
 
     public MessageList getBase() {
         return base;
+    }
+
+    public MessageList getTail() { return tail; }
+
+    /** 原队列中的零基索引，只前移；历史本体不删除、不重排。 */
+    public int getHistoryStart() { return historyStart; }
+
+    public void setHistoryStart(int start) {
+        if (start < historyStart || start > base.size())
+            throw new IllegalArgumentException("历史起点只能在队列范围内前移");
+        // 不能把原生 assistant(tool_calls) / tool 结果块拆开。
+        while (start > historyStart && start < base.size() && isTool(base.get(start))) start--;
+        historyStart = start;
+    }
+
+    public void setInputBudget(int tokens) { inputBudget = Math.max(0, tokens); }
+    void protectMessages(Predicate<MCMessage> predicate) { protectedMessage = predicate; }
+    void protectAdditionalMessages(List<MCMessage> messages) {
+        Predicate<MCMessage> previous = protectedMessage;
+        Set<MCMessage> extra = new HashSet<>(messages);
+        protectedMessage = message -> previous.test(message) || extra.contains(message);
+    }
+    void setAudience(Predicate<MCMessage> predicate) { audience = predicate; }
+
+    static boolean isRetained(MCMessage message) {
+        return message.getMetainfo("contextKind") != null || message.getMetainfo("skillId") != null;
+    }
+
+    private static boolean isTool(MCMessage message) {
+        return ROLE_TOOL.equals(message.getMetainfo(ROLE));
+    }
+
+    /** 普通事件只追加；工具执行中产生的 skills 等在整组结果收齐后追加。 */
+    public void append(MCMessage message) {
+        if (!awaitingTools.isEmpty() && !isTool(message)) afterTools.add(message);
+        else base.add(message);
+    }
+
+    static MCMessage retainedMessage(String kind, String text) {
+        MCMessage message = new MCMessage();
+        message.putMetainfo(ROLE, ROLE_SYSTEM);
+        message.putMetainfo("contextKind", kind);
+        message.messageFields.add(new TextField(text));
+        return message;
+    }
+
+    /** 选择请求视图；保留知识/记忆/技能和受保护调用，其他历史按起点过滤。 */
+    public MessageList getVisibleBase() {
+        advanceHistoryStart();
+        Set<MCMessage> protectedBlock = new HashSet<>();
+        for (int i = 0; i < base.size();) {
+            int end = blockEnd(i);
+            boolean protect = false;
+            for (int j = i; j < end; j++) protect |= protectedMessage.test(base.get(j));
+            if (protect) protectedBlock.addAll(base.subList(i, end));
+            i = end;
+        }
+        MessageList visible = new MessageList();
+        for (int i = 0; i < base.size(); i++) {
+            MCMessage message = base.get(i);
+            if (audience.test(message) && (i >= historyStart || isRetained(message) || protectedBlock.contains(message)))
+                visible.add(message);
+        }
+        return visible;
+    }
+
+    private int blockEnd(int start) {
+        MCMessage message = base.get(start);
+        int end = start + 1;
+        if (ROLE_ASSISTANT.equals(message.getMetainfo(ROLE)) && message.getMetainfo("Tool_calls") != null)
+            while (end < base.size() && isTool(base.get(end))) end++;
+        return end;
+    }
+
+    private void advanceHistoryStart() {
+        if (inputBudget == Integer.MAX_VALUE) return;
+        long fixed = estimateText(systemPromptFirst) + estimateText(systemPromptLast);
+        for (MCMessage message : tail) fixed += estimateTokens(message);
+        List<int[]> blocks = new ArrayList<>();
+        int latestConversationStart = -1;
+        for (int i = 0; i < base.size();) {
+            int end = blockEnd(i);
+            int cost = 0;
+            boolean protect = false;
+            for (int j = i; j < end; j++) {
+                MCMessage message = base.get(j);
+                if (!audience.test(message)) continue;
+                protect |= protectedMessage.test(message);
+                if (isRetained(message)) fixed += estimateTokens(message);
+                else cost += estimateTokens(message);
+            }
+            if (protect) fixed += cost;
+            if (cost > 0) latestConversationStart = i;
+            if (cost > 0 && !protect && end > historyStart) blocks.add(new int[]{i, end, cost});
+            i = end;
+        }
+        long used = fixed;
+        int start = historyStart;
+        for (int i = blocks.size() - 1; i >= 0; i--) {
+            int[] block = blocks.get(i);
+            // 即使单条超预算，也保留最新一组对话/工具结果。
+            if (used + block[2] > inputBudget && block[0] != latestConversationStart) {
+                start = block[1];
+                break;
+            }
+            used += block[2];
+        }
+        historyStart = Math.max(historyStart, start);
+    }
+
+    private static int estimateText(String text) { return text == null ? 0 : Math.max(1, text.length() / 2); }
+
+    static int estimateTokens(MCMessage message) {
+        int tokens = 4;
+        for (MsgField field : message.messageFields)
+            tokens += field instanceof ImageField ? 1000 : estimateText(field.toString());
+        Object calls = message.getMetainfo("Tool_calls");
+        if (calls != null) tokens += estimateText(GSON.toJson(calls));
+        Object reasoning = message.getMetainfo("reasoning");
+        if (reasoning != null) tokens += estimateText(reasoning.toString());
+        return tokens;
     }
 
     /**
@@ -254,6 +391,8 @@ public class ChatContext implements Context {
             boolean disableTools = (rounds <= 1) || (calls >= maxCalls);
             boolean hasTools = tools != null && !tools.isEmpty();
             List<Message> roundMessages = getMessageList();
+            LOGGER.debug("LLM context: model={}, historyStart={}, queued={}, requestMessages={}",
+                    model, historyStart, base.size(), roundMessages.size());
             Map<Integer, String> roundImageQuotes = activeImageQuotes;
             if (hasTools && !roundImageQuotes.isEmpty()) {
                 Message quotePrompt = new Message(IMAGE_QUOTE_PROMPT);
@@ -336,6 +475,10 @@ public class ChatContext implements Context {
                 for (Tool_call toolCall : toolCalls) {
                     if (toolCall.function == null) {
                         LOGGER.warn("{} 模型返回的 tool_call 缺少 function 定义，忽略", model);
+                        Message missing = new Message("工具调用缺少 function 定义，无法执行。");
+                        missing.tool_call_id = toolCall.id;
+                        toolMsg(missing);
+                        next = true;
                         continue;
                     }
                     if (toolCall.function.arguments != null && toolCall.function.arguments.startsWith("\""))
@@ -348,7 +491,7 @@ public class ChatContext implements Context {
                         toolMsg.content.add(new TextPiece("None function exist, stop calling functions."));
                         toolMsg(toolMsg);
                         next = true;
-                        break; // 与原递归实现一致：无工具可用时跳过后续工具调用，直接进入下一轮
+                        continue;
                     }
                     String toolName = toolCall.function.name;
                     LLMFunction llmFunction = functionsMap.get(toolName);
@@ -357,7 +500,7 @@ public class ChatContext implements Context {
                         toolMsg.content.add(new TextPiece("You're trying to call an undefined function " + toolName + "."));
                         toolMsg(toolMsg);
                         next = true;
-                        break;
+                        continue;
                     }
 
                     // 防死循环：单次回复内工具调用次数已达上限则不再执行，仅告知模型停止调用
@@ -529,7 +672,9 @@ public class ChatContext implements Context {
     public List<Message> getMessageList() {
         List<Message> messages = new ArrayList<>();
         Map<Integer, String> quotes = new HashMap<>();
-        for (MCMessage m : base) {
+        MessageList projection = getVisibleBase();
+        projection.addAll(tail);
+        for (MCMessage m : projection) {
             Message message = new Message();
             String role;
             if (assistantAccount != null && m.sender != null && m.sender.equals(assistantAccount)) {
@@ -583,15 +728,22 @@ public class ChatContext implements Context {
 
     @Override
     public void userMsg(Message message) {
-        base.add(toMCMessage(message, "user"));
+        append(toMCMessage(message, "user"));
     }
 
     @Override
     public void assistantMsg(Message message) {
         MCMessage mcm = toMCMessage(message, ROLE_ASSISTANT);
         if (message.reasoning_content != null) mcm.putMetainfo("reasoning", message.reasoning_content);
-        if (message.tool_calls != null) mcm.putMetainfo("Tool_calls", message.tool_calls);
+        if (message.tool_calls != null)
+            mcm.putMetainfo("Tool_calls", GSON.fromJson(GSON.toJson(message.tool_calls), Tool_call[].class));
+        if (assistantAccount != null) {
+            mcm.sender = assistantAccount;
+            mcm.receiver = assistantAccount;
+        }
         base.add(mcm);
+        if (message.tool_calls != null)
+            for (Tool_call call : message.tool_calls) if (call.id != null) awaitingTools.add(call.id);
     }
 
     @Override
@@ -599,6 +751,11 @@ public class ChatContext implements Context {
         MCMessage mcm = toMCMessage(message, ROLE_TOOL);
         if (message.tool_call_id != null) mcm.putMetainfo("tool_call_id", message.tool_call_id);
         base.add(mcm);
+        awaitingTools.remove(message.tool_call_id);
+        if (awaitingTools.isEmpty() && !afterTools.isEmpty()) {
+            base.addAll(afterTools);
+            afterTools.clear();
+        }
     }
 
     /** 把 LLM 层的 Message 转换回 MCMessage 写回会话，等价于旧 OpenAIChannel 的写回逻辑 */

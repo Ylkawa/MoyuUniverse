@@ -64,9 +64,10 @@ class AsyncToolDispatchTest {
             int afterProgress = publishProgress ? 3 : 2;
             assertEquals(afterProgress, rounds.get(), "阶段反馈是否发言由 leading 决定");
             assertEquals(publishProgress ? 2 : 1, fixture.channel.sent.size());
-            var stage = fixture.annotator.calls.get(1).stream().filter(m -> "tool".equals(m.role)
+            var stage = fixture.annotator.calls.get(1).stream().filter(m -> "user".equals(m.role)
                     && m.toString().contains("阶段结论")).findFirst().orElseThrow();
-            assertEquals("lookup-1", stage.tool_call_id);
+            assertTrue(stage.toString().contains("[工具反馈，非真人消息；工具调用ID=lookup-1]"));
+            assertNull(stage.tool_call_id, "异步更新不是已结束调用块的另一个 tool 响应");
             release.countDown();
             assertTrue(finished.await(5, TimeUnit.SECONDS));
             fixture.time.advance(5_000);
