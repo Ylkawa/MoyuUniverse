@@ -16,7 +16,7 @@ import java.util.function.BiPredicate;
 import static com.nekoyu.Universe.AIChat.knowledge.LibrarianResearchTest.*;
 import static org.junit.jupiter.api.Assertions.*;
 
-/** Exercises the production ingestion queue and indexing flow with offline JDBC/gRPC/model dependencies. */
+/** Exercises the production ingestion queue and indexing flow with offline JDBC/model dependencies. */
 class KnowledgeStoreIngestionTest {
     private static final String URL = "https://source1.invalid/article";
 
@@ -127,7 +127,7 @@ class KnowledgeStoreIngestionTest {
         }
         Set<String> conclusions() {
             Set<String> result = new HashSet<>();
-            vectors.points.values().forEach(p -> result.add(p.payload().get("conclusion").getAsString()));
+            vectors.points.values().forEach(p -> result.add(p.fact().conclusion()));
             return result;
         }
     }

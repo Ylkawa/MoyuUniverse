@@ -7,7 +7,7 @@ import java.io.IOException;
 import java.sql.*;
 import java.util.*;
 
-/** Shared JDBC storage for memory and knowledge vectors. No additional client or connection pool. */
+/** JDBC storage for memory vectors and their extensible attributes. */
 public class PgVectorTable {
     public record Point(UUID id, JsonObject payload, double score) {}
     private final DataSource dataSource;

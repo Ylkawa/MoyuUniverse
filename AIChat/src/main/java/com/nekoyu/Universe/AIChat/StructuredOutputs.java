@@ -26,8 +26,8 @@ public final class StructuredOutputs {
 
     public static ResponseFormat knowledge() {
         JsonSchema item = object()
-                .property("question", JsonSchema.string().description("保留主体和适用范围的检索问题"))
-                .property("conclusion", JsonSchema.string().description("由原文明确支持、直接回答问题的结论"))
+                .property("question", JsonSchema.string().description("独立写明事实主体和必要范围的检索问题"))
+                .property("conclusion", JsonSchema.string().description("独立写明同一主体和必要范围、由当前资料支持并直接回答问题的结论"))
                 .property("confidence", JsonSchema.number().description("原文支持程度，范围 0.8 到 1"))
                 .property("ttl_days", JsonSchema.integer().enumValues(7, 30, 90, 180, 365, 730, 3650))
                 .required("question", "conclusion", "confidence", "ttl_days");
@@ -49,7 +49,8 @@ public final class StructuredOutputs {
 
     public static ResponseFormat ingestion() {
         JsonSchema source = object().property("url", JsonSchema.string())
-                .property("title", JsonSchema.string()).property("content", JsonSchema.string())
+                .property("title", JsonSchema.string()).property("content", JsonSchema.string()
+                        .description("仅由当前url证据支持、每个事实段独立保留主体、范围及证据限制的内容"))
                 .required("url", "title", "content");
         return ResponseFormat.jsonSchema("knowledge_sources", object()
                 .property("sources", JsonSchema.array(source)).required("sources"), true);

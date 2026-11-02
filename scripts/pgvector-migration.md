@@ -1,5 +1,7 @@
 # PostgreSQL 向量存储迁移
 
+> 本文记录 2026-10-26 的历史迁移。知识事实表现已改用独立业务列和 `sources` 数组；当前结构与迁移/恢复工具见 [知识事实与来源数组](../AIChat/docs/knowledge-sources.md)。以下旧向量导入/恢复命令不能再直接用于当前 `knowledge_fact`。
+
 记忆、知识事实、研究主题向量统一使用 PostgreSQL + pgvector，复用 `SQLConfig` 的 Hikari 连接池。运行依赖不再包含 Qdrant 客户端及其 gRPC/Protobuf 依赖链。服务端停机和部署由使用者操作。
 
 ## 2026-10-26 执行结果

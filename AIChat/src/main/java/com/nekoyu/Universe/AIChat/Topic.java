@@ -166,7 +166,7 @@ public class Topic {
                 String sourceKey = identity + ":source-" + source.documentId();
                 appendReference("knowledge", sourceKey, "来源URL：" + source.url() + "；标题：" + source.title()
                         + "；来源问题：" + source.question() + "；来源陈述：" + source.conclusion()
-                        + "；置信度：" + source.confidence() + "；有效期至(epoch ms)：" + source.expiresAt());
+                        + "；置信度：" + source.confidence() + "；复查时间(epoch ms)：" + source.reviewDueAt());
             }
         }
     }
