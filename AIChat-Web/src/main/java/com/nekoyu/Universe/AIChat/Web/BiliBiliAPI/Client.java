@@ -16,6 +16,10 @@ public class Client {
     public static Logger logger = LoggerFactory.getLogger(Client.class);
 
     public static VideoInfo getVideoInfo(String bvid) throws IOException {
+        return getVideoInfo(client, bvid);
+    }
+
+    public static VideoInfo getVideoInfo(OkHttpClient client, String bvid) throws IOException {
         HttpUrl url = HttpUrl.parse("https://api.bilibili.com/x/web-interface/view")
                 .newBuilder()
                 .addQueryParameter("bvid", bvid)
@@ -35,13 +39,17 @@ public class Client {
     }
 
     public static UserInfo getUserInfo(String uid) throws IOException {
+        return getUserInfo(client, uid);
+    }
+
+    public static UserInfo getUserInfo(OkHttpClient client, String uid) throws IOException {
         TreeMap<String, Object> getUserInfo = new TreeMap<>();
         for (String arg : "platform=web&web_location=1550101&dm_img_list=[]&dm_img_str=V2ViR0wgMS4wIChPcGVuR0wgRVMgMi4wIENocm9taXVtKQ&dm_cover_img_str=QU5HTEUgKEludGVsLCBJbnRlbChSKSBVSEQgR3JhcGhpY3MgKDB4MDAwMEE3OEIpIERpcmVjdDNEMTEgdnNfNV8wIHBzXzVfMCwgRDNEMTEpR29vZ2xlIEluYy4gKEludGVsKQ&dm_img_inter=%7B%22ds%22:[],%22wh%22:[5533,5981,85],%22of%22:[202,404,202]%7D".split("&")) {
             String[] n = arg.split("=");
             getUserInfo.put(n[0], n[1]);
         }
         getUserInfo.put("mid", uid);
-        String url = "https://api.bilibili.com/x/space/wbi/acc/info?" + WbiSolver.getFinalReqArgs(getUserInfo);
+        String url = "https://api.bilibili.com/x/space/wbi/acc/info?" + WbiSolver.getFinalReqArgs(client, getUserInfo);
         Request req = packageReq(new Request.Builder())
                 .url(url)
                 .get()
@@ -55,6 +63,10 @@ public class Client {
     }
 
     public static DynamicList getUserDynamicList(String uid) {
+        return getUserDynamicList(client, uid);
+    }
+
+    public static DynamicList getUserDynamicList(OkHttpClient client, String uid) {
         Request req = new Request.Builder()
                 .url(
                         HttpUrl.parse("https://api.bilibili.com/x/polymer/web-dynamic/desktop/v1/feed/space").newBuilder().addQueryParameter("host_mid", uid).build()
@@ -68,6 +80,10 @@ public class Client {
     }
 
     public static CommentList getVideoCommentList(String oid) throws IOException {
+        return getVideoCommentList(client, oid);
+    }
+
+    public static CommentList getVideoCommentList(OkHttpClient client, String oid) throws IOException {
         Matcher matcher = Pattern.compile("^BV").matcher(oid);
         if (matcher.find()) {
             oid = String.valueOf(abBvConvent.bv2av(oid));

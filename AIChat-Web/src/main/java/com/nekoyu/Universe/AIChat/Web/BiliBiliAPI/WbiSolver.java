@@ -27,7 +27,7 @@ public class WbiSolver {
             22, 25, 54, 21, 56, 59, 6, 63, 57, 62, 11, 36, 20, 34, 44, 52
     };
 
-    private static void updateMixinKey() {
+    private static void updateMixinKey(OkHttpClient client) {
         Request req = new Request.Builder()
                 .url("https://api.bilibili.com/x/web-interface/nav")
                 .get()
@@ -67,9 +67,13 @@ public class WbiSolver {
     }
 
     public static String getFinalReqArgs(TreeMap<String, Object> rawArgs) {
+        return getFinalReqArgs(client, rawArgs);
+    }
+
+    static String getFinalReqArgs(OkHttpClient client, TreeMap<String, Object> rawArgs) {
         long nowTime = System.currentTimeMillis() / 1000;
         if (nowTime - lastUpdate > 82800 || mixinKey == null) {
-            updateMixinKey();
+            updateMixinKey(client);
             lastUpdate = (int) nowTime;
         }
         TreeMap<String, Object> calculatingArgs = (TreeMap<String, Object>) rawArgs.clone();

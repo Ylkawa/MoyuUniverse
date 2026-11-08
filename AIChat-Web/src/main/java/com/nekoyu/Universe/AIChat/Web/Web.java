@@ -1,6 +1,7 @@
 package com.nekoyu.Universe.AIChat.Web;
 
 import com.google.gson.Gson;
+import com.google.gson.JsonParseException;
 import com.nekoyu.Universe.AIChat.AIChat;
 import com.nekoyu.Universe.AIChat.AIChatPlugin;
 import com.nekoyu.Universe.AIChat.Web.BiliBiliAPI.*;
@@ -31,17 +32,21 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.MalformedURLException;
 import java.net.Proxy;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.net.URL;
 import java.time.Duration;
+import java.util.Objects;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 
 public class Web extends AIChatPlugin {
+    private static final String CONFIG_FILE = "./config/AIChat/Plugins/Web/config.json";
+
     OkHttpClient client;
     Config config;
     com.nekoyu.Universe.AIChat.Web.YouTubeAPI.Client ytbClient = null;
-    boolean able = true;
     com.nekoyu.Universe.AIChat.Web.SearchAPI.SearchClient searchClient = null;
 
     public Web(AIChat aiChat) {
@@ -51,53 +56,24 @@ public class Web extends AIChatPlugin {
     @Override
     public void onEnable() {
         getConfigDir();
-        Proxy proxy = Proxy.NO_PROXY;
-        try {
-            config = new Gson().fromJson(new FileReader("./config/AIChat/Plugins/Web/config.json"), Config.class);
-            if (config.EnableProxy) {
-                if (config.HttpProxyURI == null || config.HttpProxyURI.isEmpty()) {
-                    logger.error("Proxy URI is null or empty");
-                    able = false;
-                }
-                String[] hostAndPort = config.HttpProxyURI.split("http://")[1].split(":");
-                try {
-                    InetSocketAddress isa = new InetSocketAddress(hostAndPort[0], Integer.parseInt(hostAndPort[1]));
-                    proxy = new Proxy(Proxy.Type.HTTP, isa);
-                } catch (Exception e) {
-                    logger.error("Proxy URI is invalid");
-                    able = false;
-                }
-            }
-            if (config.EnableYouTubeAPI) {
-                ytbClient = new com.nekoyu.Universe.AIChat.Web.YouTubeAPI.Client(config.GoogleAPIKey);
-                ytbClient.setProxy(proxy);
-            }
-            if (config.SearchProvider != null) switch (config.SearchProvider) {
-                case "SerpApiGoogle" ->
-                        searchClient = new com.nekoyu.Universe.AIChat.Web.SearchAPI.SerpApi.GoogleSearch.Client(config.SerpApiKey, proxy);
-                case "Google" ->
-                        searchClient = new com.nekoyu.Universe.AIChat.Web.SearchAPI.Google.Client(config.GoogleAPIKey, config.SearchEngineID); // 废了但是还是写一下
-                case "BrightDataGoogle" ->
-                        searchClient = new com.nekoyu.Universe.AIChat.Web.SearchAPI.BrightData.GoogleSearch.Client(config.BrightDataApiKey, config.BrightDataZone, proxy);
-            }
-            if (searchClient != null) searchClient.setSearchParam(config.SearchParam);
+        try (FileReader reader = new FileReader(CONFIG_FILE)) {
+            if (!configureClients(new Gson().fromJson(reader, Config.class))) return;
         } catch (FileNotFoundException e) {
             config = new Config();
-            try (FileWriter fw = new FileWriter("./config/AIChat/Plugins/Web/config.json")) {
+            try (FileWriter fw = new FileWriter(CONFIG_FILE)) {
                 fw.write(new Gson().toJson(config));
             } catch (IOException ex) {
-                able = false;
                 logger.error(ex.getMessage());
                 return;
             }
+            client = new OkHttpClient.Builder().proxy(Proxy.NO_PROXY).build();
+        } catch (IOException | JsonParseException error) {
+            logger.error("无法读取 Web 配置，未注册 Web 工具（{}）", error.getClass().getSimpleName());
+            return;
         }
-        client = new OkHttpClient.Builder()
-                .proxy(proxy)
-                .followRedirects(false) // 不这样设置，短链的重定向会直接跳过去，识别不到
-                .build();
 
-        registerSauceNAO(proxy);
-        registerMap(proxy);
+        registerSauceNAO(client.proxy());
+        registerMap(client.proxy());
 
         var dst = LLMFunction.builder()
                 .name("WebSearch")
@@ -114,7 +90,8 @@ public class Web extends AIChatPlugin {
         LLMFunction visitUrl = LLMFunction.builder()
                 .name("VisitWebPage")
                 .description("""
-                        获取网页中的信息（内容会被精简）。哔哩哔哩视频和用户空间、YouTube视频、Wikipedia词条、萌娘百科词条、Biligame Wiki词条、游民星空Handbook、米游社文章使用专用适配；其他网页在已配置浏览器抓取时以保留基本格式的 Markdown 返回（最多5000字符），未配置时拒绝访问。
+                        获取网页中的信息（内容会被精简）。哔哩哔哩视频和用户空间、YouTube 视频、Wikipedia、萌娘百科、Biligame Wiki、游民星空 Handbook、米游社文章、GitHub 公开仓库首页和 Issue、Release、Hugging Face 公开组织和模型页、CIRCL 和 NVD 的 CVE 详情使用专用适配。
+                        Gemini、智谱、MiniMax 和阿里云的受支持开发文档直接读取官方 Markdown，正文中的相对链接以返回的 Markdown 来源为基址。其他网页在已配置浏览器抓取时以保留基本格式的 Markdown 返回（最多5000字符），未配置时拒绝访问。
                         仅根据实际返回的内容回答；抓取失败或链接不受支持时说明限制，不得声称已读取页面，也不得根据标题或网址补写正文。
                         """)
                 .parameters(JsonSchema.object()
@@ -125,6 +102,58 @@ public class Web extends AIChatPlugin {
                 })
                 .build();
         registerFunction("VisitURL", visitUrl);
+    }
+
+    boolean configureClients(Config settings) {
+        if (settings == null) {
+            logger.error("Web 配置为空，未注册 Web 工具");
+            return false;
+        }
+        Proxy proxy;
+        try {
+            proxy = parseProxy(settings);
+        } catch (IllegalArgumentException error) {
+            logger.error("{}，未注册 Web 工具", error.getMessage());
+            return false;
+        }
+
+        config = settings;
+        client = new OkHttpClient.Builder().proxy(proxy).build();
+        ytbClient = null;
+        if (config.EnableYouTubeAPI) {
+            ytbClient = new com.nekoyu.Universe.AIChat.Web.YouTubeAPI.Client(config.GoogleAPIKey);
+            ytbClient.setProxy(proxy);
+        }
+        searchClient = null;
+        if (config.SearchProvider != null) switch (config.SearchProvider) {
+            case "SerpApiGoogle" ->
+                    searchClient = new com.nekoyu.Universe.AIChat.Web.SearchAPI.SerpApi.GoogleSearch.Client(config.SerpApiKey, proxy);
+            case "Google" -> {
+                var google = new com.nekoyu.Universe.AIChat.Web.SearchAPI.Google.Client(config.GoogleAPIKey, config.SearchEngineID);
+                google.setProxy(proxy);
+                searchClient = google;
+            }
+            case "BrightDataGoogle" ->
+                    searchClient = new com.nekoyu.Universe.AIChat.Web.SearchAPI.BrightData.GoogleSearch.Client(config.BrightDataApiKey, config.BrightDataZone, proxy);
+        }
+        if (searchClient != null) searchClient.setSearchParam(config.SearchParam);
+        return true;
+    }
+
+    static Proxy parseProxy(Config settings) {
+        if (!settings.EnableProxy) return Proxy.NO_PROXY;
+        try {
+            URI uri = new URI(Objects.toString(settings.HttpProxyURI, "").strip());
+            int port = uri.getPort();
+            if ("http".equalsIgnoreCase(uri.getScheme()) && uri.getHost() != null && port >= 1 && port <= 65535
+                    && uri.getRawUserInfo() == null && uri.getRawQuery() == null && uri.getRawFragment() == null
+                    && (uri.getRawPath().isEmpty() || uri.getRawPath().equals("/"))) {
+                return new Proxy(Proxy.Type.HTTP, InetSocketAddress.createUnresolved(uri.getHost(), port));
+            }
+        } catch (URISyntaxException ignored) {
+            // 不在诊断中回显可能含凭据的地址。
+        }
+        throw new IllegalArgumentException("已启用 Web 代理，HttpProxyURI 必须是无认证的 http://host:port");
     }
 
     @Override
@@ -215,6 +244,23 @@ public class Web extends AIChatPlugin {
         if (matcher0.find()) {
             String domain = matcher0.group(1);
             switch (domain) {
+                case "ai.google.dev", "aistudio.google.com", "docs.bigmodel.cn", "platform.minimax.cn",
+                        "platform.minimaxi.com", "platform.minimax.io", "help.aliyun.com" -> {
+                    String content = OfficialMarkdownDocs.visit(url, client);
+                    if (content != null) return new MFChain(content);
+                }
+                case "huggingface.co" -> {
+                    String content = HuggingFace.visit(url, client);
+                    if (content != null) return new MFChain(content);
+                }
+                case "cve.circl.lu", "vulnerability.circl.lu", "nvd.nist.gov", "web.nvd.nist.gov" -> {
+                    String content = CveDetails.visit(url, client);
+                    if (content != null) return new MFChain(content);
+                }
+                case "github.com", "www.github.com" -> {
+                    String content = GitHub.visit(url, client);
+                    if (content != null) return new MFChain(content);
+                }
                 case "www.bilibili.com", "bilibili.com" -> {
                     Pattern pattern = Pattern.compile("(BV\\w+)(?:\\?.*)?");
                     Matcher matcher = pattern.matcher(url);
@@ -222,8 +268,8 @@ public class Web extends AIChatPlugin {
                     if (matcher.find()) {
                         String bv = matcher.group(1);  // 获取第一个捕获组
                         try {
-                            VideoInfo info = Client.getVideoInfo(bv);
-                            CommentList cl = Client.getVideoCommentList(bv);
+                            VideoInfo info = Client.getVideoInfo(client, bv);
+                            CommentList cl = Client.getVideoCommentList(client, bv);
                             StringBuilder sb = new StringBuilder();
                             switch (info.code) {
                                 case 0 -> {
@@ -298,7 +344,9 @@ public class Web extends AIChatPlugin {
                 }
                 case "b23.tv" -> { // 处理短链
                     logger.debug("检测到短链");
-                    try (Response resp = client.newCall(Client.packageReq(new Request.Builder())
+                    // 先读取 Location，再对直链重新分流。
+                    OkHttpClient shortLinks = client.newBuilder().followRedirects(false).build();
+                    try (Response resp = shortLinks.newCall(Client.packageReq(new Request.Builder())
                             .url(url)
                             .build()
                     ).execute()
@@ -322,8 +370,8 @@ public class Web extends AIChatPlugin {
                     if (matcher.find()) {
                         String uid = matcher.group(1);
                         try {
-                            UserInfo ui = Client.getUserInfo(uid);
-                            DynamicList dl = Client.getUserDynamicList(uid);
+                            UserInfo ui = Client.getUserInfo(client, uid);
+                            DynamicList dl = Client.getUserDynamicList(client, uid);
                             StringBuilder respBuilder = new StringBuilder();
                             respBuilder.append(ui.data.name).append("(").append(ui.data.mid).append(")").append("的信息:");
                             respBuilder.append("\nLv.").append(ui.data.level).append(" (0~6)");
@@ -428,7 +476,7 @@ public class Web extends AIChatPlugin {
                 case "www.gamersky.com" -> {
                     if (url.contains(".com/handbook")) {
                         try {
-                            return GamerSky.Handbook.fetchContent(url);
+                            return GamerSky.Handbook.fetchContent(url, client);
                         } catch (IOException e) {
                             throw new RuntimeException(e);
                         }
@@ -453,7 +501,7 @@ public class Web extends AIChatPlugin {
                             case "planet" -> gameId = 10;
                         }
                         if (gameId != -1) try {
-                            Miyoushe.Post post = Miyoushe.fetchPost(gameId, postId);
+                            Miyoushe.Post post = Miyoushe.fetchPost(gameId, postId, client);
                             MFChain result = new MFChain(post.title);
                             result.addAll(post.content);
                             return result;
@@ -464,7 +512,7 @@ public class Web extends AIChatPlugin {
                 }
             }
             if (domain.endsWith("moegirl.org.cn") || domain.endsWith("wikipedia.org") || domain.endsWith("wiki.biligame.com")) {
-                return new MFChain(com.nekoyu.Universe.AIChat.Web.MediaWiki.Client.query(url).toString());
+                return new MFChain(com.nekoyu.Universe.AIChat.Web.MediaWiki.Client.query(url, client).toString());
             }
 
             if (config.Selenium == null) return new MFChain("不支持的链接类型, 请停止访问此链接，只允许访问支持的页面");
@@ -491,6 +539,12 @@ public class Web extends AIChatPlugin {
         String stage = "连接服务并创建浏览器会话";
         try {
             ChromeOptions options = new ChromeOptions();
+            if (client.proxy().address() instanceof InetSocketAddress address) {
+                String hostAndPort = address.getHostString() + ":" + address.getPort();
+                options.setProxy(new org.openqa.selenium.Proxy()
+                        .setHttpProxy(hostAndPort)
+                        .setSslProxy(hostAndPort));
+            }
             // 等到 DOM 可用即可，避免图片、广告等资源拖住页面导航。
             options.setPageLoadStrategy(PageLoadStrategy.EAGER);
             options.setPageLoadTimeout(Duration.ofSeconds(30));

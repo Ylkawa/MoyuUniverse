@@ -10,10 +10,14 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 public class Client {
-    static OkHttpClient client = new OkHttpClient();
+    private static final OkHttpClient DEFAULT_CLIENT = new OkHttpClient();
     static Gson gson = new Gson();
 
     public static QueryResp query(String url) {
+        return query(url, DEFAULT_CLIENT);
+    }
+
+    public static QueryResp query(String url, OkHttpClient client) {
         Matcher matcher = Pattern.compile("^https?://([^/]+)(/.*)?$").matcher(url);
         if (!matcher.matches()) throw new IllegalArgumentException("Invalid URL: " + url);
         String domain = matcher.group(1);

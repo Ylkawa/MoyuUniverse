@@ -1,12 +1,35 @@
 # AIChat-Web
 
+## 网页工具代理
+
+在 `config/AIChat/Plugins/Web/config.json` 启用 `EnableProxy` 后，`HttpProxyURI` 填写带端口的无认证 HTTP 代理，例如 `http://proxy.example:8080`。也支持方括号包围的 IPv6 地址。开启后地址无效时，插件记录配置错误并跳过 Web 工具注册，避免意外直连。
+
+代理用于 Web 插件的搜索、专用站点请求和官方 Markdown 下载。Selenium 的网页请求也使用该地址，WebDriver 控制连接使用 `Selenium.URL` 和自身的网络设置。
+
 ## 浏览器网页抓取
 
 配置 `Selenium.URL` 时，未命中专用适配的网页通过远程 Selenium 抓取渲染后的 HTML，转换为 Markdown 后返回。保留标题层级、段落与换行、粗体/斜体/删除线、嵌套列表、引用、代码、基础表格、链接和图片地址/替代文字；相对地址按最终页面 URL（包括重定向和 HTML base）解析。脚本、样式、模板及带 `hidden` / `aria-hidden=true` 的元素不进入结果。转换使用现有 Jsoup，无新增依赖。
 
+开启 `EnableProxy` 后，远程 Chrome 的 HTTP 和 HTTPS 请求复用 `HttpProxyURI`。代理地址需能从运行 Chrome 的节点访问，`Selenium.URL` 仍用于连接 WebDriver 服务。
+
 这是 HTML 语义转换，不还原 CSS 布局或计算样式；合并单元格不还原跨度。沿用最多 5000 字符的返回限制（包含 Markdown 标记，超长内容末尾可能截断格式），以及原有超时、错误提示和浏览器会话释放逻辑。专用站点的 API/图片解析保持原有行为。
 
 离线验证：运行 `HtmlMarkdownTest` 和 `SeleniumFetchTest` 的 main；后者使用本地模拟 W3C WebDriver 服务，覆盖 Markdown 回传、重定向后的相对链接、长度限制、异常与会话释放，不代表真实 Selenium 服务或任意目标网页已经验收。
+
+## GitHub 网页
+
+`VisitWebPage` 对 GitHub 公开仓库首页、单条 Issue 和 Releases 使用 GitHub REST API。仓库首页返回简介和 README，Issue 返回标题、状态和正文，Releases 列表返回最多三条摘要，`/releases/latest` 和 `/releases/tag/<tag>` 返回单条发布说明。长正文标明截断。请求复用 Web 插件的 HTTP 代理，使用 GitHub 的匿名配额。其他 GitHub 页面继续走浏览器抓取。
+
+## 官方 Markdown 开发文档
+
+`VisitWebPage` 对 Gemini 开发文档和 API 参考、智谱中文开发文档、MiniMax 中文和国际站文档、阿里云中国站中英文产品文档读取官方 `.md`。响应提供原始正文、Markdown 来源和对应站点或产品索引。Gemini 兼容 `ai.google.dev` 旧链接，保留语言和 API 版本等查询参数。
+
+索引 URL 可单独访问。文档单次读取上限为 256 KiB。较大的索引按行分页，响应附下一页 URL，来源索引上限为 4 MiB。
+
+## Hugging Face 和 CVE
+
+- Hugging Face 组织页返回可用的组织卡片、首批模型及合集，并附完整列表入口。模型页返回可用的许可证、版本链接及模型卡正文。
+- CIRCL 和 NVD 的 CVE 详情分别返回各自公开 API 的记录，保留原始受影响范围、版本条件、评分和参考链接。
 
 ## map 地图与出行技能
 

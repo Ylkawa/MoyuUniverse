@@ -21,7 +21,7 @@ import java.net.URL;
 import java.util.Map;
 
 public class Miyoushe {
-    static OkHttpClient client = new OkHttpClient();
+    private static final OkHttpClient DEFAULT_CLIENT = new OkHttpClient();
 
     public static class Post {
         public String title;
@@ -29,6 +29,10 @@ public class Miyoushe {
     }
 
     public static Post fetchPost(int gameId, int postId) throws IOException {
+        return fetchPost(gameId, postId, DEFAULT_CLIENT);
+    }
+
+    public static Post fetchPost(int gameId, int postId, OkHttpClient client) throws IOException {
         Request request = new Request.Builder()
                 .url(HttpUrl.parse("https://bbs-api.miyoushe.com/post/wapi/getPostFull").newBuilder()
                         .addQueryParameter("gids", String.valueOf(gameId))

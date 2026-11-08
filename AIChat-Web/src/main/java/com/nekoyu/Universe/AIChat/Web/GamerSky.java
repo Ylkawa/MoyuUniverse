@@ -15,10 +15,14 @@ import java.net.URL;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public class GamerSky {
-    static OkHttpClient client = new OkHttpClient();
+    private static final OkHttpClient DEFAULT_CLIENT = new OkHttpClient();
 
     public static class Handbook {
         public static MFChain fetchContent(String pageUrl) throws IOException {
+            return fetchContent(pageUrl, DEFAULT_CLIENT);
+        }
+
+        public static MFChain fetchContent(String pageUrl, OkHttpClient client) throws IOException {
             String html;
             Request req = new Request.Builder()
                     .url(pageUrl)

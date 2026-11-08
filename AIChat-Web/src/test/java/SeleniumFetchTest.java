@@ -3,11 +3,13 @@ import com.nekoyu.Universe.AIChat.Web.Config;
 import com.nekoyu.Universe.AIChat.Web.Web;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
+import okhttp3.OkHttpClient;
 
 import java.io.IOException;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.net.InetSocketAddress;
+import java.net.Proxy;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -22,7 +24,14 @@ public class SeleniumFetchTest {
     }
 
     static String visit(String endpoint) throws Exception {
+        return visit(endpoint, Proxy.NO_PROXY);
+    }
+
+    static String visit(String endpoint, Proxy proxy) throws Exception {
         Web web = new Web(null);
+        Field client = Web.class.getDeclaredField("client");
+        client.setAccessible(true);
+        client.set(web, new OkHttpClient.Builder().proxy(proxy).build());
         JsonObject config = new JsonObject();
         if (endpoint != null) {
             JsonObject selenium = new JsonObject();
@@ -47,7 +56,12 @@ public class SeleniumFetchTest {
             check(result.contains("离线测试正文"), "body returned");
             check(grid.polls.get() == 2, "waits for rendered body");
             check(grid.deletes.get() == 1, "successful fetch quits session");
-            grid.checkCapabilities();
+            grid.checkCapabilities(null);
+        }
+        try (Grid grid = new Grid("success")) {
+            Proxy proxy = new Proxy(Proxy.Type.HTTP, InetSocketAddress.createUnresolved("proxy.example", 8080));
+            check(visit(grid.endpoint(), proxy).contains("离线测试正文"), "WebDriver endpoint remains reachable");
+            grid.checkCapabilities("proxy.example:8080");
         }
         try (Grid grid = new Grid("long")) {
             check(visit(grid.endpoint()).length() == 5000, "existing text limit preserved");
@@ -99,7 +113,7 @@ public class SeleniumFetchTest {
 
         String endpoint() { return "http://127.0.0.1:" + server.getAddress().getPort(); }
 
-        void checkCapabilities() {
+        void checkCapabilities(String expectedProxy) {
             JsonObject capabilities = newSession.getAsJsonObject("capabilities");
             JsonObject first = capabilities.getAsJsonArray("firstMatch").get(0).getAsJsonObject();
             JsonObject always = capabilities.getAsJsonObject("alwaysMatch");
@@ -111,6 +125,14 @@ public class SeleniumFetchTest {
                     "page navigation bounded before get");
             check(combined.getAsJsonObject("timeouts").get("script").getAsInt() == 10_000,
                     "script timeout configured");
+            if (expectedProxy == null) {
+                check(!combined.has("proxy"), "disabled Web proxy leaves browser proxy unset");
+            } else {
+                JsonObject proxy = combined.getAsJsonObject("proxy");
+                check(proxy.get("proxyType").getAsString().equals("manual"), "manual browser proxy");
+                check(proxy.get("httpProxy").getAsString().equals(expectedProxy), "HTTP uses the Web proxy");
+                check(proxy.get("sslProxy").getAsString().equals(expectedProxy), "HTTPS uses the Web proxy");
+            }
         }
 
         void handle(HttpExchange exchange) throws IOException {
