@@ -1,6 +1,5 @@
 package com.nekoyu.Universe.AIChat;
 
-import com.google.gson.JsonObject;
 import com.nekoyu.Universe.API.Providers.LLMProvider.RespBodies.EmbeddingResponse;
 import com.zaxxer.hikari.*;
 import org.junit.jupiter.api.*;
@@ -13,7 +12,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class PgVectorPostgresTest {
     HikariDataSource ds;
     String schema;
-    PgVectorTable table;
+    MemoryTable table;
     Memory memory;
     boolean invalidEmbedding;
 
@@ -26,7 +25,7 @@ class PgVectorPostgresTest {
         pool.setMaximumPoolSize(2);
         ds = new HikariDataSource(pool);
         schema = "vector_test_" + UUID.randomUUID().toString().replace("-", "");
-        table = new PgVectorTable(ds, schema + ".memory", 3);
+        table = new MemoryTable(ds, schema + ".memory", 3);
         table.initialize();
         table.initialize();
         memory = new Memory(request -> {
@@ -66,21 +65,16 @@ class PgVectorPostgresTest {
         assertEquals(3, table.list("true", List.of(), "id", 10).size(), "soft deletion preserves data");
     }
 
-    @Test void exactScoresThresholdAndPayloadUpdatesPreserveVectorAndUnknownFields() throws Exception {
-        UUID id = UUID.randomUUID();
-        JsonObject payload = new JsonObject();
-        payload.addProperty("unknown", "中文🙂");
-        table.upsert(id, List.of(1f, 0f, 0f), payload);
-        assertEquals(1, table.search(List.of(1f, 0f, 0f), "true", List.of(), 10, .6).get(0).score(), .000001);
+    @Test void exactScoresAndSoftDeletionPreserveVector() throws Exception {
+        Memory.Item item = item("中文", null, .8f, .5f, 10);
+        table.upsert(item, List.of(1f, 0f, 0f));
+        assertEquals(1, table.search(List.of(1f, 0f, 0f), "true", List.of(), 10, .6).get(0).score, .000001);
         assertTrue(table.search(List.of(0f, 1f, 0f), "true", List.of(), 10, .6).isEmpty());
-        JsonObject patch = new JsonObject();
-        patch.addProperty("confidence", .8);
-        table.payload(id, patch);
-        var found = table.search(List.of(1f, 0f, 0f), "(payload->>'confidence')::float8 >= ?", List.of(.7), 10, .6).get(0);
-        assertEquals("中文🙂", found.payload().get("unknown").getAsString());
-        assertEquals(1, found.score(), .000001);
-        assertThrows(IOException.class, () -> table.update(id, List.of(Float.NaN, 0f, 0f), new JsonObject()));
-        assertThrows(IOException.class, () -> new PgVectorTable(ds, schema + ".memory", 2).initialize());
+        table.hide(item.id);
+        var found = table.search(List.of(1f, 0f, 0f), "confidence < 0", List.of(), 10, .6).get(0);
+        assertEquals("中文", found.content);
+        assertEquals(1, found.score, .000001);
+        assertThrows(IOException.class, () -> new MemoryTable(ds, schema + ".memory", 2).initialize());
         assertThrows(IOException.class, () -> table.search(List.of(1f, 0f), "true", List.of(), 10, .6));
     }
 

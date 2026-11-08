@@ -14,7 +14,7 @@
 - 全项目 `mvn -o -pl distribution -am package` 通过，共 230 项测试，失败、错误、跳过均为 0，包含 8 项真实 PostgreSQL 隔离测试。真实模型、消息与生产进程尚未运行。
 - 发行目录：`target/deployment-pgvector-20261026/`，13 个业务 JAR、89 个运行库；运行库中已无 Qdrant、gRPC 和 Protobuf。法则/插件类加载及 2143 个图标资源校验通过。部署由使用者执行。
 
-以下迁移命令作为复现及恢复说明；本次数据迁移和集合删除已完成，不需要再次运行 `copy` 或 `delete`。
+以下 Qdrant 迁移命令记录当时的导入流程。原集合已删除，且后续版本已调整目标表结构。
 
 ## 部署配置
 
@@ -47,7 +47,7 @@
 
 新的运行目录用 `scripts/package-deployment.ps1` 构建，按其完整 `lib` 清单替换旧依赖目录，避免继续保留旧 Qdrant 库。这里只构建工件，不操作服务器部署。
 
-## 迁移、核验和清理
+## 历史迁移、核验和清理
 
 凭据只通过进程环境提供，不写入脚本、配置样例或快照：
 
@@ -71,3 +71,18 @@ $env:QDRANT_API_KEY = [Net.NetworkCredential]::new('', (Read-Host 'Qdrant API ke
 `restore` 从经过 SHA-256 核验的备份补入 PostgreSQL，并进行同样的完整校验；它不是生产数据冲突合并工具。对研究报告，先恢复快照中的原 SQL 记录，再恢复向量；工具不会凭空生成不存在的报告行。删除后的 Qdrant 不再是运行依赖，正常恢复应还原 PostgreSQL 备份。
 
 测试通过 `PG_URL`、`PG_USER`、`PG_PASSWORD` 启用真实 pgvector 测试，所有写入使用随机隔离 schema 并在结束时清理；不调用真实模型服务。部署后的消息、模型与机器人链路由使用者验收。
+
+## 记忆表结构迁移
+
+部署新版前，停止使用旧版表结构的 AIChat 实例。新版直接读取 `content`、`location_id`、`create_at`、`update_at`、`confidence` 和 `importance`。时间仍为毫秒时间戳，缺失的 `importance` 仍按原逻辑处理。迁移时忽略旧 `score` 字段，原值仅保存在迁移前快照中。检索分数由查询向量实时计算。
+
+沿用上面的 PostgreSQL 环境变量，指定 JDBC 驱动路径。备份目录必须尚不存在。
+
+```powershell
+$pgJar = 'C:/Users/imylk/.m2/repository/org/postgresql/postgresql/42.7.14/postgresql-42.7.14.jar'
+java -cp $pgJar scripts/MigrateMemory.java rehearse tmp/memory-columns aichat.memory
+java -cp $pgJar scripts/MigrateMemory.java migrate tmp/memory-columns aichat.memory
+java -cp $pgJar scripts/MigrateMemory.java verify tmp/memory-columns aichat.memory
+```
+
+迁移遇到未知字段时回滚。原始 UUID、向量和 JSONB 保存为带 SHA-256 的快照。迁移事务逐行比较类型转换后的值，再删除旧列并提交。部署前用新连接复核整表。

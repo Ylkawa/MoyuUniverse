@@ -1,6 +1,5 @@
 package com.nekoyu.Universe.AIChat;
 
-import com.google.gson.JsonObject;
 import com.nekoyu.Universe.AIChat.leading.MemoryStore;
 import com.nekoyu.Universe.API.MessageChannel.MFChain;
 import com.nekoyu.Universe.API.MessageChannel.MessageField.TextField;
@@ -13,16 +12,16 @@ import static com.nekoyu.Universe.Utils.Time.formatTimestamp;
 
 public class Memory implements MemoryStore {
     private final Embedding provider;
-    private final PgVectorTable table;
+    private final MemoryTable table;
     private final int dimension;
-    private static final String VISIBLE = "COALESCE((payload->>'confidence')::float8, -1) >= 0";
+    private static final String VISIBLE = "confidence >= 0";
 
     public Memory(DataSource dataSource, Config.Memory config, Embedding provider) throws IOException {
-        this(provider, new PgVectorTable(dataSource, config.table, config.dimension), config.dimension);
+        this(provider, new MemoryTable(dataSource, config.table, config.dimension), config.dimension);
         table.initialize();
     }
 
-    Memory(Embedding provider, PgVectorTable table, int dimension) {
+    Memory(Embedding provider, MemoryTable table, int dimension) {
         this.provider = Objects.requireNonNull(provider);
         this.table = table;
         this.dimension = dimension;
@@ -33,7 +32,7 @@ public class Memory implements MemoryStore {
         List<Object> parameters = new ArrayList<>(locations);
         try {
             return table.search(queryVector, VISIBLE + locationPredicate(locations), parameters, 20, 0.6)
-                    .stream().map(Memory::item).sorted(RETRIEVAL_ORDER).limit(10).toList();
+                    .stream().sorted(RETRIEVAL_ORDER).limit(10).toList();
         } catch (IOException e) { throw new IllegalStateException("Memory search failed", e); }
     }
 
@@ -44,26 +43,20 @@ public class Memory implements MemoryStore {
                 long now = System.currentTimeMillis();
                 if (item.createAt == 0) item.createAt = now;
                 item.updateAt = now;
-                table.upsert(item.id, vector(embedding(item.content)), payload(item));
+                table.upsert(item, vector(embedding(item.content)));
             }
         } catch (IOException e) { throw new IllegalStateException("Memory insert failed", e); }
     }
 
     public void update(UUID uuid, float confidence, float importance, String content) {
-        JsonObject patch = new JsonObject();
-        patch.addProperty("update_at", System.currentTimeMillis());
-        patch.addProperty("confidence", confidence);
-        patch.addProperty("importance", importance);
-        patch.addProperty("content", content);
-        try { table.update(uuid, vector(embedding(content)), patch); }
+        long updated = System.currentTimeMillis();
+        try { table.update(uuid, vector(embedding(content)), content, updated, confidence, importance); }
         catch (IOException e) { throw new IllegalStateException("Update memory failed: " + uuid, e); }
     }
 
     /** Preserve hidden records for audit and possible recovery. */
     public void delete(UUID uuid) {
-        JsonObject patch = new JsonObject();
-        patch.addProperty("confidence", -1.0);
-        try { table.payload(uuid, patch); }
+        try { table.hide(uuid); }
         catch (IOException e) { throw new IllegalStateException("Delete memory failed: " + uuid, e); }
     }
 
@@ -72,7 +65,7 @@ public class Memory implements MemoryStore {
         if (locations.isEmpty() || limit <= 0) return List.of();
         try {
             return table.list(VISIBLE + locationPredicate(locations), locations,
-                    "(payload->>'create_at')::bigint DESC NULLS LAST, id", limit).stream().map(Memory::item).toList();
+                    "create_at DESC NULLS LAST, id", limit);
         } catch (IOException e) { throw new IllegalStateException("Recent memory lookup failed", e); }
     }
 
@@ -82,9 +75,9 @@ public class Memory implements MemoryStore {
         List<Object> parameters = new ArrayList<>(locations);
         parameters.add(minImportance);
         try {
-            return table.list(VISIBLE + locationPredicate(locations) + " AND (payload->>'importance')::float8 >= ?",
-                    parameters, "((payload->>'importance')::float8 * 0.6 + (payload->>'confidence')::float8 * 0.4) DESC, id",
-                    limit).stream().map(Memory::item).toList();
+            return table.list(VISIBLE + locationPredicate(locations) + " AND importance >= ?",
+                    parameters, "(importance * 0.6 + confidence * 0.4) DESC, id",
+                    limit);
         } catch (IOException e) { throw new IllegalStateException("Important memory lookup failed", e); }
     }
 
@@ -93,40 +86,7 @@ public class Memory implements MemoryStore {
     }
 
     private static String locationPredicate(List<String> locations) {
-        return locations.isEmpty() ? "" : " AND payload->>'location_id' IN (" + String.join(",", Collections.nCopies(locations.size(), "?")) + ")";
-    }
-
-    static JsonObject payload(Item item) {
-        JsonObject payload = new JsonObject();
-        payload.addProperty("content", item.content);
-        payload.addProperty("create_at", item.createAt);
-        payload.addProperty("update_at", item.updateAt);
-        payload.addProperty("location_id", item.locationId);
-        payload.addProperty("confidence", item.confidence);
-        payload.addProperty("importance", item.importance);
-        return payload;
-    }
-
-    static Item item(PgVectorTable.Point point) {
-        JsonObject payload = point.payload();
-        Item item = new Item();
-        item.id = point.id();
-        item.score = (float) point.score();
-        item.content = text(payload, "content");
-        item.locationId = text(payload, "location_id");
-        item.createAt = (long) number(payload, "create_at", 0);
-        item.updateAt = (long) number(payload, "update_at", 0);
-        item.confidence = (float) number(payload, "confidence", 0);
-        item.importance = (float) number(payload, "importance", 0.5);
-        return item;
-    }
-
-    private static String text(JsonObject payload, String key) {
-        return !payload.has(key) || payload.get(key).isJsonNull() ? null : payload.get(key).getAsString();
-    }
-
-    private static double number(JsonObject payload, String key, double fallback) {
-        return !payload.has(key) || payload.get(key).isJsonNull() ? fallback : payload.get(key).getAsDouble();
+        return locations.isEmpty() ? "" : " AND location_id IN (" + String.join(",", Collections.nCopies(locations.size(), "?")) + ")";
     }
 
     private List<Float> vector(double[] values) throws IOException {

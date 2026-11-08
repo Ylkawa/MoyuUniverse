@@ -22,6 +22,20 @@ public class MigrateVectors {
     private static final String RESEARCH = "moyu_universe_aic_ks_research";
     private static final int DIMENSION = 1024;
 
+    private static void initializeLegacyTable(Connection c, String table) throws SQLException {
+        String name = table.substring(table.indexOf('.') + 1);
+        try (Statement s = c.createStatement()) {
+            s.execute("CREATE EXTENSION IF NOT EXISTS vector");
+            s.execute("CREATE SCHEMA IF NOT EXISTS " + table.split("\\.")[0]);
+            s.execute("CREATE TABLE IF NOT EXISTS " + table + " (id uuid PRIMARY KEY, embedding vector(" + DIMENSION
+                    + ") NOT NULL, payload jsonb NOT NULL DEFAULT '{}'::jsonb)");
+            s.execute("CREATE INDEX IF NOT EXISTS " + name + "_embedding_idx" + " ON " + table
+                    + " USING hnsw (embedding vector_cosine_ops)");
+            s.execute("CREATE INDEX IF NOT EXISTS " + name + "_payload_idx" + " ON " + table + " USING gin (payload)");
+        }
+        PgVectorTable.requireDimension(c, table, DIMENSION);
+    }
+
     public static void main(String[] args) throws Exception {
         if (args.length != 2 || !Set.of("copy", "verify", "delete", "restore").contains(args[0]))
             throw new IllegalArgumentException("Usage: copy <new-backup-directory> | verify|delete|restore <backup-directory>");
@@ -52,7 +66,7 @@ public class MigrateVectors {
                         s.execute("SET LOCAL statement_timeout='120s'");
                     }
                     for (var entry : TABLES.entrySet()) {
-                        if (!entry.getKey().equals(RESEARCH)) PgVectorTable.initialize(c, entry.getValue(), DIMENSION);
+                        if (!entry.getKey().equals(RESEARCH)) initializeLegacyTable(c, entry.getValue());
                     }
                     try (Statement s = c.createStatement()) {
                         s.execute("ALTER TABLE aichat.research_task ADD COLUMN IF NOT EXISTS embedding vector(1024)");
