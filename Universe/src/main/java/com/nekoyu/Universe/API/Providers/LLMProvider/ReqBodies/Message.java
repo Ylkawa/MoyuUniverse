@@ -16,6 +16,10 @@ public class Message {
     public String tool_call_id;
     public Tool_call[] tool_calls;
     public String reasoning_content;
+    /** 隐式思考模型的加密思维链（百炼 qwen4-max 的 encrypted_content），必须随所属 assistant 消息原样回传，不得展示或改写 */
+    public String encrypted_content;
+    /** 厂商扩展字段（如 Gemini message 级 thought_signature）；null 时不序列化，回传时原样保留 */
+    public ExtraContent extra_content;
     /** 工具回调返回 true 表示该调用为异步未决：该次调用的真实结果稍后通过会话补投 */
     public transient boolean asyncPending;
     /** 将工具结果写回会话期间持有文件对象，避免缓存被提前清理。 */

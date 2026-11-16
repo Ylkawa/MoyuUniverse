@@ -1,6 +1,7 @@
 package com.nekoyu.universe.openaiadapter;
 
 import com.nekoyu.Universe.API.Providers.LLMProvider.RespBodies.CompletionsResponse;
+import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.ExtraContent;
 import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.Tool_call;
 
 public class DataLine {
@@ -19,6 +20,10 @@ public class DataLine {
 
         public static class Delta {
             String reasoning_content;
+            /** 百炼 qwen4-max 密文帧：独立下发、一次返回，不得因 content 为空而过滤 */
+            String encrypted_content;
+            /** Gemini message 级加密思维签名 */
+            ExtraContent extra_content;
             String content;
             String role;
             Tool_call[] tool_calls;

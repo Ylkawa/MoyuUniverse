@@ -30,6 +30,16 @@ import java.util.regex.Pattern;
  * 末屿宇宙 LLMProvider 的 OpenAI API 兼容实现
  * 注意：此 Adapter 支持以堵塞式和流式逻辑，但是堵塞式请求并非原生非流式请求，而是通过流式请求完成，因而仅支持可以流式请求的 API
  * Only supports streamed outputting and function calling models
+ * <p>
+ * 隐式思考模型的加密思维链支持：
+ * <ul>
+ *     <li>百炼 qwen4-max：开启 thinking_display="summarized" + preserve_thinking=true，
+ *     收取独立密文帧 encrypted_content 并随所属 assistant 消息原样回传；</li>
+ *     <li>Gemini（OpenAI 兼容）：收取并按 index 保留 tool_calls / message 上的
+ *     extra_content.google.thought_signature，续轮原样回传（Gemini 3.x 缺失签名会 400）；</li>
+ *     <li>GPT（gpt-5 / o 系列）：Chat Completions 协议不返回任何思维链字段，
+ *     加密 CoT 回传仅 Responses API（reasoning.encrypted_content）支持，本 Adapter 暂未实现。</li>
+ * </ul>
  */
 public class OpenAIChannel extends LLMProvider implements Embedding {
     private static final Set<String> OPENAI_SCHEMA_MODELS = Set.of(
@@ -44,6 +54,11 @@ public class OpenAIChannel extends LLMProvider implements Embedding {
     private static final Pattern BAILIAN_BASE_URL = Pattern.compile(
             "^https://(?:[^/]+\\.aliyuncs\\.com|maas\\.qianwenaiapi\\.com)(/.*)?$");
     private static final String SEARCH_SNAPSHOT_SUFFIX = "(?:-(?:\\d{4}-\\d{2}-\\d{2}|\\d{4}))?";
+    /** 支持思维链摘要与加密（thinking_display/encrypted_content）的百炼模型，目前为 qwen4-max 族 */
+    private static final Pattern QWEN4_MAX_MODEL = Pattern.compile(
+            "^qwen4(?:\\.\\d+)*-max(?:-(?:latest|preview))?" + SEARCH_SNAPSHOT_SUFFIX + "$");
+    /** GPT 隐式思考模型（gpt-5 族 / o 系列），按每次请求的实际模型判定，不依赖 defaultModel 注入顺序 */
+    private static final Pattern GPT_REASONING_MODEL = Pattern.compile("^(?:gpt-5|o\\d)(?:[.-].*)?$");
     // 按聊天型号限制用途，数字版本不设上限；新版本的实际搜索能力仍由服务端决定。
     private static final List<Pattern> BAILIAN_SEARCH_MODELS = List.of(
             Pattern.compile("^qwen\\d+(?:\\.\\d+)*-(?:max|plus|flash|turbo)"
@@ -119,10 +134,16 @@ public class OpenAIChannel extends LLMProvider implements Embedding {
                                     content.append(choice.delta.content);
                                     responding.choices[0].message.content += choice.delta.content;
                                 }
-                                if (choice.delta.reasoning_content != null && !choice.delta.reasoning_content.isBlank()) {
+                                if (choice.delta.reasoning_content != null && !choice.delta.reasoning_content.isEmpty()) {
                                     reasoning_content.append(choice.delta.reasoning_content);
                                     responding.choices[0].message.reasoning_content += choice.delta.reasoning_content;
                                 }
+                                // 密文帧独立下发、一次返回：整体赋值而非追加，也不得因 content 为空而过滤
+                                if (choice.delta.encrypted_content != null && !choice.delta.encrypted_content.isEmpty())
+                                    responding.choices[0].message.encrypted_content = choice.delta.encrypted_content;
+                                // Gemini message 级思维签名（非工具轮），随消息原样回传
+                                if (choice.delta.extra_content != null)
+                                    responding.choices[0].message.extra_content = choice.delta.extra_content;
                                 if (choice.delta.tool_calls != null) {
                                     for (Tool_call tool_call : choice.delta.tool_calls) {
                                         Tool_call loading = tool_calls.get(tool_call.index);
@@ -138,6 +159,9 @@ public class OpenAIChannel extends LLMProvider implements Embedding {
                                             loading.function.name = tool_call.function.name;
                                         if (tool_call.function.arguments != null)
                                             loading.function.arguments += tool_call.function.arguments;
+                                        // Gemini 思维签名按 index 保留首个非空值（并行调用仅首个 call 携带），续轮原样回传
+                                        if (tool_call.extra_content != null && loading.extra_content == null)
+                                            loading.extra_content = tool_call.extra_content;
                                     }
                                 }
                                 if (choice.finish_reason != null) {
@@ -177,18 +201,28 @@ public class OpenAIChannel extends LLMProvider implements Embedding {
     /** 构建 OpenAI 兼容请求体（含 dashscope / gpt 特调），并把中性工具列表装入请求 */
     private OpenAICompletionsRequest buildRequest(String model, List<LLMFunction> llmFunctions, CompletionsRequest completionsRequest) {
         String effectiveModel = model != null ? model : defaultModel;
+        // GPT 特调按每次请求的实际模型判定，避免依赖 setBaseurl 时 defaultModel 的注入顺序
+        String adaptation = "dashscope".equals(speciallyAdaptation) ? "dashscope"
+                : GPT_REASONING_MODEL.matcher(effectiveModel == null ? "" : effectiveModel).matches() ? "gpt" : "none";
         OpenAICompletionsRequest cr;
-        switch (speciallyAdaptation) {
+        switch (adaptation) {
             case "dashscope" -> {
                 AliyunBailianReq bailian = new AliyunBailianReq();
                 bailian.stream_options.put("include_usage", true);
-                if (completionsRequest.enable_thinking) bailian.enable_thinking = true;
+                if (completionsRequest != null && completionsRequest.enable_thinking) {
+                    bailian.enable_thinking = true;
+                    // 摘要与加密同时开启，且每轮请求都需携带；历史密文由上层随 assistant 消息原样回传
+                    if (QWEN4_MAX_MODEL.matcher(effectiveModel == null ? "" : effectiveModel).matches()) {
+                        bailian.thinking_display = "summarized";
+                        bailian.preserve_thinking = true;
+                    }
+                }
                 if (search && supportsBailianSearch(effectiveModel)) bailian.enable_search = true;
                 cr = bailian;
             }
             case "gpt" -> {
                 OpenAIReq openai = new OpenAIReq();
-                if (completionsRequest.enable_thinking) openai.reasoning.effort = OpenAIReq.Reasoning.Effort.low;
+                if (completionsRequest != null && completionsRequest.enable_thinking) openai.reasoning.effort = OpenAIReq.Reasoning.Effort.low;
                 cr = openai;
             }
             default -> cr = new OpenAICompletionsRequest();
@@ -275,11 +309,7 @@ public class OpenAIChannel extends LLMProvider implements Embedding {
             logger.debug("识别到百炼API，启用百炼特殊适配");
             return;
         }
-        if (defaultModel != null && defaultModel.startsWith("gpt-5")) {
-            speciallyAdaptation = "gpt";
-            logger.debug("识别到GPT模型，启用GPT特殊适配");
-            return;
-        }
+        // GPT 特调在 buildRequest 内按实际请求模型判定，此处仅区分百炼
         speciallyAdaptation = "none";
     }
 

@@ -19,6 +19,7 @@ import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.Context;
 import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.ContentPiece.ContentPiece;
 import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.ContentPiece.ImageUrlPiece;
 import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.ContentPiece.TextPiece;
+import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.ExtraContent;
 import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.LLMFunction;
 import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.Message;
 import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.Tool_call;
@@ -274,6 +275,9 @@ public class ChatContext implements Context {
         if (calls != null) tokens += estimateText(GSON.toJson(calls));
         Object reasoning = message.getMetainfo("reasoning");
         if (reasoning != null) tokens += estimateText(reasoning.toString());
+        // 加密思维链回传同样计输入 Token，裁剪预算必须计入
+        Object encrypted = message.getMetainfo("encrypted_content");
+        if (encrypted != null) tokens += estimateText(encrypted.toString());
         return tokens;
     }
 
@@ -439,6 +443,11 @@ public class ChatContext implements Context {
             responding.choices[0].finish_reason = finish;
             String content = round.choices[0].message.content;
             String reasoning = round.choices[0].message.reasoning_content;
+            // 加密思维链 / 思维签名：每段随所属 assistant 消息分别保存，续轮原样回传
+            String encrypted = round.choices[0].message.encrypted_content;
+            ExtraContent extraContent = round.choices[0].message.extra_content;
+            if (encrypted != null) responding.choices[0].message.encrypted_content = encrypted;
+            if (extraContent != null) responding.choices[0].message.extra_content = extraContent;
             if (structuredOutput) {
                 responding.choices[0].message.content = "tool_calls".equals(finish) || content == null ? "" : content;
                 if (!"tool_calls".equals(finish) && bufferCallback != null)
@@ -449,6 +458,8 @@ public class ChatContext implements Context {
             if ("stop".equals(finish)) {
                 Message assistantMsg = new Message(content == null ? "" : content);
                 if (reasoning != null) assistantMsg.reasoning_content = reasoning;
+                assistantMsg.encrypted_content = encrypted;
+                assistantMsg.extra_content = extraContent;
                 assistantMsg(assistantMsg);
                 return responding;
             }
@@ -467,6 +478,8 @@ public class ChatContext implements Context {
                 }
                 Message assistantMsg = new Message(content == null ? "" : content);
                 if (reasoning != null) assistantMsg.reasoning_content = reasoning;
+                assistantMsg.encrypted_content = encrypted;
+                assistantMsg.extra_content = extraContent;
                 Tool_call[] toolCalls = round.choices[0].message.tool_calls;
                 assistantMsg.tool_calls = toolCalls;
                 assistantMsg(assistantMsg);
@@ -687,9 +700,15 @@ public class ChatContext implements Context {
             message.role = role;
             if (ROLE_ASSISTANT.equals(role)) {
                 // 注意：不得用 if/else 短路掉 assistant 元信息的恢复，
-                // 否则 assistant 的 tool_calls / reasoning 会在重建请求时丢失
+                // 否则 assistant 的 tool_calls / reasoning / 加密思维链 / 思维签名会在重建请求时丢失
                 if (m.getMetainfo("reasoning") instanceof String reasoning) {
                     message.reasoning_content = reasoning;
+                }
+                if (m.getMetainfo("encrypted_content") instanceof String encrypted) {
+                    message.encrypted_content = encrypted;
+                }
+                if (m.getMetainfo("extra_content") instanceof ExtraContent extra) {
+                    message.extra_content = extra;
                 }
                 if (m.getMetainfo("Tool_calls") instanceof Tool_call[] toolCalls) {
                     message.tool_calls = toolCalls;
@@ -735,6 +754,8 @@ public class ChatContext implements Context {
     public void assistantMsg(Message message) {
         MCMessage mcm = toMCMessage(message, ROLE_ASSISTANT);
         if (message.reasoning_content != null) mcm.putMetainfo("reasoning", message.reasoning_content);
+        if (message.encrypted_content != null) mcm.putMetainfo("encrypted_content", message.encrypted_content);
+        if (message.extra_content != null) mcm.putMetainfo("extra_content", message.extra_content);
         if (message.tool_calls != null)
             mcm.putMetainfo("Tool_calls", GSON.fromJson(GSON.toJson(message.tool_calls), Tool_call[].class));
         if (assistantAccount != null) {

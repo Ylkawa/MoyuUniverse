@@ -1,5 +1,6 @@
 package com.nekoyu.Universe.API.Providers.LLMProvider.RespBodies;
 
+import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.ExtraContent;
 import com.nekoyu.Universe.API.Providers.LLMProvider.ReqBodies.Tool_call;
 
 public class CompletionsResponse {
@@ -30,6 +31,10 @@ public class CompletionsResponse {
             public String content;
             public Tool_call[] tool_calls;
             public String reasoning_content;
+            /** 隐式思考模型的加密思维链（百炼 qwen4-max），上层须随所属 assistant 消息保存并原样回传 */
+            public String encrypted_content;
+            /** 厂商扩展字段（如 Gemini message 级 thought_signature） */
+            public ExtraContent extra_content;
 
             public Message() {
                 tool_calls = null;
